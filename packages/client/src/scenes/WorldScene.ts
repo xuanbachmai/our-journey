@@ -3,7 +3,10 @@ import {
   ANIMALS,
   AREAS,
   cropTotalSeconds,
+  CHAPTERS,
+  currentChapter,
   currentQuest,
+  guideFor,
   dinerIntervalS,
   emptyPlot,
   formatDuration,
@@ -27,7 +30,6 @@ import {
   type FurnitureId,
   type ItemId,
   type PlayerId,
-  type Quest,
   type RecipeId,
   type UpgradeId,
   type Weather,
@@ -70,7 +72,7 @@ export interface HudData {
   dishCap: number;
   selectedSeed: CropId;
   action: Action | null;
-  quest: { title: string; progress: number; target: number } | null;
+  quest: { title: string; progress: number; target: number; chapter: number; hint: string } | null;
   area: AreaId;
   areaName: string;
   weather: Weather;
@@ -215,6 +217,10 @@ export class WorldScene extends Phaser.Scene {
     this.companionNext = 0;
     this.lastMoving = false;
     this.fireworkTimer = 0;
+    this.guideMarker = undefined;
+    this.guideWorld = null;
+    this.lastGuideCheck = 0;
+    this.lastEdgeSent = '';
   }
 
   init(data: WorldInit) {
@@ -327,6 +333,7 @@ export class WorldScene extends Phaser.Scene {
     this.updateLoveTree();
     this.setupSpecialDay();
     this.updateWeather(true);
+    this.createGuide();
 
     // ---- first entry ----
     if (this.fresh) {
@@ -719,17 +726,14 @@ export class WorldScene extends Phaser.Scene {
   }
 
   afterChange() {
-    const q = this.state.checkQuest();
-    if (q) this.questDone(q);
+    const events = this.state.checkProgress();
+    if (events.length) {
+      audio.play('quest');
+      this.events.emit('progress', events);
+      this.lastGuideCheck = 0;
+    }
     for (const c of this.state.checkPostcards()) this.events.emit('postcard', c);
     this.pushHud(true);
-  }
-
-  private questDone(q: Quest) {
-    audio.play('quest');
-    this.events.emit('quest', q);
-    const next = this.state.checkQuest();
-    if (next) this.time.delayedCall(2500, () => this.questDone(next));
   }
 
   pushHud(force = false) {
@@ -744,7 +748,7 @@ export class WorldScene extends Phaser.Scene {
       dishCap: this.state.dishCap,
       selectedSeed: this.state.selectedSeed,
       action: a,
-      quest: q ? { title: q.title, progress: Math.min(q.target, q.progress(this.state.world)), target: q.target } : null,
+      quest: q ? { title: q.title, progress: Math.min(q.target, q.progress(this.state.world)), target: q.target, chapter: CHAPTERS.indexOf(currentChapter(this.state.world) as never) + 1, hint: q.hint } : null,
       area: this.areaId,
       areaName: AREAS[this.areaId].name,
       weather: this.weather,
@@ -944,6 +948,9 @@ export class WorldScene extends Phaser.Scene {
           audio.play('blip');
           this.events.emit('dialog', { name: n.ch.name, text: n.talk(this.playerId) });
           this.state.stat('talk');
+          this.state.stat(`talk:${n.def.id}`);
+          if (this.areaId === 'qdhome' || this.areaId === 'xbhome') this.state.stat(`talkfam:${n.def.id}`);
+          this.afterChange();
         }
         return;
       }
@@ -1642,6 +1649,7 @@ export class WorldScene extends Phaser.Scene {
     this.updateDiners(time, dt);
     this.updateRain(dt);
     this.updateFireworks(time, dt);
+    this.updateGuide(time);
 
     // cursor
     const a = this.currentAction();
@@ -1671,6 +1679,14 @@ export class WorldScene extends Phaser.Scene {
       this.syncCrops();
       this.syncForage();
       this.handleEvents(events);
+      // catches progress from actions that open a panel, from the partner, and from the day changing
+      const progress = this.state.checkProgress();
+      if (progress.length) {
+        audio.play('quest');
+        this.events.emit('progress', progress);
+        this.lastGuideCheck = 0;
+        this.pushHud(true);
+      }
       this.updateNight();
       this.updateWeather();
       const gift = this.state.petGiftCheck();
@@ -1688,6 +1704,86 @@ export class WorldScene extends Phaser.Scene {
     this.pushHud();
   }
   private lastMoving = false;
+
+  // ------------------------------------------------------------ guide arrow
+
+  private guideMarker?: Phaser.GameObjects.Container;
+  private guideWorld: { x: number; y: number } | null = null;
+  private lastGuideCheck = 0;
+  private lastEdgeSent = '';
+
+  private createGuide() {
+    const arrow = this.add.graphics();
+    arrow.fillStyle(0x4a2a3f, 1).fillTriangle(-7, -3, 7, -3, 0, 7);
+    arrow.fillStyle(0xffd23f, 1).fillTriangle(-5, -2, 5, -2, 0, 5);
+    arrow.fillStyle(0xfff4b0, 1).fillRect(-2, -2, 2, 2);
+    const ring = this.add.graphics();
+    ring.lineStyle(1, 0xffd23f, 0.9).strokeEllipse(0, 14, 16, 6);
+    this.guideMarker = this.add.container(0, 0, [ring, arrow]).setDepth(29000).setVisible(false);
+    this.tweens.add({ targets: arrow, y: -5, duration: 420, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    this.tweens.add({ targets: ring, alpha: 0.3, duration: 420, yoyo: true, repeat: -1 });
+  }
+
+  /** Where the next task happens: a spot in this area, or the door that leads toward it. */
+  private guidePoint(): { x: number; y: number } | null {
+    if (!this.state.data.guideOn) return null;
+    const t = guideFor(currentQuest(this.state.world), this.state.world);
+    if (!t) return null;
+    if (t.area === this.areaId) return { x: t.tx * TILE + 8, y: t.ty * TILE + 8 };
+    const portal = this.portalToward(t.area);
+    return portal ? { x: (portal.tx + portal.w / 2) * TILE, y: (portal.ty + portal.h / 2) * TILE } : null;
+  }
+
+  /** First door on the shortest route from this area to `target`. */
+  private portalToward(target: AreaId): AreaDef['portals'][number] | null {
+    const first = new Map<AreaId, AreaDef['portals'][number]>();
+    const seen = new Set<AreaId>([this.areaId]);
+    const queue: AreaId[] = [];
+    for (const p of this.area.portals) {
+      if (seen.has(p.to)) continue;
+      seen.add(p.to);
+      first.set(p.to, p);
+      queue.push(p.to);
+    }
+    while (queue.length) {
+      const id = queue.shift() as AreaId;
+      if (id === target) return first.get(id) ?? null;
+      for (const p of getArea(id).portals) {
+        if (seen.has(p.to)) continue;
+        seen.add(p.to);
+        first.set(p.to, first.get(id) as AreaDef['portals'][number]);
+        queue.push(p.to);
+      }
+    }
+    return null;
+  }
+
+  private updateGuide(time: number) {
+    if (!this.guideMarker) return;
+    if (time - this.lastGuideCheck > 500) {
+      this.lastGuideCheck = time;
+      this.guideWorld = this.guidePoint();
+    }
+    const p = this.guideWorld;
+    if (!p || this.uiOpen || this.decorate.mode) {
+      this.guideMarker.setVisible(false);
+      this.sendEdge(null);
+      return;
+    }
+    const near = Math.hypot(p.x - this.player.x, p.y - (this.player.y - 6)) < 18;
+    this.guideMarker.setPosition(p.x, p.y - 16).setVisible(!near);
+    const view = this.cameras.main.worldView;
+    const inside = p.x > view.x + 10 && p.x < view.right - 10 && p.y > view.y + 10 && p.y < view.bottom - 10;
+    this.sendEdge(inside ? null : Math.atan2(p.y - view.centerY, p.x - view.centerX));
+  }
+
+  /** Tell the HUD to show an edge arrow when the target is off screen. */
+  private sendEdge(angle: number | null) {
+    const key = angle === null ? '' : String(Math.round(angle * 16));
+    if (key === this.lastEdgeSent) return;
+    this.lastEdgeSent = key;
+    this.events.emit('guideEdge', angle);
+  }
 
   private companionTarget: { x: number; y: number } | null = null;
   private companionNext = 0;

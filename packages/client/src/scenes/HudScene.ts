@@ -27,7 +27,11 @@ import {
   OUTDOOR_AREAS,
   PETS,
   PET_IDS,
-  QUESTS,
+  CHAPTERS,
+  currentChapter,
+  DAILY_BONUS,
+  dailyDefs,
+  dailyProgress,
   questionForDay,
   RECIPES,
   recipeUnlocked,
@@ -42,7 +46,6 @@ import {
   type Order,
   type PlayerId,
   type Postcard,
-  type Quest,
   type RecipeId,
   type UpgradeId,
 } from '@hh/shared';
@@ -50,7 +53,7 @@ import { P } from '../art/palette';
 import { LETTER } from '../config/letter';
 import { audio } from '../game/audio';
 import { net, type NoteRow } from '../game/net';
-import type { AwaySummary } from '../game/state';
+import type { AwaySummary, ProgressEvent } from '../game/state';
 import { confirmBox, copyToClipboard, promptText } from '../ui/dom';
 import { button, panel, plain, style } from '../ui/text';
 import { TitleScene } from './TitleScene';
@@ -66,6 +69,7 @@ interface HelpPage {
 }
 
 const HELP: HelpPage[] = [
+  { title: 'Your journey', icon: 'star', lines: ['The bar at the top shows your next', 'task. Follow the yellow arrow to', 'where it happens. Tap the bar for', 'the Story: 11 chapters with rewards.', 'Today has 3 small daily tasks.'] },
   { title: 'Farming', icon: 'seed-tomato', lines: ['Till a plot, plant a seed, water it.', 'Crops grow in real time, even when', 'the game is closed. Dry soil pauses.', 'Rain and the sprinkler water for you.', 'Ripe crops sparkle. Harvest them!'] },
   { title: 'Cooking', icon: 'dish-tomato_soup', lines: ['Cook at the kitchen by the house or', 'inside the restaurant. Each recipe', 'is a few mini-games. Good timing', 'means a better grade: C, B, A or S.', 'Reputation and books unlock recipes.'] },
   { title: 'Selling', icon: 'coin', lines: ['Counter by the road: dishes sell by', 'themselves, day and night.', 'Restaurant: diners sit down and order.', 'Bring the dish fast for a tip.', 'Town board: orders pay extra.'] },
@@ -157,9 +161,9 @@ export class HudScene extends Phaser.Scene {
     this.questGfx = this.add.graphics();
     this.questText = this.add.text(0, 0, '', plain({ color: P.outline })).setOrigin(0, 0.5);
     const qz = this.add.zone(0, 0, 10, 10).setOrigin(0, 0.5).setInteractive({ useHandCursor: true });
-    qz.on('pointerdown', () => this.openJournal('quests'));
+    qz.on('pointerdown', () => this.openJournal('journey'));
     this.questBox = this.add.container(0, 0, [this.questGfx, this.questText, qz]);
-    this.menuBtn = this.iconButton('menu', () => this.openJournal('quests'));
+    this.menuBtn = this.iconButton('menu', () => this.openJournal('journey'));
     this.mapBtn = this.iconButton('map', () => this.openMap());
     this.helpBtn = this.iconButton('help', () => this.openHelp(0));
     this.emoteBtn = this.iconButton('heart', () => this.toggleEmotes());
@@ -240,7 +244,7 @@ export class HudScene extends Phaser.Scene {
 
     this.bindWorld();
     this.input.keyboard?.on('keydown-ESC', () => this.closeOverlay());
-    this.input.keyboard?.on('keydown-J', () => (this.overlay ? this.closeOverlay() : this.openJournal('quests')));
+    this.input.keyboard?.on('keydown-J', () => (this.overlay ? this.closeOverlay() : this.openJournal('journey')));
     this.input.keyboard?.on('keydown-M', () => (this.overlay ? this.closeOverlay() : this.openMap()));
     const bagKey = () => (this.overlay ? this.closeOverlay() : this.openBag());
     this.input.keyboard?.on('keydown-B', bagKey);
@@ -257,7 +261,7 @@ export class HudScene extends Phaser.Scene {
     this.world = w;
     const f = w.events;
     // the world scene object survives area changes; drop the listeners from the previous visit
-    for (const ev of ['hud', 'toast', 'openStall', 'openStore', 'openTailor', 'openPetshop', 'openWardrobe', 'openMail', 'openCounter', 'openRecipes', 'openBoard', 'openSign', 'openLoveTree', 'cookResult', 'away', 'quest', 'postcard', 'coopInvite', 'notes', 'dialog']) f.removeAllListeners(ev);
+    for (const ev of ['hud', 'toast', 'openStall', 'openStore', 'openTailor', 'openPetshop', 'openWardrobe', 'openMail', 'openCounter', 'openRecipes', 'openBoard', 'openSign', 'openLoveTree', 'cookResult', 'away', 'progress', 'guideEdge', 'postcard', 'coopInvite', 'notes', 'dialog']) f.removeAllListeners(ev);
     f.on('hud', (d: HudData) => this.refresh(d));
     f.on('toast', (msg: string) => this.showToast(msg));
     f.on('openStall', () => this.openStall('seeds'));
@@ -274,11 +278,13 @@ export class HudScene extends Phaser.Scene {
     f.on('dialog', (d: { name: string; text: string }) => this.showDialog(d.name, d.text));
     f.on('cookResult', (r: CookResult) => this.openCookResult(r));
     f.on('away', (a: AwaySummary) => this.openAway(a));
-    f.on('quest', (q: Quest) => this.showQuestBanner(q));
+    f.on('progress', (events: ProgressEvent[]) => this.onProgress(events));
+    f.on('guideEdge', (angle: number | null) => this.setEdgeArrow(angle));
     f.on('postcard', (c: Postcard) => this.showPostcard(c));
     f.on('coopInvite', (m: { from: PlayerId; recipe: RecipeId }) => this.openCoopInvite(m));
     f.on('notes', () => this.refreshNotesBadge());
     f.once('shutdown', () => {
+      this.setEdgeArrow(null);
       this.closeOverlay();
       this.closeDialog();
       this.time.delayedCall(50, () => {
@@ -367,7 +373,12 @@ export class HudScene extends Phaser.Scene {
     // quest ticker
     this.questGfx.clear();
     if (d.quest) {
-      const txt = `${d.quest.title} ${d.quest.progress}/${d.quest.target}`;
+      // fit between the coins on the left and the three buttons on the right
+      const prog = d.quest.target > 1 ? ` ${d.quest.progress}/${d.quest.target}` : '';
+      const maxChars = Math.max(8, Math.floor((this.scale.width - 150) / 8));
+      let title = d.quest.title;
+      if (title.length + prog.length > maxChars) title = `${title.slice(0, Math.max(3, maxChars - prog.length - 1))}…`;
+      const txt = `${title}${prog}`;
       this.questText.setText(txt);
       const w = Math.min(this.questText.width + 14, this.scale.width - 150);
       panel(this.questGfx, -w, -9, w, 18, 0xfff4dc);
@@ -449,18 +460,72 @@ export class HudScene extends Phaser.Scene {
     });
   }
 
-  private showQuestBanner(q: Quest) {
+  private bannerQueue: { title: string; sub: string; big: boolean }[] = [];
+  private bannerBusy = false;
+
+  /** Task, chapter and daily completions arrive in bursts; show them one at a time. */
+  private onProgress(events: ProgressEvent[]) {
+    for (const e of events) {
+      if (e.kind === 'task') this.bannerQueue.push({ title: `Done: ${e.title}`, sub: `+${e.reward} coins`, big: false });
+      else if (e.kind === 'daily') this.bannerQueue.push({ title: `Daily: ${e.title}`, sub: `+${e.reward} coins`, big: false });
+      else if (e.kind === 'dailyAll') this.bannerQueue.push({ title: 'All daily tasks done!', sub: `+${e.reward} coins, +1 reputation`, big: true });
+      else {
+        this.bannerQueue.push({ title: `Chapter ${e.number} complete!`, sub: e.rewardText, big: true });
+        if (e.next) this.bannerQueue.push({ title: `Next chapter: ${e.next}`, sub: 'Tap the task bar to see it', big: false });
+      }
+    }
+    this.nextBanner();
+  }
+
+  private nextBanner() {
+    if (this.bannerBusy) return;
+    const b = this.bannerQueue.shift();
+    if (!b) return;
+    this.bannerBusy = true;
     const { width: W } = this.scale;
-    const t1 = this.add.text(0, -6, `Quest complete: ${q.title}`, plain()).setOrigin(0.5);
-    const t2 = this.add.text(0, 6, `+${q.reward} coins`, plain({ color: '#b07a00' })).setOrigin(0.5);
-    const w = Math.max(t1.width, t2.width) + 24;
+    const t1 = this.add.text(8, -6, b.title, plain()).setOrigin(0.5);
+    const t2 = this.add.text(8, 6, b.sub, plain({ color: '#b07a00' })).setOrigin(0.5);
+    const w = Math.min(W - 16, Math.max(t1.width, t2.width) + 40);
     const g = this.add.graphics();
-    panel(g, -w / 2, -16, w, 32, 0xffe066, 0xff8fcf);
-    const star = this.add.image(-w / 2 + 10, 0, 'icons', 'star');
-    const c = this.add.container(Math.round(W / 2), -20, [g, star, t1, t2]).setDepth(60);
-    this.tweens.add({ targets: star, angle: 360, duration: 1200, repeat: -1 });
-    this.tweens.add({ targets: c, y: 70, duration: 350, ease: 'Back.easeOut' });
-    this.tweens.add({ targets: c, y: -24, duration: 300, delay: 2600, ease: 'Quad.easeIn', onComplete: () => c.destroy() });
+    panel(g, -w / 2, -16, w, 32, b.big ? 0xffe066 : 0xfff4dc, b.big ? 0xff8fcf : 0x4a2a3f);
+    const star = this.add.image(-w / 2 + 14, 0, 'icons', b.big ? 'star' : 'book');
+    const c = this.add.container(Math.round(W / 2), -24, [g, star, t1, t2]).setDepth(60);
+    if (b.big) this.tweens.add({ targets: star, angle: 360, duration: 1200, repeat: -1 });
+    this.tweens.add({ targets: c, y: 64, duration: 320, ease: 'Back.easeOut' });
+    this.tweens.add({
+      targets: c,
+      y: -24,
+      duration: 260,
+      delay: b.big ? 2600 : 1500,
+      ease: 'Quad.easeIn',
+      onComplete: () => {
+        c.destroy();
+        this.bannerBusy = false;
+        this.nextBanner();
+      },
+    });
+  }
+
+  private edgeArrow?: Phaser.GameObjects.Container;
+
+  /** Arrow at the screen edge pointing toward the next task when it is off screen. */
+  private setEdgeArrow(angle: number | null) {
+    if (angle === null) {
+      this.edgeArrow?.setVisible(false);
+      return;
+    }
+    if (!this.edgeArrow) {
+      const g = this.add.graphics();
+      g.fillStyle(0x4a2a3f, 1).fillTriangle(10, 0, -7, -8, -7, 8);
+      g.fillStyle(0xffd23f, 1).fillTriangle(7, 0, -5, -6, -5, 6);
+      this.edgeArrow = this.add.container(0, 0, [g]).setDepth(35);
+      this.tweens.add({ targets: g, x: 3, duration: 380, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    }
+    const { width: W, height: H } = this.scale;
+    const dx = Math.cos(angle);
+    const dy = Math.sin(angle);
+    const k = Math.min((W / 2 - 22) / Math.max(Math.abs(dx), 1e-6), (H / 2 - 34) / Math.max(Math.abs(dy), 1e-6));
+    this.edgeArrow.setPosition(Math.round(W / 2 + dx * k), Math.round(H / 2 + dy * k)).setRotation(angle).setVisible(true);
   }
 
   private pendingPostcards: Postcard[] = [];
@@ -1386,11 +1451,15 @@ export class HudScene extends Phaser.Scene {
           if (await net.sendNote(other, body)) {
             audio.play('pop');
             this.showToast('Note left in the mailbox');
+            this.world.state.stat('note');
+            this.world.afterChange();
           } else this.showToast('Could not send. Check your connection.');
         } else {
           this.localNotes.unshift({ id: Date.now(), from_player: me, to_player: other, body, created_at: new Date().toISOString(), read: false });
           this.saveLocalNotes();
           audio.play('pop');
+          this.world.state.stat('note');
+          this.world.afterChange();
         }
         void this.openMail('notes');
       }, 0x7de8c8);
@@ -1416,6 +1485,10 @@ export class HudScene extends Phaser.Scene {
       if (!a) return;
       if (net.enabled && net.pairing) await net.answerQuestion(day, a);
       else this.saveLocalAnswer(day, me, a);
+      if (!mine) {
+        this.world.state.stat('answer');
+        this.world.afterChange();
+      }
       audio.play('pop');
       void this.openMail('question');
     }, 0x7de8c8);
@@ -1489,39 +1562,24 @@ export class HudScene extends Phaser.Scene {
   }
 
   // ---------- journal ----------
-  private openJournal(tab: 'quests' | 'album' | 'stats' | 'settings') {
+  private journeyView: number | null = null;
+
+  private openJournal(tab: 'journey' | 'today' | 'album' | 'stats' | 'settings') {
     const w = 300;
-    const h = 168;
+    const h = 174;
     const c = this.openOverlay(w, h, 'Journal');
     this.tabs(c, w, h, [
-      ['Quests', () => this.openJournal('quests')],
+      ['Story', () => { this.journeyView = null; this.openJournal('journey'); }],
+      ['Today', () => this.openJournal('today')],
       ['Album', () => this.openJournal('album')],
       ['Stats', () => this.openJournal('stats')],
-      ['Settings', () => this.openJournal('settings')],
-    ], ['quests', 'album', 'stats', 'settings'].indexOf(tab));
+      ['Setup', () => this.openJournal('settings')],
+    ], ['journey', 'today', 'album', 'stats', 'settings'].indexOf(tab));
     const st = this.world.state;
     const top = -h / 2 + 40;
-    if (tab === 'quests') {
-      const claimed = st.world.questsClaimed;
-      const idx = QUESTS.findIndex((q) => !claimed.includes(q.id));
-      const start = Math.max(0, (idx === -1 ? QUESTS.length : idx) - 2);
-      const show = QUESTS.slice(start, start + 6);
-      show.forEach((q, i) => {
-        const y = top + 2 + i * 21;
-        const done = claimed.includes(q.id);
-        const cur = q.id === QUESTS[idx]?.id;
-        const g = this.add.graphics();
-        panel(g, -w / 2 + 8, y - 10, w - 16, 20, done ? 0xd8f5e0 : cur ? 0xffffff : 0xe8dcc8);
-        c.add(g);
-        c.add(this.add.image(-w / 2 + 18, y, 'icons', done ? 'star' : 'book').setAlpha(done || cur ? 1 : 0.4));
-        c.add(this.add.text(-w / 2 + 28, y - 5, q.title, plain({ color: done || cur ? P.outline : '#9a8a90' })).setOrigin(0, 0.5));
-        c.add(this.add.text(-w / 2 + 28, y + 5, q.desc, plain({ color: '#7a6a70' })).setOrigin(0, 0.5));
-        const prog = done ? q.target : Math.min(q.target, q.progress(st.world));
-        c.add(this.add.text(w / 2 - 14, y - 5, done ? 'done' : `${prog}/${q.target}`, plain({ color: done ? '#3f9a5f' : P.outline })).setOrigin(1, 0.5));
-        c.add(this.add.text(w / 2 - 14, y + 5, `+${q.reward}c`, plain({ color: '#b07a00' })).setOrigin(1, 0.5));
-      });
-      c.add(this.add.text(0, h / 2 - 8, `${claimed.length} / ${QUESTS.length} quests done`, plain({ color: '#7a6a70' })).setOrigin(0.5));
-    } else if (tab === 'album') {
+    if (tab === 'journey') this.journeyPage(c, w, h, top);
+    else if (tab === 'today') this.todayPage(c, w, h, top);
+    else if (tab === 'album') {
       const cards = st.world.postcards;
       if (!cards.length) c.add(this.add.text(0, top + 30, 'Postcards appear here at special moments', plain({ color: '#7a6a70' })).setOrigin(0.5));
       const card = cards[this.page % Math.max(1, cards.length)];
@@ -1551,6 +1609,77 @@ export class HudScene extends Phaser.Scene {
     } else this.settings(c, w, h, top);
   }
 
+  /** Story: one chapter at a time with its checklist, hints and reward. */
+  private journeyPage(c: Phaser.GameObjects.Container, w: number, h: number, top: number) {
+    const wd = this.world.state.world;
+    const cur = currentChapter(wd);
+    const curIdx = cur ? CHAPTERS.indexOf(cur) : CHAPTERS.length - 1;
+    const idx = Math.max(0, Math.min(this.journeyView ?? curIdx, CHAPTERS.length - 1));
+    const ch = CHAPTERS[idx];
+    const complete = wd.questsClaimed.includes(`ch:${ch.id}`);
+    const locked = !!cur && idx > curIdx;
+
+    const prev = button(this, -w / 2 + 8, top - 5, 18, 14, '<', () => { this.journeyView = idx - 1; this.openJournal('journey'); }, 0xe8dcc8);
+    const next = button(this, w / 2 - 26, top - 5, 18, 14, '>', () => { this.journeyView = idx + 1; this.openJournal('journey'); }, 0xe8dcc8);
+    prev.setEnabled(idx > 0);
+    next.setEnabled(idx < CHAPTERS.length - 1);
+    c.add([prev.container, next.container]);
+    c.add(this.add.text(0, top + 2, `${idx + 1}/${CHAPTERS.length}  ${ch.title}`, plain({ color: complete ? '#3f9a5f' : locked ? '#9a8a90' : '#4a2a3f' })).setOrigin(0.5));
+
+    const firstOpen = ch.tasks.findIndex((t) => !wd.questsClaimed.includes(t.id) && t.progress(wd) < t.target);
+    ch.tasks.forEach((t, i) => {
+      const y = top + 20 + i * 21;
+      const done = complete || wd.questsClaimed.includes(t.id);
+      const isNext = !locked && !complete && i === firstOpen;
+      const g = this.add.graphics();
+      panel(g, -w / 2 + 8, y - 10, w - 16, 20, done ? 0xd8f5e0 : isNext ? 0xfffbe8 : locked ? 0xe8dcc8 : 0xffffff, isNext ? 0xff8fcf : 0x4a2a3f);
+      c.add(g);
+      c.add(this.add.image(-w / 2 + 18, y, 'icons', done ? 'star' : 'book').setAlpha(locked ? 0.4 : 1));
+      c.add(this.add.text(-w / 2 + 28, y - 4, t.title, plain({ color: locked ? '#9a8a90' : '#4a2a3f' })).setOrigin(0, 0.5));
+      // hint gets the whole second line; progress and reward share the first
+      c.add(this.add.text(-w / 2 + 28, y + 5, locked ? '...' : done ? 'done' : t.hint, plain({ color: done ? '#3f9a5f' : '#7a6a70' })).setOrigin(0, 0.5));
+      if (!locked) {
+        const short = (n: number) => (n >= 1000 ? `${Math.floor(n / 100) / 10}k` : String(n));
+        const prog = done ? t.target : Math.min(t.target, t.progress(wd));
+        c.add(this.add.text(w / 2 - 14, y - 4, `${short(prog)}/${short(t.target)} +${t.reward}c`, plain({ color: done ? '#3f9a5f' : '#b07a00' })).setOrigin(1, 0.5));
+      }
+    });
+    const footer = complete ? `Claimed: ${ch.reward.text}` : locked ? 'Finish the chapters before this one' : `Reward: ${ch.reward.text}`;
+    c.add(this.add.text(0, h / 2 - 9, footer, plain({ color: complete ? '#3f9a5f' : '#b07a00' })).setOrigin(0.5));
+  }
+
+  /** Today: three small tasks that change every day, plus a bonus for all three. */
+  private todayPage(c: Phaser.GameObjects.Container, w: number, h: number, top: number) {
+    const st = this.world.state;
+    if (!st.world.daily) this.world.afterChange();
+    const wd = st.world;
+    const d = wd.daily;
+    c.add(this.add.text(0, top + 2, 'Small things to do today', plain()).setOrigin(0.5));
+    const defs = dailyDefs(wd);
+    if (!d || !defs.length) {
+      c.add(this.add.text(0, top + 40, 'New tasks appear each day', plain({ color: '#7a6a70' })).setOrigin(0.5));
+      return;
+    }
+    defs.forEach((def, i) => {
+      const y = top + 26 + i * 26;
+      const done = d.claimed.includes(def.id);
+      const prog = done ? def.target : Math.min(def.target, dailyProgress(wd, def));
+      const g = this.add.graphics();
+      panel(g, -w / 2 + 8, y - 11, w - 16, 23, done ? 0xd8f5e0 : 0xffffff);
+      const barW = 120;
+      g.fillStyle(0x4a2a3f, 1).fillRect(-w / 2 + 28, y + 3, barW, 5);
+      g.fillStyle(done ? 0x3fb35f : 0xffd23f, 1).fillRect(-w / 2 + 29, y + 4, Math.round((barW - 2) * (prog / def.target)), 3);
+      c.add(g);
+      c.add(this.add.image(-w / 2 + 18, y - 2, 'icons', done ? 'star' : 'sun'));
+      c.add(this.add.text(-w / 2 + 28, y - 5, def.title, plain()).setOrigin(0, 0.5));
+      c.add(this.add.text(-w / 2 + 34 + barW, y + 5, `${prog}/${def.target}`, plain({ color: done ? '#3f9a5f' : '#4a2a3f' })).setOrigin(0, 0.5));
+      c.add(this.add.text(w / 2 - 14, y, done ? 'done' : `+${def.reward}c`, plain({ color: done ? '#3f9a5f' : '#b07a00' })).setOrigin(1, 0.5));
+    });
+    const allDone = d.claimed.includes('all');
+    c.add(this.add.text(0, top + 26 + defs.length * 26 + 2, allDone ? 'Bonus claimed! See you tomorrow' : `Finish all ${defs.length}: +${DAILY_BONUS} coins, +1 rep`, plain({ color: allDone ? '#3f9a5f' : '#b07a00' })).setOrigin(0.5));
+    c.add(this.add.text(0, h / 2 - 9, 'New tasks at midnight', plain({ color: '#7a6a70' })).setOrigin(0.5));
+  }
+
   private settings(c: Phaser.GameObjects.Container, w: number, h: number, top: number) {
     const st = this.world.state;
     const d = st.data;
@@ -1573,15 +1702,20 @@ export class HudScene extends Phaser.Scene {
       st.save();
       this.openJournal('settings');
     });
-    mk(2, 'Special days', () => void this.openSpecialDays(), 0xffe066);
+    mk(2, `Guide arrow: ${d.guideOn ? 'on' : 'off'}`, () => {
+      d.guideOn = !d.guideOn;
+      st.save();
+      this.openJournal('settings');
+    });
+    mk(3, 'Special days', () => void this.openSpecialDays(), 0xffe066);
     if (net.enabled && net.pairing) {
       const code = net.pairing.code;
-      mk(3, `Farm code: ${code}`, async () => {
+      mk(4, `Farm code: ${code}`, async () => {
         const link = `${window.location.origin}${window.location.pathname}?join=${code}`;
         const ok = await copyToClipboard(link);
         this.showToast(ok ? 'Invite link copied!' : `Code: ${code}`);
       }, 0x7de8c8);
-      mk(4, 'Keep my seat (email)', async () => {
+      mk(5, 'Keep my seat (email)', async () => {
         const cur = await net.userEmail();
         if (cur) {
           this.showToast(`Seat linked to ${cur}`);
@@ -1591,11 +1725,11 @@ export class HudScene extends Phaser.Scene {
         if (!email) return;
         this.showToast((await net.linkEmail(email)) ? 'Check your inbox and tap the link' : `Could not send: ${net.lastError}`);
       });
-      mk(5, 'Reset partner seat', async () => {
+      mk(6, 'Reset partner seat', async () => {
         if (!(await confirmBox(`Free ${otherPlayer(this.world.playerId)}'s seat so they can pair from a new phone?`, 'Reset', 'Cancel'))) return;
         this.showToast((await net.resetPartnerSeat()) ? 'Seat freed. Share the code again.' : 'Could not reset');
       });
-      mk(6, 'Leave this farm', async () => {
+      mk(7, 'Leave this farm', async () => {
         if (await TitleScene.leaveFarm()) {
           st.save();
           this.closeOverlay();
@@ -1604,7 +1738,7 @@ export class HudScene extends Phaser.Scene {
           this.scene.stop();
         }
       }, 0xff8fcf);
-      mk(7, 'Back to title', () => {
+      mk(8, 'Back to title', () => {
         st.save();
         this.closeOverlay();
         this.scene.stop('World');
@@ -1612,14 +1746,14 @@ export class HudScene extends Phaser.Scene {
         this.scene.stop();
       });
     } else {
-      mk(3, 'Back to title', () => {
+      mk(4, 'Back to title', () => {
         st.save();
         this.closeOverlay();
         this.scene.stop('World');
         this.scene.start('Title');
         this.scene.stop();
       });
-      c.add(this.add.text(-w / 2 + 12, rowY(4) + 8, net.enabled ? 'Solo mode. Pair up from the title.' : 'Solo mode: no backend configured.', plain({ color: '#7a6a70' })).setOrigin(0, 0.5));
+      c.add(this.add.text(-w / 2 + 12, rowY(6) + 8, net.enabled ? 'Solo mode. Pair up from the title.' : 'Solo mode: no backend configured.', plain({ color: '#7a6a70' })).setOrigin(0, 0.5));
     }
     c.add(this.add.text(0, h / 2 - 9, 'Our Journey 1.0', plain({ color: '#7a6a70' })).setOrigin(0.5));
   }

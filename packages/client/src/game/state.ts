@@ -8,7 +8,12 @@ import {
   counterSlots,
   cozy,
   CROPS,
-  currentQuest,
+  CHAPTERS,
+  currentChapter,
+  DAILY_BONUS,
+  dailyDefs,
+  dailyProgress,
+  refreshDaily,
   daysTogether,
   dayKey,
   dishCap,
@@ -27,7 +32,6 @@ import {
   PET_GIFTS,
   PETS,
   POSTCARD_MILESTONES,
-  questDone,
   SELLABLE,
   sellPriceToday,
   simulateWorld,
@@ -62,6 +66,8 @@ export interface SaveData {
   seenLetter: boolean;
   soundOn: boolean;
   musicOn: boolean;
+  /** Show the bouncing arrow toward the next task. */
+  guideOn: boolean;
 }
 
 const KEY = 'our-journey-save-v3';
@@ -70,6 +76,12 @@ const OLD_KEY = 'hearth-harvest-save-v1';
 export function plotKey(tx: number, ty: number) {
   return `${tx},${ty}`;
 }
+
+export type ProgressEvent =
+  | { kind: 'task'; title: string; reward: number }
+  | { kind: 'chapter'; number: number; title: string; rewardText: string; next: string | null }
+  | { kind: 'daily'; title: string; reward: number }
+  | { kind: 'dailyAll'; reward: number };
 
 export interface AwaySummary {
   awayMs: number;
@@ -104,7 +116,7 @@ export class GameState {
   }
 
   private load(now: number): SaveData {
-    const fresh = (): SaveData => ({ version: 3, world: newWorld(now), lastPlayer: null, selectedSeed: 'wheat', seenLetter: false, soundOn: true, musicOn: true });
+    const fresh = (): SaveData => ({ version: 3, world: newWorld(now), lastPlayer: null, selectedSeed: 'wheat', seenLetter: false, soundOn: true, musicOn: true, guideOn: true });
     try {
       const raw = localStorage.getItem(KEY) ?? localStorage.getItem(OLD_KEY);
       if (!raw) return fresh();
@@ -123,6 +135,7 @@ export class GameState {
       d.seenLetter = !!parsed.seenLetter;
       d.soundOn = parsed.soundOn !== false;
       d.musicOn = parsed.musicOn !== false;
+      d.guideOn = parsed.guideOn !== false;
       return d;
     } catch {
       return fresh();
@@ -265,6 +278,7 @@ export class GameState {
         this.world.inventory[id] = 0;
       }
     }
+    bump(this.world, 'sold', count);
     this.world.coins += total;
     this.touch();
     return { total, count };
@@ -275,6 +289,7 @@ export class GameState {
     if (n <= 0) return 0;
     const total = n * this.sellPrice(id);
     this.world.inventory[id] = this.count(id) - n;
+    bump(this.world, 'sold', n);
     this.world.coins += total;
     this.touch();
     return total;
@@ -288,6 +303,7 @@ export class GameState {
     const price = CROPS[id].seedPrice * qty;
     if (this.world.coins < price || !this.seedUnlocked(id)) return false;
     this.world.coins -= price;
+    bump(this.world, 'buyseed', qty);
     this.add(`seed:${id}`, qty);
     return true;
   }
@@ -507,6 +523,7 @@ export class GameState {
     if (this.world.coins < def.price || def.unlockRep > this.reputation) return false;
     this.world.coins -= def.price;
     this.world.furnitureOwned[id] = this.furnitureOwned(id) + 1;
+    bump(this.world, 'buyfurn');
     this.touch();
     return true;
   }
@@ -631,16 +648,53 @@ export class GameState {
     return got;
   }
 
-  // ----- quests -----
-  checkQuest() {
-    const q = currentQuest(this.world);
-    if (q && questDone(q, this.world)) {
-      this.world.questsClaimed.push(q.id);
-      this.world.coins += q.reward;
-      this.touch();
-      return q;
+  // ----- journey (chapters & tasks) and daily tasks -----
+
+  /**
+   * Claims every finished task of the current chapter, then the chapter itself,
+   * then any finished daily tasks. Returns what happened, for banners.
+   */
+  checkProgress(): ProgressEvent[] {
+    const out: ProgressEvent[] = [];
+    const w = this.world;
+    for (let guard = 0; guard < CHAPTERS.length; guard++) {
+      const ch = currentChapter(w);
+      if (!ch) break;
+      for (const t of ch.tasks) {
+        if (w.questsClaimed.includes(t.id) || t.progress(w) < t.target) continue;
+        w.questsClaimed.push(t.id);
+        w.coins += t.reward;
+        out.push({ kind: 'task', title: t.title, reward: t.reward });
+      }
+      if (!ch.tasks.every((t) => w.questsClaimed.includes(t.id))) break;
+      w.questsClaimed.push(`ch:${ch.id}`);
+      const r = ch.reward;
+      w.coins += r.coins;
+      if (r.rep) w.reputation = Math.min(100, w.reputation + r.rep);
+      for (const [id, n] of Object.entries(r.items ?? {})) w.inventory[id as ItemId] = this.count(id as ItemId) + (n ?? 0);
+      for (const [id, n] of Object.entries(r.furniture ?? {})) w.furnitureOwned[id as FurnitureId] = this.furnitureOwned(id as FurnitureId) + (n ?? 0);
+      for (const key of r.clothing ?? []) if (!w.clothingOwned.includes(key)) w.clothingOwned.push(key);
+      const next = currentChapter(w);
+      out.push({ kind: 'chapter', number: CHAPTERS.indexOf(ch) + 1, title: ch.title, rewardText: r.text, next: next?.title ?? null });
     }
-    return null;
+    refreshDaily(w, Date.now());
+    const d = w.daily;
+    if (d) {
+      for (const def of dailyDefs(w)) {
+        if (d.claimed.includes(def.id) || dailyProgress(w, def) < def.target) continue;
+        d.claimed.push(def.id);
+        w.coins += def.reward;
+        out.push({ kind: 'daily', title: def.title, reward: def.reward });
+      }
+      if (d.ids.length && d.ids.every((id) => d.claimed.includes(id)) && !d.claimed.includes('all')) {
+        d.claimed.push('all');
+        w.coins += DAILY_BONUS;
+        w.reputation = Math.min(100, w.reputation + 1);
+        out.push({ kind: 'dailyAll', reward: DAILY_BONUS });
+      }
+    }
+    if (out.length) this.touch();
+    return out;
   }
 
   itemName(id: ItemId) {

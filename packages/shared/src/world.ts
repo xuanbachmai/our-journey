@@ -53,10 +53,20 @@ export interface WorldState {
   postcards: Postcard[];
   stats: Record<string, number>;
   questsClaimed: string[];
+  /** Today's three small tasks; created by refreshDaily. */
+  daily?: DailyState;
   lastSimulatedAt: number;
   lastRainDay: number;
   /** Bumped on every player-caused change; used to pick the freshest copy when syncing. */
   changeCounter: number;
+}
+
+export interface DailyState {
+  day: number;
+  ids: string[];
+  /** Stat values at the start of the day, so progress only counts today. */
+  base: Record<string, number>;
+  claimed: string[];
 }
 
 export type WorldEvent =
@@ -279,7 +289,7 @@ export function migrateWorld(raw: unknown, now: number): WorldState {
   const copy = <K extends keyof WorldState>(k: K) => {
     if (r[k] !== undefined) (w as WorldState)[k] = r[k] as WorldState[K];
   };
-  (['coins', 'reputation', 'inventory', 'dishes', 'plots', 'counter', 'books', 'clothingOwned', 'furnitureOwned', 'furniturePlaced', 'forageTaken', 'discovered', 'specialDays', 'postcards', 'stats', 'questsClaimed', 'lastSimulatedAt', 'changeCounter', 'orders', 'orderCounter', 'orderDay', 'lastRainDay', 'createdAt'] as (keyof WorldState)[]).forEach(copy);
+  (['coins', 'reputation', 'inventory', 'dishes', 'plots', 'counter', 'books', 'clothingOwned', 'furnitureOwned', 'furniturePlaced', 'forageTaken', 'discovered', 'specialDays', 'postcards', 'stats', 'questsClaimed', 'daily', 'lastSimulatedAt', 'changeCounter', 'orders', 'orderCounter', 'orderDay', 'lastRainDay', 'createdAt'] as (keyof WorldState)[]).forEach(copy);
   if (r.upgrades) {
     w.upgrades = { ...r.upgrades } as WorldState['upgrades'];
     // v2 kept chickens as an upgrade level

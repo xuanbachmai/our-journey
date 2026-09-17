@@ -40,6 +40,7 @@ A farm has exactly two seats. *Keep my seat (email)* lets you restore your seat 
 
 ## How to play
 
+0. **Follow the journey**: the bar at the top shows the next task and a yellow arrow points to where it happens, even in another area. Tap the bar to open the Story: 11 chapters of short checklists with rewards (coins, seeds, furniture, a chef hat, a crown). The Today page has 3 small tasks that change every day, with a bonus for finishing all of them.
 1. **Farm**: till, plant, water, harvest. Cheap crops take minutes, premium ones hours. Rain and the sprinkler water for you. Dry soil pauses growth, nothing dies.
 2. **Cook** at the outdoor kitchen or inside the restaurant. Each recipe is a chain of mini-games; timing decides the grade C, B, A or S. Reputation and recipe books from the store unlock more.
 3. **Sell** three ways: the counter by the road sells while you are away; the **restaurant** has diners who sit and order (serve fast for a tip); the **orders board** in town pays extra for specific requests. Store prices change daily.

@@ -41,6 +41,8 @@ function fit() {
   if (!game) return;
   const w = window.innerWidth;
   const h = window.innerHeight;
+  // hidden or collapsed views report 0; keep the last good size instead of shrinking to nothing
+  if (w < 50 || h < 50) return;
   const zoom = Math.max(1, Math.floor(Math.min(w / BASE_W, h / BASE_H)));
   const gw = Math.ceil(w / zoom);
   const gh = Math.ceil(h / zoom);
