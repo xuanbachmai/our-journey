@@ -32,14 +32,15 @@ type SfxName =
   | 'pop'
   | 'whistle';
 
+/** Overall level of the background music (sound effects are separate). */
+const MUSIC_VOLUME = 0.5;
+
 class Audio {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
   private musicGain: GainNode | null = null;
   private noiseBuf: AudioBuffer | null = null;
   private musicTimer: number | null = null;
-  private nextNote = 0;
-  private step = 0;
   sfxOn = true;
   musicOn = true;
 
@@ -56,7 +57,7 @@ class Audio {
       this.master.gain.value = 0.5;
       this.master.connect(this.ctx.destination);
       this.musicGain = this.ctx.createGain();
-      this.musicGain.gain.value = this.musicOn ? 0.18 : 0;
+      this.musicGain.gain.value = this.musicOn ? MUSIC_VOLUME : 0;
       this.musicGain.connect(this.master);
       const len = this.ctx.sampleRate * 0.5;
       this.noiseBuf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
@@ -70,7 +71,7 @@ class Audio {
 
   setMusic(on: boolean) {
     this.musicOn = on;
-    if (this.musicGain && this.ctx) this.musicGain.gain.setTargetAtTime(on ? 0.18 : 0, this.ctx.currentTime, 0.1);
+    if (this.musicGain && this.ctx) this.musicGain.gain.setTargetAtTime(on ? MUSIC_VOLUME : 0, this.ctx.currentTime, 0.4);
   }
 
   private tone(freq: number, dur: number, type: OscillatorType = 'square', vol = 0.25, slide = 0, delay = 0) {
@@ -242,44 +243,206 @@ class Audio {
     }
   }
 
-  // A gentle pentatonic loop in C major; two bars, arpeggio + bass.
-  private startMusic() {
+  // ------------------------------------------------------------------ music
+  //
+  // "Our little farm": a slow lo-fi lullaby in C major, 76 bpm, 16 bars (about 50 s).
+  // Soft pad chords, a music-box melody with a gentle echo, a warm bass, a very
+  // quiet brush on the off-beats and a soft heartbeat kick. Everything goes
+  // through a low-pass filter so nothing sounds sharp.
+
+  private musicIn: GainNode | null = null;
+  private echo: DelayNode | null = null;
+  private musicFilter: BiquadFilterNode | null = null;
+  private musicStep = 0;
+  private nextMusicTime = 0;
+
+  /** Length of one eighth note in seconds (76 bpm). */
+  private static readonly EIGHTH = 60 / 76 / 2;
+
+  /** Chords per bar: [bass root, ...pad notes] as MIDI numbers. */
+  private static readonly CHORDS: number[][] = [
+    // A: Cmaj7, Am7, Fmaj7, G6, Cmaj7, Em7, Fmaj7, Fm6
+    [36, 60, 64, 67, 71],
+    [33, 57, 60, 64, 67],
+    [29, 57, 60, 64, 65],
+    [31, 55, 59, 62, 64],
+    [36, 60, 64, 67, 71],
+    [28, 55, 59, 62, 64],
+    [29, 57, 60, 64, 65],
+    [29, 56, 60, 62, 65],
+    // B: Am7, Dm7, G6, Cmaj7, Fmaj7, Em7, Dm7, G7
+    [33, 57, 60, 64, 67],
+    [26, 57, 60, 62, 65],
+    [31, 55, 59, 62, 64],
+    [36, 60, 64, 67, 71],
+    [29, 57, 60, 64, 65],
+    [28, 55, 59, 62, 64],
+    [26, 57, 60, 62, 65],
+    [31, 55, 59, 62, 65],
+  ];
+
+  /** Melody: [start eighth, MIDI note, length in eighths]. 16 bars of 8 eighths. */
+  private static readonly MELODY: [number, number, number][] = [
+    // A section
+    [0, 76, 2], [2, 79, 2], [4, 84, 3],
+    [9, 81, 1], [10, 79, 2], [12, 76, 4],
+    [16, 77, 2], [18, 76, 2], [20, 72, 2], [22, 69, 2],
+    [24, 74, 4], [29, 76, 1], [30, 79, 2],
+    [32, 76, 2], [34, 79, 2], [36, 84, 2], [38, 86, 2],
+    [40, 83, 3], [43, 79, 1], [44, 76, 4],
+    [48, 77, 2], [50, 81, 2], [52, 79, 2], [54, 77, 2],
+    [56, 72, 3], [59, 68, 1], [60, 67, 4],
+    // B section
+    [64, 72, 2], [66, 76, 2], [68, 81, 4],
+    [72, 77, 2], [74, 76, 1], [75, 74, 1], [76, 72, 4],
+    [80, 74, 2], [82, 79, 2], [84, 83, 2], [86, 81, 2],
+    [88, 79, 6],
+    [96, 81, 2], [98, 84, 2], [100, 81, 2], [102, 77, 2],
+    [104, 79, 3], [107, 76, 1], [108, 74, 4],
+    [112, 77, 2], [114, 76, 2], [116, 74, 2], [118, 72, 2],
+    [120, 71, 4], [124, 74, 2], [126, 77, 2],
+  ];
+
+  private static midi(m: number) {
+    return 440 * Math.pow(2, (m - 69) / 12);
+  }
+
+  /** One enveloped oscillator voice. */
+  private voice(dest: AudioNode, midi: number, t: number, dur: number, type: OscillatorType, vol: number, attack: number, detune = 0) {
     if (!this.ctx) return;
-    const melody = [523, 659, 784, 880, 784, 659, 587, 523, 440, 523, 587, 659, 587, 523, 440, 392];
-    const bass = [131, 131, 165, 165, 110, 110, 98, 98];
-    const beat = 0.28;
-    this.nextNote = this.ctx.currentTime + 0.1;
+    const o = this.ctx.createOscillator();
+    o.type = type;
+    o.frequency.value = Audio.midi(midi);
+    o.detune.value = detune;
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(vol, t + attack);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g).connect(dest);
+    o.start(t);
+    o.stop(t + dur + 0.05);
+  }
+
+  private startMusic() {
+    const ctx = this.ctx;
+    if (!ctx || !this.musicGain) return;
+
+    // bus: voices -> musicIn -> low-pass -> musicGain (volume and mute) -> master
+    const lowpass = ctx.createBiquadFilter();
+    lowpass.type = 'lowpass';
+    lowpass.frequency.value = 2600;
+    lowpass.Q.value = 0.4;
+    this.musicIn = ctx.createGain();
+    this.musicIn.connect(lowpass).connect(this.musicGain);
+    this.musicFilter = lowpass;
+
+    // soft echo for the melody: a dotted eighth with a few quiet repeats
+    this.echo = ctx.createDelay(2);
+    this.echo.delayTime.value = Audio.EIGHTH * 1.5;
+    const feedback = ctx.createGain();
+    feedback.gain.value = 0.3;
+    const wet = ctx.createGain();
+    wet.gain.value = 0.28;
+    this.echo.connect(feedback).connect(this.echo);
+    this.echo.connect(wet).connect(this.musicIn);
+
+    this.nextMusicTime = ctx.currentTime + 0.3;
+    this.musicStep = 0;
     const schedule = () => {
-      if (!this.ctx || !this.musicGain) return;
-      while (this.nextNote < this.ctx.currentTime + 0.4) {
-        const i = this.step % melody.length;
-        const t = this.nextNote;
-        const o = this.ctx.createOscillator();
-        o.type = 'triangle';
-        o.frequency.value = melody[i];
-        const g = this.ctx.createGain();
-        g.gain.setValueAtTime(0.5, t);
-        g.gain.exponentialRampToValueAtTime(0.001, t + beat * 0.9);
-        o.connect(g).connect(this.musicGain);
-        o.start(t);
-        o.stop(t + beat);
-        if (i % 2 === 0) {
-          const b = this.ctx.createOscillator();
-          b.type = 'sine';
-          b.frequency.value = bass[(i / 2) % bass.length];
-          const bg = this.ctx.createGain();
-          bg.gain.setValueAtTime(0.6, t);
-          bg.gain.exponentialRampToValueAtTime(0.001, t + beat * 1.8);
-          b.connect(bg).connect(this.musicGain);
-          b.start(t);
-          b.stop(t + beat * 2);
-        }
-        this.nextNote += beat;
-        this.step++;
+      if (!this.ctx) return;
+      const now = this.ctx.currentTime;
+      // after the tab was hidden, skip ahead instead of playing a burst of old notes
+      if (this.nextMusicTime < now - 0.25) {
+        const missed = Math.ceil((now - this.nextMusicTime) / Audio.EIGHTH);
+        this.musicStep += missed;
+        this.nextMusicTime += missed * Audio.EIGHTH;
+      }
+      while (this.nextMusicTime < now + 0.6) {
+        this.playEighth(this.musicStep, this.nextMusicTime);
+        this.nextMusicTime += Audio.EIGHTH;
+        this.musicStep++;
       }
     };
     schedule();
-    this.musicTimer = window.setInterval(schedule, 200);
+    this.musicTimer = window.setInterval(schedule, 150);
+  }
+
+  private playEighth(step: number, t: number) {
+    const bus = this.musicIn;
+    if (!bus || !this.echo) return;
+    const E = Audio.EIGHTH;
+    const pos = step % (Audio.CHORDS.length * 8);
+    const bar = Math.floor(pos / 8);
+    const inBar = pos % 8;
+    const chord = Audio.CHORDS[bar];
+    // a tiny swing on the off-beats makes it feel relaxed rather than mechanical
+    const at = t + (inBar % 2 === 1 ? E * 0.12 : 0);
+
+    // late at night the band plays softer: darker tone, no kick or brush
+    const hour = new Date().getHours();
+    const night = hour >= 21 || hour < 6;
+    if (inBar === 0 && this.musicFilter && this.ctx) this.musicFilter.frequency.setTargetAtTime(night ? 1700 : 2600, at, 2);
+
+    if (inBar === 0) {
+      // warm pad: slow attack, two slightly detuned layers, lasts the whole bar
+      chord.slice(1).forEach((n, i) => {
+        this.voice(bus, n, at, E * 8.4, 'sine', 0.05, 0.9, i % 2 ? 4 : -4);
+        this.voice(bus, n, at, E * 8.4, 'triangle', 0.018, 1.2, i % 2 ? -7 : 7);
+      });
+      // bass on beat one, and a soft heartbeat kick
+      this.voice(bus, chord[0] + 12, at, E * 3.5, 'sine', 0.22, 0.03);
+      if (!night) this.kick(at, 0.16);
+    }
+    if (inBar === 4) this.voice(bus, chord[0] + 19, at, E * 3, 'sine', 0.14, 0.03);
+    if (inBar === 6 && !night) this.kick(at, 0.07);
+
+    // music-box plucks walking up the chord on the off-beats, with a brush
+    if (inBar % 2 === 1) {
+      const notes = chord.slice(1);
+      const n = notes[((inBar - 1) / 2) % notes.length] + 12;
+      this.voice(bus, n, at, E * 2.2, 'sine', 0.035, 0.005);
+      if (!night) this.brush(at);
+    }
+
+    // melody: bell-like triangle plus a quiet sine an octave up, also sent to the echo
+    for (const [start, note, len] of Audio.MELODY) {
+      if (start !== pos) continue;
+      const dur = Math.max(E * 2, E * len * 1.4);
+      this.voice(bus, note, at, dur, 'triangle', 0.09, 0.008);
+      this.voice(bus, note + 12, at, dur * 0.6, 'sine', 0.025, 0.004);
+      this.voice(this.echo, note, at, dur * 0.8, 'triangle', 0.05, 0.008);
+    }
+  }
+
+  /** Very soft low thump. */
+  private kick(t: number, vol: number) {
+    if (!this.ctx || !this.musicIn) return;
+    const o = this.ctx.createOscillator();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(110, t);
+    o.frequency.exponentialRampToValueAtTime(45, t + 0.18);
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(vol, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.25);
+    o.connect(g).connect(this.musicIn);
+    o.start(t);
+    o.stop(t + 0.3);
+  }
+
+  /** Brushed-snare whisper. */
+  private brush(t: number) {
+    if (!this.ctx || !this.musicIn || !this.noiseBuf) return;
+    const s = this.ctx.createBufferSource();
+    s.buffer = this.noiseBuf;
+    const hp = this.ctx.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.value = 5000;
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(0.012, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.07);
+    s.connect(hp).connect(g).connect(this.musicIn);
+    s.start(t, Math.random() * 0.4);
+    s.stop(t + 0.08);
   }
 
   destroy() {
