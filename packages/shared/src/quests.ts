@@ -2,6 +2,7 @@ import type { AreaId } from './areas';
 import { daysTogether } from './couple';
 import type { FurnitureId } from './furniture';
 import type { ItemId } from './items';
+import { friendPoints, HEART_POINTS, VILLAGERS } from './friends';
 import { dayIndex, roll01 } from './prices';
 import type { WorldState } from './world';
 
@@ -169,6 +170,19 @@ export const CHAPTERS: Chapter[] = [
     reward: { coins: 300, furniture: { photo: 1 }, text: '+300 coins, our photo' },
   },
   {
+    id: 'ch_friends',
+    title: 'Good neighbours',
+    blurb: 'Make friends around town and fill your book.',
+    tasks: [
+      { id: 'cf_gift', title: 'Give a villager a gift', hint: 'Talk to someone, then Gift', target: 1, reward: 30, progress: stat('gifts'), guide: g('town', 24, 17) },
+      { id: 'cf_heart', title: 'Earn a heart with a friend', hint: 'Talk every day, give gifts', target: 1, reward: 50, progress: (w) => VILLAGERS.filter((v) => friendPoints(w, v.id) >= HEART_POINTS).length },
+      { id: 'cf_fish', title: 'Catch 4 kinds of fish', hint: 'Both ponds, day and night', target: 4, reward: 60, progress: (w) => Object.keys(w.stats).filter((k) => k.startsWith('fishbest:')).length, guide: g('farm', 35, 14) },
+      { id: 'cf_hearts2', title: '2 hearts with 3 friends', hint: 'Find what each one loves', target: 3, reward: 100, progress: (w) => VILLAGERS.filter((v) => friendPoints(w, v.id) >= HEART_POINTS * 2).length },
+      { id: 'cf_gifts', title: 'Give 10 gifts', hint: 'One gift per friend per day', target: 10, reward: 80, progress: stat('gifts') },
+    ],
+    reward: { coins: 250, furniture: { bookshelf: 1 }, text: '+250 coins, a bookshelf' },
+  },
+  {
     id: 'ch10',
     title: 'Famous farm',
     blurb: 'Word of your cooking spreads.',
@@ -252,6 +266,7 @@ export const DAILY_POOL: DailyDef[] = [
   { id: 'd_order', title: 'Deliver an order', stat: 'orders', target: 1, reward: 80, needs: (w) => w.discovered.includes('town') },
   { id: 'd_eggs', title: 'Collect 3 eggs', stat: 'collect:egg', target: 3, reward: 60, needs: (w) => (w.producers.chicken?.count ?? 0) > 0 },
   { id: 'd_milk', title: 'Collect 2 milk', stat: 'collect:milk', target: 2, reward: 70, needs: (w) => (w.producers.cow?.count ?? 0) > 0 },
+  { id: 'd_gift', title: 'Give 2 gifts', stat: 'gifts', target: 2, reward: 50, needs: (w) => w.discovered.includes('town') },
   { id: 'd_pet', title: 'Pet your pet', stat: 'petted', target: 1, reward: 30, needs: (w) => !!(w.players.xb.pet || w.players.qd.pet) },
 ];
 

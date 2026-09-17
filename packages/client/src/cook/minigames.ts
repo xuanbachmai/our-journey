@@ -16,6 +16,9 @@ export interface MiniGameCtx {
   held(): boolean;
   finish(score: number): void;
   sfx(name: 'chop' | 'flip' | 'shake' | 'good' | 'bad' | 'bite' | 'splash' | 'blip'): void;
+  /** Fishing: 0 easy .. 1 very hard. */
+  difficulty?: number;
+  fishColor?: string;
   /** Icon frame names for ingredients (plate step). */
   ingredientIcons: string[];
 }
@@ -489,10 +492,16 @@ export class ReelGame extends MiniGame {
   private tries = 0;
   private elapsed = 0;
   private bang!: Phaser.GameObjects.Text;
+  private speedMul = 1;
+  private jumpChance = 0.02;
 
   create() {
     const { scene, cx, cy } = this.c;
-    this.barH *= this.c.leniency;
+    const diff = this.c.difficulty ?? 0.3;
+    // harder fish: a smaller catch bar and a quicker, jumpier fish
+    this.barH *= this.c.leniency * (1.15 - diff * 0.4);
+    this.speedMul = 0.7 + diff * 1.3;
+    this.jumpChance = 0.01 + diff * 0.035;
     this.g = this.keep(scene.add.graphics());
     const pond = this.keep(scene.add.graphics());
     pond.fillStyle(0x4a2a3f, 1).fillEllipse(cx, cy + 6, 96, 44);
@@ -500,6 +509,7 @@ export class ReelGame extends MiniGame {
     pond.fillStyle(0xb3ecff, 1).fillRect(cx - 30, cy - 4, 8, 1).fillRect(cx + 10, cy + 12, 10, 1).fillRect(cx - 8, cy + 18, 6, 1);
     this.bobber = this.keep(scene.add.image(cx, cy, 'decor', 'bobber'));
     this.fish = this.keep(scene.add.image(cx + 40, cy, 'mg', 'reelfish').setVisible(false));
+    if (this.c.fishColor) this.fish.setTint(Phaser.Display.Color.HexStringToColor(this.c.fishColor).color);
     this.text = this.keep(scene.add.text(cx, cy + 54, 'Waiting for a bite...', plain()).setOrigin(0.5));
     this.bang = this.keep(scene.add.text(cx, cy - 22, '!', style({ fontSize: '16px', color: '#ffe066' })).setOrigin(0.5).setVisible(false));
     this.biteAt = 1 + Math.random() * 2.5;
@@ -557,8 +567,8 @@ export class ReelGame extends MiniGame {
     }
     // reel
     this.elapsed += s;
-    if (Math.random() < 0.02 || Math.abs(this.fishPos - this.fishTarget) < 0.02) this.fishTarget = Math.random();
-    this.fishPos += (this.fishTarget - this.fishPos) * Math.min(1, s * (1.2 + this.elapsed * 0.08));
+    if (Math.random() < this.jumpChance || Math.abs(this.fishPos - this.fishTarget) < 0.02) this.fishTarget = Math.random();
+    this.fishPos += (this.fishTarget - this.fishPos) * Math.min(1, s * (1.2 + this.elapsed * 0.08) * this.speedMul);
     const up = this.c.held();
     this.barV += (up ? 2.4 : -2.4) * s;
     this.barV = Phaser.Math.Clamp(this.barV, -1.2, 1.2);

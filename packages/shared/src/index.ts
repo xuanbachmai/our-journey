@@ -15,3 +15,5 @@ export * from './weather';
 export * from './areas';
 export * from './world';
 export * from './quests';
+export * from './fish';
+export * from './friends';

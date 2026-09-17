@@ -10,6 +10,15 @@ import {
   cozyPoints,
   CROPS,
   CROP_IDS,
+  FISH,
+  FISH_IDS,
+  friendPoints,
+  GIFT_LINES,
+  heartsFor,
+  knownLoves,
+  villager,
+  VILLAGERS,
+  type FishId,
   dayKey,
   DYES,
   DYE_IDS,
@@ -69,12 +78,14 @@ interface HelpPage {
 }
 
 const HELP: HelpPage[] = [
-  { title: 'Your journey', icon: 'star', lines: ['The bar at the top shows your next', 'task. Follow the yellow arrow to', 'where it happens. Tap the bar for', 'the Story: 11 chapters with rewards.', 'Today has 3 small daily tasks.'] },
+  { title: 'Your journey', icon: 'star', lines: ['The bar at the top shows your next', 'task. Follow the yellow arrow to', 'where it happens. Tap the bar for', 'the Story: 12 chapters with rewards.', 'Today has 3 small daily tasks.'] },
   { title: 'Farming', icon: 'seed-tomato', lines: ['Till a plot, plant a seed, water it.', 'Crops grow in real time, even when', 'the game is closed. Dry soil pauses.', 'Rain and the sprinkler water for you.', 'Ripe crops sparkle. Harvest them!'] },
   { title: 'Cooking', icon: 'dish-tomato_soup', lines: ['Cook at the kitchen by the house or', 'inside the restaurant. Each recipe', 'is a few mini-games. Good timing', 'means a better grade: C, B, A or S.', 'Reputation and books unlock recipes.'] },
   { title: 'Selling', icon: 'coin', lines: ['Counter by the road: dishes sell by', 'themselves, day and night.', 'Restaurant: diners sit down and order.', 'Bring the dish fast for a tip.', 'Town board: orders pay extra.'] },
   { title: 'Exploring', icon: 'map', lines: ['Roads lead east to Maple Town,', 'west to Sunny Ranch. North of town', 'is Whisper Forest, east of town is', 'Family Lane with both family homes.', 'Every door opens. The map travels', 'to places you have discovered.'] },
   { title: 'Home', icon: 'furn-sofa', lines: ['Buy furniture at the store and place', 'it inside the house with Decorate.', 'Coziness raises your dish prices.', 'The wardrobe changes hats, dyes', 'and hair from the tailor.'] },
+  { title: 'Friends', icon: 'heart', lines: ['Talk to villagers every day and give', 'one gift each. Hearts unlock rewards', 'at 2 and 4. Loved gifts give the most', 'hearts; you learn them as you go.', 'The Book (Journal) tracks it all.'] },
+  { title: 'Fishing', icon: 'fish-koi', lines: ['10 kinds of fish live in the ponds.', 'Some bite only at night or in rain.', 'Rare fish pull harder. The first of', 'each kind pays a bonus. Check the', 'Book to see what is left to catch.'] },
   { title: 'Animals', icon: 'cow', lines: ['Hens lay eggs at the coop. Cows and', 'sheep at the ranch make milk and wool.', 'Bees make honey. Collect at the barn,', 'coop or hives. Pets follow you and', 'dig up little gifts. Pet them!'] },
   { title: 'Together', icon: 'heart', lines: ['The Love Tree grows on days you both', 'play. Leave notes in the mailbox.', 'Answer the daily question. Cook a', 'dish together when both online.', 'Special days bring fireworks.'] },
   { title: 'Controls', icon: 'menu', lines: ['Phone: drag left half to move, big', 'button to act, bag button top left.', 'PC: WASD, SPACE. 1-8 seeds, B bag,', 'J journal, M map. In Decorate:', 'arrows move, ENTER places, ESC stops.'] },
@@ -261,7 +272,7 @@ export class HudScene extends Phaser.Scene {
     this.world = w;
     const f = w.events;
     // the world scene object survives area changes; drop the listeners from the previous visit
-    for (const ev of ['hud', 'toast', 'openStall', 'openStore', 'openTailor', 'openPetshop', 'openWardrobe', 'openMail', 'openCounter', 'openRecipes', 'openBoard', 'openSign', 'openLoveTree', 'cookResult', 'away', 'progress', 'guideEdge', 'postcard', 'coopInvite', 'notes', 'dialog']) f.removeAllListeners(ev);
+    for (const ev of ['hud', 'toast', 'openStall', 'openStore', 'openTailor', 'openPetshop', 'openWardrobe', 'openMail', 'openCounter', 'openRecipes', 'openBoard', 'openSign', 'openLoveTree', 'cookResult', 'away', 'progress', 'guideEdge', 'postcard', 'coopInvite', 'notes', 'dialog', 'catch']) f.removeAllListeners(ev);
     f.on('hud', (d: HudData) => this.refresh(d));
     f.on('toast', (msg: string) => this.showToast(msg));
     f.on('openStall', () => this.openStall('seeds'));
@@ -275,7 +286,8 @@ export class HudScene extends Phaser.Scene {
     f.on('openBoard', () => this.openBoard());
     f.on('openSign', (t: string) => this.openSign(t));
     f.on('openLoveTree', () => this.openLoveTree());
-    f.on('dialog', (d: { name: string; text: string }) => this.showDialog(d.name, d.text));
+    f.on('dialog', (d: { name: string; text: string; villager?: { id: string; hearts: number; canGift: boolean } }) => this.showDialog(d.name, d.text, d.villager));
+    f.on('catch', (c: { id: FishId; size: number; isNew: boolean; record: boolean; bonus: number }) => this.showCatch(c));
     f.on('cookResult', (r: CookResult) => this.openCookResult(r));
     f.on('away', (a: AwaySummary) => this.openAway(a));
     f.on('progress', (events: ProgressEvent[]) => this.onProgress(events));
@@ -398,13 +410,223 @@ export class HudScene extends Phaser.Scene {
     this.decorStop.setVisible(!!d.decorate);
   }
 
+  // ---------- catches, gifts and the book ----------
+
+  private showCatch(c: { id: FishId; size: number; isNew: boolean; record: boolean; bonus: number }) {
+    const f = FISH[c.id];
+    const colors: Record<string, string> = { common: '#7a6a70', uncommon: '#3f9a5f', rare: '#3f7fd0', legendary: '#e6a800' };
+    const w = 250;
+    const h = 118;
+    const o = this.openOverlay(w, h, c.isNew ? 'New fish for the book!' : 'Nice catch!');
+    const icon = this.add.image(-78, 2, 'icons', `fish-${c.id}`).setScale(4);
+    o.add(icon);
+    this.tweens.add({ targets: icon, angle: 8, duration: 300, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    o.add(this.add.text(-40, -26, f.name, style({ fontSize: '10px', color: '#fff4dc' })).setOrigin(0, 0.5));
+    o.add(this.add.text(-40, -10, f.rarity.toUpperCase(), plain({ color: colors[f.rarity] })).setOrigin(0, 0.5));
+    o.add(this.add.text(-40, 4, `${c.size} cm${c.record ? '  Record!' : ''}`, plain({ color: c.record ? '#e05fa8' : '#4a2a3f' })).setOrigin(0, 0.5));
+    o.add(this.add.text(-40, 18, `+${f.units} fish${c.bonus ? `, +${c.bonus} coins` : ''}`, plain({ color: '#b07a00' })).setOrigin(0, 0.5));
+    const ok = button(this, -30, h / 2 - 24, 60, 16, 'Yay!', () => this.closeOverlay(), 0x7de8c8);
+    o.add(ok.container);
+    if (f.rarity === 'rare' || f.rarity === 'legendary') {
+      for (let i = 0; i < 6; i++) {
+        const s = this.add.image(Phaser.Math.Between(-110, 110), Phaser.Math.Between(-40, 30), 'icons', 'star').setScale(0.8);
+        o.add(s);
+        this.tweens.add({ targets: s, y: s.y - 18, alpha: 0, duration: 900, delay: i * 140, repeat: -1 });
+      }
+    }
+  }
+
+  private giftName(key: string) {
+    if (key.startsWith('dish:')) return RECIPES[key.slice(5) as RecipeId]?.name ?? key;
+    return ITEMS[key as ItemId]?.name ?? key;
+  }
+
+  /** Pick something from the bag to give; loved gifts you already know are starred. */
+  private openGiftPicker(id: string, name: string) {
+    const st = this.world.state;
+    const v = villager(id);
+    if (!v) return;
+    const w = 300;
+    const h = 150;
+    const c = this.openOverlay(w, h, `A gift for ${name}`);
+    const entries: { key: string; icon: string; count: number }[] = [];
+    for (const it of SELLABLE) if (st.count(it) > 0) entries.push({ key: it, icon: ITEMS[it].icon, count: st.count(it) });
+    const dishCounts = new Map<string, number>();
+    for (const d of st.world.dishes) dishCounts.set(d.recipe, (dishCounts.get(d.recipe) ?? 0) + 1);
+    for (const [r, n] of dishCounts) entries.push({ key: `dish:${r}`, icon: `dish-${r}`, count: n });
+    const loved = knownLoves(st.world, v);
+    const top = -h / 2 + 24;
+    if (!entries.length) {
+      c.add(this.add.text(0, 0, 'Nothing to give yet.\nHarvest or cook first!', plain({ color: '#7a6a70', align: 'center' })).setOrigin(0.5));
+      return;
+    }
+    const cols = 10;
+    const slot = 26;
+    const x0 = -(cols * slot) / 2;
+    entries.slice(0, 30).forEach((e, i) => {
+      const sx = x0 + (i % cols) * slot;
+      const sy = top + Math.floor(i / cols) * slot;
+      const g = this.add.graphics();
+      panel(g, sx, sy, 24, 24, loved.includes(e.key) ? 0xffe8f4 : 0xffffff, loved.includes(e.key) ? 0xff8fcf : 0x4a2a3f);
+      c.add(g);
+      c.add(this.add.image(sx + 12, sy + 11, 'icons', e.icon).setScale(1.5));
+      if (e.count > 1) c.add(this.add.text(sx + 25, sy + 26, String(e.count), style()).setOrigin(1, 1));
+      if (loved.includes(e.key)) c.add(this.add.image(sx + 5, sy + 5, 'icons', 'heart').setScale(0.6));
+      const z = this.add.zone(sx + 12, sy + 12, 24, 24).setInteractive({ useHandCursor: true });
+      z.on('pointerdown', () => {
+        const r = this.world.giveGift(id, e.key);
+        this.closeOverlay();
+        if (!r) return;
+        const lines = GIFT_LINES[r.reaction];
+        this.showDialog(name, lines[Math.floor(Math.random() * lines.length)], { id, hearts: r.hearts, canGift: false });
+      });
+      c.add(z);
+    });
+    const hearts = heartsFor(friendPoints(st.world, id));
+    c.add(this.add.text(0, h / 2 - 22, loved.length ? `${name} loves: ${loved.map((k) => this.giftName(k)).join(', ')}` : `Find out what ${name} loves`, plain({ color: '#e05fa8' })).setOrigin(0.5));
+    c.add(this.add.text(0, h / 2 - 9, `One gift a day   Hearts ${hearts}/5`, plain({ color: '#7a6a70' })).setOrigin(0.5));
+  }
+
+  private bookTab: 'cards' | 'fish' | 'dishes' | 'friends' = 'cards';
+  private bookSel: string | null = null;
+
+  /** The Book: postcards, fish, dishes and friends collected so far. */
+  private bookPage(c: Phaser.GameObjects.Container, w: number, h: number, top: number) {
+    const st = this.world.state;
+    const wd = st.world;
+    const tabs: [typeof this.bookTab, string][] = [
+      ['cards', 'Cards'],
+      ['fish', 'Fish'],
+      ['dishes', 'Dishes'],
+      ['friends', 'Friends'],
+    ];
+    tabs.forEach(([id, label], i) => {
+      const b = button(this, -w / 2 + 8 + i * 71, top - 6, 66, 14, label, () => {
+        this.bookTab = id;
+        this.bookSel = null;
+        this.page = 0;
+        this.openJournal('album');
+      }, this.bookTab === id ? 0xffe066 : 0xe8dcc8);
+      c.add(b.container);
+    });
+    const y0 = top + 14;
+
+    if (this.bookTab === 'cards') {
+      const cards = wd.postcards;
+      if (!cards.length) c.add(this.add.text(0, y0 + 30, 'Postcards appear at special moments', plain({ color: '#7a6a70' })).setOrigin(0.5));
+      const card = cards[this.page % Math.max(1, cards.length)];
+      if (card) this.drawPostcard(c, card, 0, y0 + 40);
+      this.pager(c, w, h, this.page % Math.max(1, cards.length), Math.max(1, cards.length), (p) => {
+        this.page = p;
+        this.openJournal('album');
+      });
+      return;
+    }
+
+    if (this.bookTab === 'fish') {
+      const colors: Record<string, string> = { common: '#7a6a70', uncommon: '#3f9a5f', rare: '#3f7fd0', legendary: '#e6a800' };
+      const slot = 30;
+      const x0 = -(5 * slot) / 2;
+      let caught = 0;
+      FISH_IDS.forEach((id, i) => {
+        const sx = x0 + (i % 5) * slot;
+        const sy = y0 + Math.floor(i / 5) * slot;
+        const have = (wd.stats[`fish:${id}`] ?? 0) > 0;
+        if (have) caught++;
+        const sel = this.bookSel === id;
+        const g = this.add.graphics();
+        panel(g, sx, sy, 28, 28, sel ? 0xffe066 : have ? 0xffffff : 0xefe4d2, sel ? 0xff8fcf : 0x4a2a3f);
+        c.add(g);
+        const img = this.add.image(sx + 14, sy + 14, 'icons', `fish-${id}`).setScale(2);
+        if (!have) img.setTint(0x4a2a3f).setAlpha(0.35);
+        c.add(img);
+        const z = this.add.zone(sx + 14, sy + 14, 28, 28).setInteractive({ useHandCursor: true });
+        z.on('pointerdown', () => {
+          this.bookSel = id;
+          this.openJournal('album');
+        });
+        c.add(z);
+      });
+      const sel = (this.bookSel as FishId | null) ?? FISH_IDS[0];
+      const f = FISH[sel];
+      const have = (wd.stats[`fish:${sel}`] ?? 0) > 0;
+      const dy = y0 + 2 * slot + 12;
+      c.add(this.add.text(-w / 2 + 12, dy, have ? f.name : '???', plain()).setOrigin(0, 0.5));
+      c.add(this.add.text(w / 2 - 12, dy, f.rarity, plain({ color: colors[f.rarity] })).setOrigin(1, 0.5));
+      c.add(this.add.text(-w / 2 + 12, dy + 12, f.hint, plain({ color: '#7a6a70' })).setOrigin(0, 0.5));
+      c.add(this.add.text(-w / 2 + 12, dy + 24, have ? `Caught ${wd.stats[`fish:${sel}`]}   Best ${wd.stats[`fishbest:${sel}`] ?? 0} cm` : 'Not caught yet', plain({ color: '#b07a00' })).setOrigin(0, 0.5));
+      c.add(this.add.text(0, h / 2 - 9, `${caught} / ${FISH_IDS.length} fish found`, plain({ color: '#7a6a70' })).setOrigin(0.5));
+      return;
+    }
+
+    if (this.bookTab === 'dishes') {
+      const ids = Object.keys(RECIPES) as RecipeId[];
+      const cols = 9;
+      const slot = 28;
+      const x0 = -(cols * slot) / 2;
+      let cooked = 0;
+      ids.forEach((id, i) => {
+        const sx = x0 + (i % cols) * slot;
+        const sy = y0 + Math.floor(i / cols) * slot;
+        const best = wd.stats[`best:${id}`] ?? 0;
+        const times = wd.stats[`cook:r:${id}`] ?? 0;
+        if (times > 0) cooked++;
+        const sel = this.bookSel === id;
+        const g = this.add.graphics();
+        panel(g, sx, sy, 26, 26, sel ? 0xffe066 : times ? 0xffffff : 0xefe4d2, sel ? 0xff8fcf : 0x4a2a3f);
+        c.add(g);
+        c.add(this.add.image(sx + 13, sy + 12, 'icons', `dish-${id}`).setScale(1.5).setAlpha(times ? 1 : 0.3));
+        if (best) c.add(this.add.text(sx + 26, sy + 27, GRADE_NAMES[best - 1], style({ color: ['#cfcfd9', '#ffffff', '#7de8c8', '#ffe066'][best - 1] })).setOrigin(1, 1));
+        const z = this.add.zone(sx + 13, sy + 13, 26, 26).setInteractive({ useHandCursor: true });
+        z.on('pointerdown', () => {
+          this.bookSel = id;
+          this.openJournal('album');
+        });
+        c.add(z);
+      });
+      const sel = (this.bookSel as RecipeId | null) ?? ids[0];
+      const r = RECIPES[sel];
+      const times = wd.stats[`cook:r:${sel}`] ?? 0;
+      const best = wd.stats[`best:${sel}`] ?? 0;
+      const dy = y0 + 2 * slot + 12;
+      c.add(this.add.text(-w / 2 + 12, dy, r.name, plain()).setOrigin(0, 0.5));
+      c.add(this.add.text(w / 2 - 12, dy, `${r.basePrice}c`, plain({ color: '#b07a00' })).setOrigin(1, 0.5));
+      const lock = r.book ? BOOKS[r.book].name : `reputation ${r.unlockRep}`;
+      c.add(this.add.text(-w / 2 + 12, dy + 12, times ? `Best grade ${GRADE_NAMES[best - 1] ?? '-'}, cooked ${times} times` : recipeUnlocked(r, st.reputation, wd.books) ? 'Not cooked yet' : `Unlocks with ${lock}`, plain({ color: '#7a6a70' })).setOrigin(0, 0.5));
+      c.add(this.add.text(0, h / 2 - 9, `${cooked} / ${ids.length} recipes cooked`, plain({ color: '#7a6a70' })).setOrigin(0.5));
+      return;
+    }
+
+    // friends: 4 per page
+    const per = 4;
+    const pages = Math.ceil(VILLAGERS.length / per);
+    const page = this.page % pages;
+    VILLAGERS.slice(page * per, page * per + per).forEach((v, i) => {
+      const y = y0 + 10 + i * 24;
+      const pts = friendPoints(wd, v.id);
+      const hearts = heartsFor(pts);
+      const g = this.add.graphics();
+      panel(g, -w / 2 + 8, y - 11, w - 16, 22, 0xffffff);
+      c.add(g);
+      c.add(this.add.text(-w / 2 + 14, y - 5, v.name, plain()).setOrigin(0, 0.5));
+      for (let k = 0; k < 5; k++) c.add(this.add.image(w / 2 - 58 + k * 10, y - 5, 'icons', 'heart').setScale(0.7).setAlpha(k < hearts ? 1 : 0.4));
+      const loved = knownLoves(wd, v);
+      const line = loved.length ? `Loves ${loved.map((k) => this.giftName(k)).join(', ')}` : v.where;
+      c.add(this.add.text(-w / 2 + 14, y + 5, line.length > 34 ? `${line.slice(0, 33)}…` : line, plain({ color: loved.length ? '#e05fa8' : '#7a6a70' })).setOrigin(0, 0.5));
+    });
+    this.pager(c, w, h, page, pages, (p) => {
+      this.page = p;
+      this.openJournal('album');
+    });
+  }
+
   // ---------- dialogue box (villagers) ----------
 
   private dialog?: Phaser.GameObjects.Container;
   private dialogTimer?: Phaser.Time.TimerEvent;
 
   /** Pokemon-style text box along the bottom with a name tag. Tap it or wait to close. */
-  private showDialog(name: string, text: string) {
+  private showDialog(name: string, text: string, friend?: { id: string; hearts: number; canGift: boolean }) {
     this.dialog?.destroy();
     this.dialogTimer?.remove();
     const { width: W, height: H } = this.scale;
@@ -421,12 +643,24 @@ export class HudScene extends Phaser.Scene {
     const arrow = this.add.text(w / 2 - 10, h / 2 - 10, '▼', plain({ color: '#b07a00' })).setOrigin(0.5);
     this.tweens.add({ targets: arrow, y: arrow.y + 2, duration: 400, yoyo: true, repeat: -1 });
     const zone = this.add.zone(0, 0, w, h).setInteractive();
-    const c = this.add.container(Math.round(W / 2 - 18), Math.round(H - 30 - h / 2), [g, t, tag, tagText, arrow, zone]).setDepth(45);
+    const extra: Phaser.GameObjects.GameObject[] = [];
+    if (friend) {
+      // friendship hearts next to the name tag, and a gift button while one is allowed today
+      for (let i = 0; i < 5; i++) extra.push(this.add.image(-w / 2 + 12 + tagW + i * 9, -h / 2 - 5, 'icons', 'heart').setScale(0.7).setAlpha(i < friend.hearts ? 1 : 0.4));
+      if (friend.canGift) {
+        const gift = button(this, w / 2 - 52, -h / 2 - 14, 46, 14, 'Gift', () => {
+          this.closeDialog();
+          this.openGiftPicker(friend.id, name);
+        }, 0xff8fcf);
+        extra.push(gift.container);
+      }
+    }
+    const c = this.add.container(Math.round(W / 2 - 18), Math.round(H - 30 - h / 2), [g, t, tag, tagText, arrow, zone, ...extra]).setDepth(45);
     zone.on('pointerdown', () => this.closeDialog());
     this.dialog = c;
     c.setScale(0.9);
     this.tweens.add({ targets: c, scale: 1, duration: 120, ease: 'Back.easeOut' });
-    this.dialogTimer = this.time.delayedCall(Math.max(3500, text.length * 90), () => this.closeDialog());
+    this.dialogTimer = this.time.delayedCall(Math.max(friend?.canGift ? 7000 : 3500, text.length * 90), () => this.closeDialog());
   }
 
   private closeDialog() {
@@ -469,6 +703,7 @@ export class HudScene extends Phaser.Scene {
       if (e.kind === 'task') this.bannerQueue.push({ title: `Done: ${e.title}`, sub: `+${e.reward} coins`, big: false });
       else if (e.kind === 'daily') this.bannerQueue.push({ title: `Daily: ${e.title}`, sub: `+${e.reward} coins`, big: false });
       else if (e.kind === 'dailyAll') this.bannerQueue.push({ title: 'All daily tasks done!', sub: `+${e.reward} coins, +1 reputation`, big: true });
+      else if (e.kind === 'friend') this.bannerQueue.push({ title: `${e.name}: ${'♥'.repeat(Math.max(1, e.hearts))}`, sub: e.text, big: e.text !== `${e.name} likes you more` });
       else {
         this.bannerQueue.push({ title: `Chapter ${e.number} complete!`, sub: e.rewardText, big: true });
         if (e.next) this.bannerQueue.push({ title: `Next chapter: ${e.next}`, sub: 'Tap the task bar to see it', big: false });
@@ -1571,7 +1806,7 @@ export class HudScene extends Phaser.Scene {
     this.tabs(c, w, h, [
       ['Story', () => { this.journeyView = null; this.openJournal('journey'); }],
       ['Today', () => this.openJournal('today')],
-      ['Album', () => this.openJournal('album')],
+      ['Book', () => this.openJournal('album')],
       ['Stats', () => this.openJournal('stats')],
       ['Setup', () => this.openJournal('settings')],
     ], ['journey', 'today', 'album', 'stats', 'settings'].indexOf(tab));
@@ -1580,14 +1815,7 @@ export class HudScene extends Phaser.Scene {
     if (tab === 'journey') this.journeyPage(c, w, h, top);
     else if (tab === 'today') this.todayPage(c, w, h, top);
     else if (tab === 'album') {
-      const cards = st.world.postcards;
-      if (!cards.length) c.add(this.add.text(0, top + 30, 'Postcards appear here at special moments', plain({ color: '#7a6a70' })).setOrigin(0.5));
-      const card = cards[this.page % Math.max(1, cards.length)];
-      if (card) this.drawPostcard(c, card, 0, top + 40);
-      this.pager(c, w, h, this.page % Math.max(1, cards.length), Math.max(1, cards.length), (p) => {
-        this.page = p;
-        this.openJournal('album');
-      });
+      this.bookPage(c, w, h, top);
     } else if (tab === 'stats') {
       const s = st.world.stats;
       const lines: [string, string][] = [

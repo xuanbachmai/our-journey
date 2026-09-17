@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { CROPS, CROP_IDS, FURNITURE_IDS, RECIPE_IDS, RECIPES, type CropId } from '@hh/shared';
+import { CROPS, CROP_IDS, FISH, FISH_IDS, FURNITURE_IDS, RECIPE_IDS, RECIPES, type CropId } from '@hh/shared';
 import { P } from './palette';
 import { PixelCanvas, mulberry32 } from './pixel';
 
@@ -1008,6 +1008,19 @@ export function buildObjectTextures(scene: Phaser.Scene) {
     icons.rows(x0 + 1, 3, ['..oooo...o', '.owwwwo.oo', 'owwewwwooo', '.owwwwo.oo', '..oooo...o'], { o: P.outline, w: '#7fb8e6', e: P.eye });
     icons.px(x0 + 3, 4, P.waterLight);
   });
+  // one colour per fish species; rare fish get a fin stripe, legendary a sparkle
+  FISH_IDS.forEach((id) =>
+    I(`fish-${id}`, (x0) => {
+      const f = FISH[id];
+      icons.rows(x0 + 1, 3, ['..oooo...o', '.owwwwo.oo', 'owwewwwooo', '.owwwwo.oo', '..oooo...o'], { o: P.outline, w: f.color, e: P.eye });
+      icons.px(x0 + 3, 4, P.white);
+      if (f.rarity === 'rare' || f.rarity === 'legendary') icons.rect(x0 + 5, 4, 1, 3, P.white);
+      if (f.rarity === 'legendary') {
+        icons.px(x0 + 10, 1, P.white);
+        icons.px(x0 + 1, 9, P.yellow);
+      }
+    }),
+  );
   I('milk', (x0) => {
     icons.rect(x0 + 3, 1, 6, 3, P.outline);
     icons.rect(x0 + 2, 4, 8, 7, P.outline);

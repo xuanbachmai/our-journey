@@ -4,6 +4,10 @@ import {
   AREAS,
   cropTotalSeconds,
   CHAPTERS,
+  FISH,
+  pickFish,
+  villager,
+  type FishId,
   currentChapter,
   currentQuest,
   guideFor,
@@ -693,6 +697,7 @@ export class WorldScene extends Phaser.Scene {
           this.state.stat('coop');
           this.state.stat(`cook:${GRADE_NAMES[grade]}`);
           this.state.stat(`cook:r:${c.recipe}`);
+          this.state.recordDishGrade(c.recipe, grade);
         }
         audio.play(grade >= 2 ? 'great' : 'good');
         this.heartBurst(this.player.x, this.player.y - 20);
@@ -946,7 +951,13 @@ export class WorldScene extends Phaser.Scene {
           this.events.emit(n.def.opens === 'store' ? 'openStore' : n.def.opens === 'tailor' ? 'openTailor' : 'openPetshop');
         } else {
           audio.play('blip');
-          this.events.emit('dialog', { name: n.ch.name, text: n.talk(this.playerId) });
+          const line = n.talk(this.playerId);
+          const v = villager(n.def.id);
+          if (v) {
+            const r = this.state.talkVillager(v.id);
+            this.events.emit('dialog', { name: n.ch.name, text: line, villager: { id: v.id, hearts: r.hearts, canGift: this.state.canGiftToday(v.id) } });
+            this.friendFeedback(v.name, n, r.heartUp, r.hearts, r.rewards);
+          } else this.events.emit('dialog', { name: n.ch.name, text: line });
           this.state.stat('talk');
           this.state.stat(`talk:${n.def.id}`);
           if (this.areaId === 'qdhome' || this.areaId === 'xbhome') this.state.stat(`talkfam:${n.def.id}`);
@@ -1075,6 +1086,7 @@ export class WorldScene extends Phaser.Scene {
         this.state.stat('cook');
         this.state.stat(`cook:${GRADE_NAMES[grade]}`);
         this.state.stat(`cook:r:${id}`);
+        this.state.recordDishGrade(id, grade);
         audio.play(grade >= 2 ? 'great' : grade === 1 ? 'good' : 'bad');
         this.events.emit('cookResult', { recipe: id, grade, price: this.state.priceOf(dish), scores, coop: false } as CookResult);
         this.afterChange();
@@ -1086,24 +1098,55 @@ export class WorldScene extends Phaser.Scene {
 
   private startFishing() {
     this.setUiOpen(true);
+    // which fish bites depends on the pond, the hour and the weather
+    const { fish, size } = pickFish(this.areaId === 'forest' ? 'forest' : 'farm', new Date().getHours(), this.weather === 'rain', Math.random);
     const data: MiniGameData = {
-      title: 'Fishing',
+      title: fish.rarity === 'legendary' ? 'Something huge bites!' : fish.rarity === 'rare' ? 'A strong pull!' : 'Fishing',
       steps: ['reel'],
       leniency: 1 + this.state.upgradeLevel('stove') * 0.1,
+      difficulty: fish.difficulty,
+      fishColor: fish.color,
       ingredientIcons: [],
       onDone: (scores) => {
         this.setUiOpen(false);
         if (scores[0] > 0) {
-          const big = this.areaId === 'forest' && Math.random() < 0.35;
-          this.state.add('fish', big ? 2 : 1);
-          this.state.stat('fish', big ? 2 : 1);
-          this.pop(this.player.x, this.player.y - 10, 'fish', big ? '+2 big one!' : '+1');
-          this.events.emit('toast', big ? 'A big one! Two fish worth.' : 'You caught a fish!');
-        } else this.events.emit('toast', 'The fish got away...');
+          const r = this.state.recordCatch(fish, size);
+          this.pop(this.player.x, this.player.y - 10, `fish-${fish.id}`, `+${fish.units}`);
+          audio.play(fish.rarity === 'common' ? 'harvest' : 'great');
+          if (r.isNew || r.record || fish.rarity !== 'common') this.events.emit('catch', { id: fish.id as FishId, size, isNew: r.isNew, record: r.record, bonus: r.bonus });
+          else this.events.emit('toast', `Caught a ${fish.name}, ${size} cm`);
+        } else this.events.emit('toast', `The ${FISH[fish.id].rarity === 'common' ? 'fish' : FISH[fish.id].name} got away...`);
         this.afterChange();
       },
     };
     this.scene.launch('MiniGame', data);
+  }
+
+  /** Hearts float up and heart rewards become banners. */
+  private friendFeedback(name: string, npc: Npc | undefined, heartUp: boolean, hearts: number, rewards: { hearts: number; text: string }[]) {
+    if (npc && heartUp) {
+      this.heartBurst(npc.ch.x, npc.ch.y - 24);
+      audio.play('great');
+    }
+    const events = rewards.map((r) => ({ kind: 'friend' as const, name, hearts: r.hearts, text: r.text }));
+    if (heartUp && !rewards.length) events.push({ kind: 'friend', name, hearts, text: `${name} likes you more` });
+    if (events.length) this.events.emit('progress', events);
+    this.afterChange();
+  }
+
+  /** Called by the gift picker. Returns the reaction for the dialogue box. */
+  giveGift(villagerId: string, key: string) {
+    const v = villager(villagerId);
+    const r = this.state.giveGift(villagerId, key);
+    if (!v || !r) return null;
+    const npc = this.npcs.find((n) => n.def.id === villagerId);
+    if (npc) {
+      npc.ch.showBubble(r.reaction === 'love' || r.reaction === 'like' ? 'heart' : 'dots', undefined, 1800);
+      if (r.reaction === 'love') this.heartBurst(npc.ch.x, npc.ch.y - 24);
+    }
+    audio.play(r.reaction === 'love' ? 'great' : r.reaction === 'like' ? 'good' : r.reaction === 'dislike' ? 'bad' : 'blip');
+    this.friendFeedback(v.name, npc, r.heartUp, r.hearts, r.rewards);
+    return r;
   }
 
   purchaseUpgrade(id: UpgradeId): boolean {

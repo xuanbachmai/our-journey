@@ -10,6 +10,9 @@ export interface MiniGameData {
   leniency: number;
   ingredientIcons: string[];
   onDone: (scores: number[]) => void;
+  /** Fishing only: 0 easy .. 1 very hard. */
+  difficulty?: number;
+  fishColor?: string;
   /** Co-op: which step indexes I play. Others are awaited through `waitFor`. */
   mine?: number[];
   /** Co-op: report my step score to the partner. */
@@ -121,6 +124,8 @@ export class MiniGameScene extends Phaser.Scene {
       finish: (score) => this.stepDone(score, true),
       sfx: (n) => audio.play(n),
       ingredientIcons: this.data_.ingredientIcons,
+      difficulty: this.data_.difficulty ?? 0.3,
+      fishColor: this.data_.fishColor,
     });
     this.game_.create();
   }

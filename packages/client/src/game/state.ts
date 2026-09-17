@@ -9,6 +9,22 @@ import {
   cozy,
   CROPS,
   CHAPTERS,
+  dayIndex,
+  friendPoints,
+  GIFT_POINTS,
+  giftedToday,
+  giftReaction,
+  HEART_POINTS,
+  heartsFor,
+  MAX_HEARTS,
+  TALK_POINTS,
+  talkedToday,
+  villager,
+  type FishDef,
+  type FriendReward,
+  type GiftReaction,
+  type RecipeId,
+  type VillagerDef,
   currentChapter,
   DAILY_BONUS,
   dailyDefs,
@@ -81,7 +97,8 @@ export type ProgressEvent =
   | { kind: 'task'; title: string; reward: number }
   | { kind: 'chapter'; number: number; title: string; rewardText: string; next: string | null }
   | { kind: 'daily'; title: string; reward: number }
-  | { kind: 'dailyAll'; reward: number };
+  | { kind: 'dailyAll'; reward: number }
+  | { kind: 'friend'; name: string; hearts: number; text: string };
 
 export interface AwaySummary {
   awayMs: number;
@@ -695,6 +712,111 @@ export class GameState {
     }
     if (out.length) this.touch();
     return out;
+  }
+
+  // ----- collection book -----
+
+  /** Adds a caught fish to the bag and the book. */
+  recordCatch(fish: FishDef, size: number): { isNew: boolean; record: boolean; bonus: number } {
+    const w = this.world;
+    const isNew = !w.stats[`fish:${fish.id}`];
+    const best = w.stats[`fishbest:${fish.id}`] ?? 0;
+    bump(w, `fish:${fish.id}`);
+    bump(w, 'fish');
+    if (size > best) w.stats[`fishbest:${fish.id}`] = size;
+    w.inventory.fish = this.count('fish') + fish.units;
+    const bonus = isNew ? fish.firstBonus : 0;
+    w.coins += bonus;
+    this.touch();
+    return { isNew, record: !isNew && size > best, bonus };
+  }
+
+  /** Remembers the best grade each recipe was cooked at (stored as grade + 1). */
+  recordDishGrade(recipe: RecipeId, grade: number) {
+    const key = `best:${recipe}`;
+    if ((this.world.stats[key] ?? 0) < grade + 1) this.world.stats[key] = grade + 1;
+    this.touch();
+  }
+
+  // ----- friendship -----
+
+  friendHearts(id: string) {
+    return heartsFor(friendPoints(this.world, id));
+  }
+
+  canGiftToday(id: string) {
+    return !giftedToday(this.world, id, Date.now());
+  }
+
+  private addFriendPoints(id: string, n: number) {
+    const key = `friend:${id}`;
+    this.world.stats[key] = Math.max(0, Math.min(HEART_POINTS * MAX_HEARTS, (this.world.stats[key] ?? 0) + n));
+  }
+
+  /** Pays out heart rewards that are now unlocked. */
+  private claimFriendRewards(v: VillagerDef): FriendReward[] {
+    const w = this.world;
+    const hearts = this.friendHearts(v.id);
+    const got: FriendReward[] = [];
+    for (const r of v.rewards) {
+      const key = `fr:${v.id}:${r.hearts}`;
+      if (hearts < r.hearts || w.questsClaimed.includes(key)) continue;
+      w.questsClaimed.push(key);
+      if (r.coins) w.coins += r.coins;
+      for (const [id, n] of Object.entries(r.items ?? {})) w.inventory[id as ItemId] = this.count(id as ItemId) + (n ?? 0);
+      for (const [id, n] of Object.entries(r.furniture ?? {})) w.furnitureOwned[id as FurnitureId] = this.furnitureOwned(id as FurnitureId) + (n ?? 0);
+      for (const c of r.clothing ?? []) if (!w.clothingOwned.includes(c)) w.clothingOwned.push(c);
+      if (r.book && !w.books.includes(r.book)) w.books.push(r.book);
+      got.push(r);
+    }
+    return got;
+  }
+
+  /** First chat of the day with a villager earns a little friendship. */
+  talkVillager(id: string): { hearts: number; heartUp: boolean; rewards: FriendReward[] } {
+    const v = villager(id);
+    if (!v) return { hearts: 0, heartUp: false, rewards: [] };
+    const before = this.friendHearts(id);
+    if (!talkedToday(this.world, id, Date.now())) {
+      this.world.stats[`talkday:${id}`] = dayIndex(Date.now());
+      this.addFriendPoints(id, TALK_POINTS);
+    }
+    const hearts = this.friendHearts(id);
+    const rewards = this.claimFriendRewards(v);
+    this.touch();
+    return { hearts, heartUp: hearts > before, rewards };
+  }
+
+  /**
+   * Gives one item or dish to a villager (one gift per villager per day).
+   * `key` is an item id or "dish:<recipe>"; dishes give away the lowest grade.
+   */
+  giveGift(id: string, key: string): { reaction: GiftReaction; hearts: number; heartUp: boolean; rewards: FriendReward[] } | null {
+    const v = villager(id);
+    if (!v || !this.canGiftToday(id)) return null;
+    const w = this.world;
+    if (key.startsWith('dish:')) {
+      const recipe = key.slice(5);
+      let idx = -1;
+      w.dishes.forEach((d, i) => {
+        if (d.recipe === recipe && (idx < 0 || d.grade < w.dishes[idx].grade)) idx = i;
+      });
+      if (idx < 0) return null;
+      w.dishes.splice(idx, 1);
+    } else {
+      if (this.count(key as ItemId) <= 0) return null;
+      w.inventory[key as ItemId] = this.count(key as ItemId) - 1;
+    }
+    const before = this.friendHearts(id);
+    const reaction = giftReaction(v, key);
+    this.addFriendPoints(id, GIFT_POINTS[reaction]);
+    w.stats[`giftday:${id}`] = dayIndex(Date.now());
+    bump(w, 'gifts');
+    if (reaction === 'love') w.stats[`loveknown:${id}:${key}`] = 1;
+    const hearts = this.friendHearts(id);
+    const rewards = this.claimFriendRewards(v);
+    this.touch();
+    return { reaction, hearts, heartUp: hearts > before, rewards };
   }
 
   itemName(id: ItemId) {
