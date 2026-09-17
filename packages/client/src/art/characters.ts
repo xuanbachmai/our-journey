@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { DEFAULT_OUTFIT, DYES, HAIR_COLORS, type Outfit, type PlayerId } from '@hh/shared';
+import { FAMILIES } from '../config/family';
 import { P } from './palette';
 import { PixelCanvas, assertRows, replaceRows, type Palette } from './pixel';
 
@@ -42,6 +43,11 @@ export const SHOPKEEPER_LOOKS: Record<'mabel' | 'rosa' | 'finn' | 'mayor', Chara
   finn: { id: 'finn', name: 'Finn', hair: '#7bd36a', hairDark: '#4fa84a', outfit: '#ffa94d', outfitDark: '#e07f20', accent: '#4fa84a', shoes: '#6b3a2a' },
   mayor: { id: 'mayor', name: 'Mayor Bea', hair: '#4a4a5a', hairDark: '#2e2e3a', outfit: '#4a4a5a', outfitDark: '#2e2e3a', accent: '#ffd23f', shoes: '#241825' },
 };
+
+/** Family members from config/family.ts, keyed by member id. */
+export const FAMILY_LOOKS: Record<string, CharacterLook> = Object.fromEntries(
+  Object.values(FAMILIES).flatMap((f) => f.members.map((m) => [m.id, { id: m.id, name: m.name, ...m.look }])),
+);
 
 // Legend: o outline, h hair, H hair shade, a accessory, s skin, E eye shine, e eye,
 // c cheek, w shirt, b outfit, B outfit shade, k shoes, . transparent

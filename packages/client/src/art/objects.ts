@@ -862,7 +862,7 @@ export function buildObjectTextures(scene: Phaser.Scene) {
   bn.done();
 
   // town buildings: store (blue), tailor (pink), petshop (green), restaurant (orange)
-  const bl = new PixelCanvas(scene, 'buildings', 80 * 4, 72);
+  const bl = new PixelCanvas(scene, 'buildings', 80 * 6, 72);
   facade(bl, 0, 8, 80, 64, '#fff3dc', '#eedcc0', '#5fa8ff', '#3f7fd0', { sign: 'STORE', windows: 2, awning: '#5fa8ff' });
   facade(bl, 80, 8, 80, 64, '#fff0f6', '#f0d8e6', '#ff8fcf', '#e05fa8', { sign: 'ROSA', windows: 2, awning: '#ff8fcf' });
   facade(bl, 160, 8, 80, 64, '#f0fff0', '#d8f0d8', '#7bd36a', '#4fa84a', { sign: 'PETS', windows: 2 });
@@ -871,6 +871,20 @@ export function buildObjectTextures(scene: Phaser.Scene) {
   bl.frame('tailor', 80, 0, 80, 72);
   bl.frame('petshop', 160, 0, 80, 72);
   bl.frame('restaurant', 240, 0, 80, 72);
+  // family homes: qd's family (lavender roof), xb's family (teal roof), each with a heart over the door
+  facade(bl, 320, 4, 80, 68, '#fff6ee', '#f0dccc', '#b98cff', '#9466e0', { windows: 2, chimney: true });
+  facade(bl, 400, 4, 80, 68, '#f4fbff', '#dcecf4', '#4fbfb0', '#2f9a8c', { windows: 2, chimney: true });
+  for (const x0 of [320, 400]) {
+    bl.rows(x0 + 37, 32, ['.oo.oo.', 'orroro.', 'orrrrro', '.orrro.', '..oro..', '...o...'], { o: P.outline, r: P.red });
+    bl.px(x0 + 39, 33, P.pink);
+    // flower boxes under the windows
+    for (const wx of [10, 56]) {
+      bl.rect(x0 + wx - 1, 48, 16, 3, P.woodDark);
+      [P.pink, P.yellow, P.red, P.white].forEach((c, i) => bl.px(x0 + wx + 1 + i * 4, 47, c));
+    }
+  }
+  bl.frame('house_qd', 320, 0, 80, 72);
+  bl.frame('house_xb', 400, 0, 80, 72);
   bl.done();
 
   const f = new PixelCanvas(scene, 'fence', 32, 16);

@@ -1,7 +1,8 @@
 import type { AreaId } from '@hh/shared';
 import { buildFarm } from './farm';
 import { buildForest } from './forest';
-import { buildHome, buildPetshop, buildRestaurant, buildStore, buildTailor } from './interiors';
+import { buildHome, buildPetshop, buildQdHome, buildRestaurant, buildStore, buildTailor, buildXbHome } from './interiors';
+import { buildLane } from './lane';
 import { buildRanch } from './ranch';
 import { buildTown } from './town';
 import type { AreaDef } from './types';
@@ -13,6 +14,9 @@ const builders: Record<AreaId, () => AreaDef> = {
   town: buildTown,
   forest: buildForest,
   ranch: buildRanch,
+  lane: buildLane,
+  qdhome: buildQdHome,
+  xbhome: buildXbHome,
   home: buildHome,
   restaurant: buildRestaurant,
   store: buildStore,

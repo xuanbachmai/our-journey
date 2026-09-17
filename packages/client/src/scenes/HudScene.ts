@@ -69,7 +69,7 @@ const HELP: HelpPage[] = [
   { title: 'Farming', icon: 'seed-tomato', lines: ['Till a plot, plant a seed, water it.', 'Crops grow in real time, even when', 'the game is closed. Dry soil pauses.', 'Rain and the sprinkler water for you.', 'Ripe crops sparkle. Harvest them!'] },
   { title: 'Cooking', icon: 'dish-tomato_soup', lines: ['Cook at the kitchen by the house or', 'inside the restaurant. Each recipe', 'is a few mini-games. Good timing', 'means a better grade: C, B, A or S.', 'Reputation and books unlock recipes.'] },
   { title: 'Selling', icon: 'coin', lines: ['Counter by the road: dishes sell by', 'themselves, day and night.', 'Restaurant: diners sit down and order.', 'Bring the dish fast for a tip.', 'Town board: orders pay extra.'] },
-  { title: 'Exploring', icon: 'map', lines: ['Roads lead east to Maple Town,', 'west to Sunny Ranch, north of town', 'to Whisper Forest. Every door opens.', 'Use the map to travel to places', 'you have already discovered.'] },
+  { title: 'Exploring', icon: 'map', lines: ['Roads lead east to Maple Town,', 'west to Sunny Ranch. North of town', 'is Whisper Forest, east of town is', 'Family Lane with both family homes.', 'Every door opens. The map travels', 'to places you have discovered.'] },
   { title: 'Home', icon: 'furn-sofa', lines: ['Buy furniture at the store and place', 'it inside the house with Decorate.', 'Coziness raises your dish prices.', 'The wardrobe changes hats, dyes', 'and hair from the tailor.'] },
   { title: 'Animals', icon: 'cow', lines: ['Hens lay eggs at the coop. Cows and', 'sheep at the ranch make milk and wool.', 'Bees make honey. Collect at the barn,', 'coop or hives. Pets follow you and', 'dig up little gifts. Pet them!'] },
   { title: 'Together', icon: 'heart', lines: ['The Love Tree grows on days you both', 'play. Leave notes in the mailbox.', 'Answer the daily question. Cook a', 'dish together when both online.', 'Special days bring fireworks.'] },
@@ -236,7 +236,7 @@ export class HudScene extends Phaser.Scene {
     this.world = w;
     const f = w.events;
     // the world scene object survives area changes; drop the listeners from the previous visit
-    for (const ev of ['hud', 'toast', 'openStall', 'openStore', 'openTailor', 'openPetshop', 'openWardrobe', 'openMail', 'openCounter', 'openRecipes', 'openBoard', 'openSign', 'openLoveTree', 'cookResult', 'away', 'quest', 'postcard', 'coopInvite', 'notes']) f.removeAllListeners(ev);
+    for (const ev of ['hud', 'toast', 'openStall', 'openStore', 'openTailor', 'openPetshop', 'openWardrobe', 'openMail', 'openCounter', 'openRecipes', 'openBoard', 'openSign', 'openLoveTree', 'cookResult', 'away', 'quest', 'postcard', 'coopInvite', 'notes', 'dialog']) f.removeAllListeners(ev);
     f.on('hud', (d: HudData) => this.refresh(d));
     f.on('toast', (msg: string) => this.showToast(msg));
     f.on('openStall', () => this.openStall('seeds'));
@@ -250,6 +250,7 @@ export class HudScene extends Phaser.Scene {
     f.on('openBoard', () => this.openBoard());
     f.on('openSign', (t: string) => this.openSign(t));
     f.on('openLoveTree', () => this.openLoveTree());
+    f.on('dialog', (d: { name: string; text: string }) => this.showDialog(d.name, d.text));
     f.on('cookResult', (r: CookResult) => this.openCookResult(r));
     f.on('away', (a: AwaySummary) => this.openAway(a));
     f.on('quest', (q: Quest) => this.showQuestBanner(q));
@@ -258,6 +259,7 @@ export class HudScene extends Phaser.Scene {
     f.on('notes', () => this.refreshNotesBadge());
     f.once('shutdown', () => {
       this.closeOverlay();
+      this.closeDialog();
       this.time.delayedCall(50, () => {
         if (this.scene.isActive('World')) this.bindWorld();
         else this.time.delayedCall(300, () => this.scene.isActive('World') && this.bindWorld());
@@ -369,6 +371,44 @@ export class HudScene extends Phaser.Scene {
     this.emoteBtn.setVisible(!!d.partner?.online);
     this.decorBtn.setVisible(d.area === 'home' && !d.decorate);
     this.decorStop.setVisible(!!d.decorate);
+  }
+
+  // ---------- dialogue box (villagers) ----------
+
+  private dialog?: Phaser.GameObjects.Container;
+  private dialogTimer?: Phaser.Time.TimerEvent;
+
+  /** Pokemon-style text box along the bottom with a name tag. Tap it or wait to close. */
+  private showDialog(name: string, text: string) {
+    this.dialog?.destroy();
+    this.dialogTimer?.remove();
+    const { width: W, height: H } = this.scale;
+    const w = Math.min(300, W - 72);
+    const t = this.add.text(-w / 2 + 10, -8, text, plain({ wordWrap: { width: w - 20 }, lineSpacing: 3 })).setOrigin(0, 0);
+    const h = Math.max(30, t.height + 18);
+    const g = this.add.graphics();
+    panel(g, -w / 2, -h / 2 - 2, w, h, 0xfff4dc);
+    t.setY(-h / 2 + 8);
+    const tagW = name.length * 8 + 12;
+    const tag = this.add.graphics();
+    panel(tag, -w / 2 + 6, -h / 2 - 12, tagW, 14, 0xffd23f);
+    const tagText = this.add.text(-w / 2 + 6 + tagW / 2, -h / 2 - 5, name, plain()).setOrigin(0.5);
+    const arrow = this.add.text(w / 2 - 10, h / 2 - 10, '▼', plain({ color: '#b07a00' })).setOrigin(0.5);
+    this.tweens.add({ targets: arrow, y: arrow.y + 2, duration: 400, yoyo: true, repeat: -1 });
+    const zone = this.add.zone(0, 0, w, h).setInteractive();
+    const c = this.add.container(Math.round(W / 2 - 18), Math.round(H - 30 - h / 2), [g, t, tag, tagText, arrow, zone]).setDepth(45);
+    zone.on('pointerdown', () => this.closeDialog());
+    this.dialog = c;
+    c.setScale(0.9);
+    this.tweens.add({ targets: c, scale: 1, duration: 120, ease: 'Back.easeOut' });
+    this.dialogTimer = this.time.delayedCall(Math.max(3500, text.length * 90), () => this.closeDialog());
+  }
+
+  private closeDialog() {
+    this.dialog?.destroy();
+    this.dialog = undefined;
+    this.dialogTimer?.remove();
+    this.dialogTimer = undefined;
   }
 
   // ---------- toast & banners ----------
@@ -1069,11 +1109,12 @@ export class HudScene extends Phaser.Scene {
     const h = 168;
     const st = this.world.state;
     const c = this.openOverlay(w, h, 'Map');
-    const spots: Record<AreaId, [number, number]> = { ranch: [-95, 20], farm: [-20, 20], town: [60, 20], forest: [60, -35], home: [-40, 50], restaurant: [0, 50], store: [40, 50], tailor: [80, 50], petshop: [120, 50] };
+    const spots: Record<AreaId, [number, number]> = { ranch: [-110, 20], farm: [-40, 20], town: [30, 20], forest: [30, -35], lane: [100, 20], home: [-40, 50], restaurant: [-40, 50], store: [30, 50], tailor: [30, 50], petshop: [30, 50], qdhome: [100, 50], xbhome: [100, 50] };
+    const short: Partial<Record<AreaId, string>> = { farm: 'Farm', town: 'Town', forest: 'Forest', ranch: 'Ranch', lane: 'Family' };
     const g = this.add.graphics();
     g.lineStyle(2, 0xc98b4e, 1);
-    g.lineBetween(-95, 20, 60, 20);
-    g.lineBetween(60, 20, 60, -35);
+    g.lineBetween(-110, 20, 100, 20);
+    g.lineBetween(30, 20, 30, -35);
     c.add(g);
     const here = this.last?.area;
     const partnerArea = this.last?.partner?.online ? this.last.partner.area : null;
@@ -1083,9 +1124,9 @@ export class HudScene extends Phaser.Scene {
       const box = this.add.graphics();
       panel(box, x - 28, y - 14, 56, 30, known ? (id === here ? 0xffe066 : 0xffffff) : 0xe0d8cc);
       c.add(box);
-      const icon = id === 'farm' ? 'seed-tomato' : id === 'town' ? 'coin' : id === 'forest' ? 'mushroom' : 'cow';
+      const icon = id === 'farm' ? 'seed-tomato' : id === 'town' ? 'coin' : id === 'forest' ? 'mushroom' : id === 'lane' ? 'heart' : 'cow';
       c.add(this.add.image(x, y - 4, 'icons', known ? icon : 'lock'));
-      c.add(this.add.text(x, y + 9, known ? AREAS[id].name.replace('Our ', '').replace('Whisper ', '').replace('Sunny ', '').replace('Maple ', '') : '???', plain({ color: known ? P.outline : '#9a8a90' })).setOrigin(0.5));
+      c.add(this.add.text(x, y + 9, known ? short[id] ?? AREAS[id].name : '???', plain({ color: known ? P.outline : '#9a8a90' })).setOrigin(0.5));
       if (partnerArea === id || (partnerArea && AREAS[partnerArea].parent === id)) c.add(this.add.image(x + 22, y - 10, 'icons', 'heart'));
       if (known && id !== here) {
         const z = this.add.zone(x, y, 56, 30).setInteractive({ useHandCursor: true });
@@ -1097,7 +1138,7 @@ export class HudScene extends Phaser.Scene {
       }
     }
     c.add(this.add.text(0, h / 2 - 22, here ? `You are at ${AREAS[here].name}` : '', plain({ color: P.outline })).setOrigin(0.5));
-    c.add(this.add.text(0, h / 2 - 10, 'Tap a place you have discovered to travel there', plain({ color: '#7a6a70' })).setOrigin(0.5));
+    c.add(this.add.text(0, h / 2 - 10, 'Tap a place to travel there', plain({ color: '#7a6a70' })).setOrigin(0.5));
   }
 
   // ---------- help ----------

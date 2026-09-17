@@ -61,6 +61,8 @@ export interface NpcDef {
   /** Wander radius in tiles; 0 = stands still. */
   wander: number;
   lines: string[];
+  /** Different lines depending on who is visiting (family members). */
+  linesFor?: Partial<Record<'xb' | 'qd', string[]>>;
   /** Shopkeepers open a panel instead of just talking. */
   opens?: 'store' | 'tailor' | 'petshop';
 }

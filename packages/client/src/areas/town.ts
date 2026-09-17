@@ -27,6 +27,7 @@ export function buildTown(): AreaDef {
       if (!edge) continue;
       if (x < 2 && y === 18) continue;
       if (y < 2 && x === 22) continue;
+      if (x >= w - 2 && y === 12) continue;
       objects.push({ key: 'trees', frame: rnd() < 0.3 ? 2 : Math.floor(rnd() * 2), tx: x, ty: y, w: 2, h: 2, blocked: true });
       blockRect(blocked, x, y, 2, 2);
     }
@@ -36,7 +37,7 @@ export function buildTown(): AreaDef {
   fillRect(tiles, 10, 9, 24, 12, T.COBBLE);
   fillRect(tiles, 0, 18, 10, 2, T.ROAD);
   fillRect(tiles, 22, 0, 2, 9, T.ROAD);
-  fillRect(tiles, 34, 12, 8, 2, T.ROAD);
+  fillRect(tiles, 34, 12, 10, 2, T.ROAD);
 
   // shops along the top: footprints 5x3 with the door tile below
   const shops: { key: string; tx: number; portalTo: 'store' | 'tailor' | 'petshop' }[] = [
@@ -82,7 +83,7 @@ export function buildTown(): AreaDef {
     objects.push({ key: 'props', frame: 'bench', tx, ty, w: 1, h: 1, blocked: true });
     blockRect(blocked, tx, ty, 1, 1);
   }
-  objects.push({ key: 'props', frame: 'sign', tx: 20, ty: 8, w: 1, h: 1, blocked: true, interact: 'sign', label: 'Read', text: 'North: Whisper Forest\nWest: Our Farm' });
+  objects.push({ key: 'props', frame: 'sign', tx: 20, ty: 8, w: 1, h: 1, blocked: true, interact: 'sign', label: 'Read', text: 'North: Whisper Forest\nWest: Our Farm\nEast: Family Lane' });
   blockRect(blocked, 20, 8, 1, 1);
   objects.push({ key: 'props', frame: 'sign', tx: 3, ty: 17, w: 1, h: 1, blocked: true, interact: 'sign', label: 'Read', text: 'Welcome to Maple Town!\nShops open day and night.' });
   blockRect(blocked, 3, 17, 1, 1);
@@ -126,6 +127,7 @@ export function buildTown(): AreaDef {
       ...portals,
       { tx: 0, ty: 18, w: 1, h: 2, to: 'farm', targetTx: 42, targetTy: 18, facing: 'left', label: 'To Our Farm' },
       { tx: 22, ty: 0, w: 2, h: 1, to: 'forest', targetTx: 20, targetTy: 27, facing: 'up', label: 'To Whisper Forest' },
+      { tx: 43, ty: 12, w: 1, h: 2, to: 'lane', targetTx: 1, targetTy: 10, facing: 'right', label: 'To Family Lane' },
     ],
     npcs,
     forage: [],

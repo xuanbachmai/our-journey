@@ -36,7 +36,7 @@ import {
 } from '@hh/shared';
 import { getArea } from '../areas';
 import type { AreaDef, AreaObject, InteractId } from '../areas/types';
-import { buildCharacterTexture, CUSTOMER_LOOKS, LOOKS, SHOPKEEPER_LOOKS, type CharacterLook } from '../art/characters';
+import { buildCharacterTexture, CUSTOMER_LOOKS, FAMILY_LOOKS, LOOKS, SHOPKEEPER_LOOKS, type CharacterLook } from '../art/characters';
 import { P } from '../art/palette';
 import { T, TILE, TILESET_KEY } from '../art/tiles';
 import { Character, type Facing } from '../entities/Character';
@@ -942,7 +942,7 @@ export class WorldScene extends Phaser.Scene {
           this.events.emit(n.def.opens === 'store' ? 'openStore' : n.def.opens === 'tailor' ? 'openTailor' : 'openPetshop');
         } else {
           audio.play('blip');
-          n.talk();
+          this.events.emit('dialog', { name: n.ch.name, text: n.talk(this.playerId) });
           this.state.stat('talk');
         }
         return;
@@ -1281,7 +1281,7 @@ export class WorldScene extends Phaser.Scene {
 
   private spawnNpcs() {
     for (const n of this.area.npcs) {
-      const look: CharacterLook = (SHOPKEEPER_LOOKS as Record<string, CharacterLook>)[n.lookId] ?? CUSTOMER_LOOKS.find((c) => c.id === n.lookId) ?? CUSTOMER_LOOKS[0];
+      const look: CharacterLook = (SHOPKEEPER_LOOKS as Record<string, CharacterLook>)[n.lookId] ?? FAMILY_LOOKS[n.lookId] ?? CUSTOMER_LOOKS.find((c) => c.id === n.lookId) ?? CUSTOMER_LOOKS[0];
       const tex = buildCharacterTexture(this, look);
       this.npcs.push(new Npc(this, n, tex, look.name, { isBlocked: (tx, ty) => this.isBlocked(tx, ty) }));
     }
@@ -1634,7 +1634,11 @@ export class WorldScene extends Phaser.Scene {
       this.spawnCustomer(this.customerQueue.shift() as boolean);
     }
     for (const c of this.critters) c.update(time, dt);
-    for (const n of this.npcs) n.update(time, dt);
+    for (const n of this.npcs) {
+      n.update(time, dt);
+      // name tags only for villagers close by, so a crowded room stays readable
+      n.ch.label.setVisible(Math.hypot(n.ch.x - this.player.x, n.ch.y - this.player.y) < 44);
+    }
     this.updateDiners(time, dt);
     this.updateRain(dt);
     this.updateFireworks(time, dt);

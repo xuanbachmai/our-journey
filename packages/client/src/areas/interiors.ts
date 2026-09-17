@@ -1,4 +1,5 @@
 import { T } from '../art/tiles';
+import { FAMILIES, type Family } from '../config/family';
 import { blockRect, boolGrid, fillRect, grid, type AreaDef, type AreaObject, type DinerTable, type NpcDef } from './types';
 
 /** Walls on the top two rows and both sides, floor in between, a door mat at the bottom middle. */
@@ -177,5 +178,96 @@ export function buildPetshop(): AreaDef {
       blockRect(blocked, 13, 8, 1, 1);
     },
     { tx: 38, ty: 7 },
+  );
+}
+
+interface Deco {
+  frame: string;
+  tx: number;
+  ty: number;
+  w: number;
+  dy?: number;
+  floor?: boolean;
+}
+
+/** A cosy family home: decor, then each family member standing in the room. */
+function familyHome(id: 'qdhome' | 'xbhome', floor: number, family: Family, decor: Deco[], spots: [number, number, number][], lane: { tx: number; ty: number }): AreaDef {
+  const w = 16;
+  const h = 11;
+  const { tiles, blocked, doorTx } = room(w, h, floor);
+  const objects: AreaObject[] = [];
+  for (const d of decor) {
+    objects.push({ key: 'furniture', frame: d.frame, tx: d.tx, ty: d.ty, w: d.w, h: 1, dy: d.dy ?? 0, blocked: !d.floor, floor: d.floor });
+    if (!d.floor) blockRect(blocked, d.tx, d.ty, d.w, 1);
+  }
+  const npcs: NpcDef[] = family.members.map((m, i) => {
+    const [tx, ty, wander] = spots[i] ?? [3 + i * 3, 8, 1];
+    return { id: m.id, lookId: m.id, tx, ty, wander, lines: m.lines.xb, linesFor: m.lines };
+  });
+  return {
+    id,
+    w,
+    h,
+    tiles,
+    blocked,
+    objects,
+    portals: [{ tx: doorTx, ty: h - 1, w: 1, h: 1, to: 'lane', targetTx: lane.tx, targetTy: lane.ty, facing: 'down', label: 'Outside' }],
+    npcs,
+    forage: [],
+    spawn: { tx: doorTx, ty: h - 3 },
+    party: [{ tx: 12, ty: 4 }],
+  };
+}
+
+export function buildQdHome(): AreaDef {
+  return familyHome(
+    'qdhome',
+    T.FLOOR_WOOD,
+    FAMILIES.qd,
+    [
+      { frame: 'fireplace', tx: 2, ty: 2, w: 2 },
+      { frame: 'bookshelf', tx: 12, ty: 1, w: 1, dy: 4 },
+      { frame: 'photo', tx: 7, ty: 1, w: 1, dy: -2, floor: true },
+      { frame: 'painting', tx: 9, ty: 1, w: 1, dy: -2, floor: true },
+      { frame: 'rug', tx: 5, ty: 6, w: 3, floor: true },
+      { frame: 'sofa', tx: 3, ty: 5, w: 2, dy: 2 },
+      { frame: 'table', tx: 9, ty: 5, w: 2, dy: 2 },
+      { frame: 'teddy', tx: 13, ty: 3, w: 1 },
+      { frame: 'plant', tx: 14, ty: 8, w: 1 },
+      { frame: 'lamp', tx: 1, ty: 8, w: 1 },
+    ],
+    [
+      [4, 4, 1],
+      [10, 4, 1],
+      [6, 8, 2],
+      [11, 8, 2],
+    ],
+    { tx: 8, ty: 7 },
+  );
+}
+
+export function buildXbHome(): AreaDef {
+  return familyHome(
+    'xbhome',
+    T.FLOOR_TILE,
+    FAMILIES.xb,
+    [
+      { frame: 'piano', tx: 2, ty: 2, w: 2 },
+      { frame: 'aquarium', tx: 12, ty: 2, w: 2 },
+      { frame: 'photo', tx: 7, ty: 1, w: 1, dy: -2, floor: true },
+      { frame: 'painting', tx: 5, ty: 1, w: 1, dy: -2, floor: true },
+      { frame: 'bookshelf', tx: 10, ty: 1, w: 1, dy: 4 },
+      { frame: 'rug', tx: 5, ty: 7, w: 3, floor: true },
+      { frame: 'table', tx: 7, ty: 5, w: 2, dy: 2 },
+      { frame: 'sofa', tx: 11, ty: 7, w: 2, dy: 2 },
+      { frame: 'plant', tx: 1, ty: 8, w: 1 },
+      { frame: 'lamp', tx: 14, ty: 8, w: 1 },
+    ],
+    [
+      [9, 4, 1],
+      [5, 4, 1],
+      [12, 5, 2],
+    ],
+    { tx: 25, ty: 7 },
   );
 }

@@ -43,7 +43,7 @@ A farm has exactly two seats. *Keep my seat (email)* lets you restore your seat 
 1. **Farm**: till, plant, water, harvest. Cheap crops take minutes, premium ones hours. Rain and the sprinkler water for you. Dry soil pauses growth, nothing dies.
 2. **Cook** at the outdoor kitchen or inside the restaurant. Each recipe is a chain of mini-games; timing decides the grade C, B, A or S. Reputation and recipe books from the store unlock more.
 3. **Sell** three ways: the counter by the road sells while you are away; the **restaurant** has diners who sit and order (serve fast for a tip); the **orders board** in town pays extra for specific requests. Store prices change daily.
-4. **Explore**: road east to Maple Town (store, tailor, pet shop), north of town to Whisper Forest (foraging, hidden pond), west to Sunny Ranch (barn, cows, sheep). Every building has an inside. The map lets you travel to discovered places.
+4. **Explore**: road east to Maple Town (store, tailor, pet shop), north of town to Whisper Forest (foraging, hidden pond), west to Sunny Ranch (barn, cows, sheep), east of town to Family Lane with both family homes: Nha ba Hanh (qd's family) and Nha ba Thai (xb's family). Every building has an inside. The map lets you travel to discovered places.
 5. **Home**: buy furniture, place it with Decorate, raise coziness for better dish prices. The wardrobe holds hats, dyes and hair colours from the tailor.
 6. **Friends**: hens at the coop, cows and sheep at the ranch, bees in the garden. Adopt a pet; it follows you and digs up gifts.
 7. **Together**: the Love Tree grows on days you both play. Leave notes in the mailbox, answer the daily question, cook a dish together when both online, set special days for fireworks, collect postcards in the album.
@@ -62,6 +62,7 @@ A farm has exactly two seats. *Keep my seat (email)* lets you restore your seat 
 ## Personalise
 
 - The mailbox letter: `packages/client/src/config/letter.ts`
+- Family names, colours and what each person says to xb or qd: `packages/client/src/config/family.ts`
 - Special days (birthdays, anniversary): Journal → Settings → Special days
 
 ## Project layout

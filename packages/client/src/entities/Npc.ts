@@ -23,12 +23,14 @@ export class Npc {
   }
 
   /** Returns the line said. */
-  talk(): string {
-    const line = this.def.lines[this.lineIndex % this.def.lines.length];
+  talk(visitor?: 'xb' | 'qd'): string {
+    const lines = (visitor && this.def.linesFor?.[visitor]) || this.def.lines;
+    const line = lines[this.lineIndex % lines.length];
     this.lineIndex++;
     this.pauseUntil = this.scene.time.now + 4000;
     this.target = null;
-    this.ch.showBubble(null, line, 3800);
+    // the line itself is shown in the HUD dialogue box; a small bubble marks who is talking
+    this.ch.showBubble('dots', undefined, 1500);
     return line;
   }
 
