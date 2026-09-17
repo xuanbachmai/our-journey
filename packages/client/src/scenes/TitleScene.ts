@@ -26,7 +26,13 @@ export class TitleScene extends Phaser.Scene {
   create() {
     this.chosen = false;
     this.drawBackdrop();
-    this.scale.once('resize', () => this.scene.restart());
+    // redraw on rotate, but only while the title is actually showing; a stale listener
+    // used to restart the title behind the game whenever the phone was rotated
+    const onResize = () => {
+      if (this.scene.isActive() && !this.chosen) this.scene.restart();
+    };
+    this.scale.on('resize', onResize);
+    this.events.once('shutdown', () => this.scale.off('resize', onResize));
     void this.boot();
   }
 

@@ -73,7 +73,7 @@ const HELP: HelpPage[] = [
   { title: 'Home', icon: 'furn-sofa', lines: ['Buy furniture at the store and place', 'it inside the house with Decorate.', 'Coziness raises your dish prices.', 'The wardrobe changes hats, dyes', 'and hair from the tailor.'] },
   { title: 'Animals', icon: 'cow', lines: ['Hens lay eggs at the coop. Cows and', 'sheep at the ranch make milk and wool.', 'Bees make honey. Collect at the barn,', 'coop or hives. Pets follow you and', 'dig up little gifts. Pet them!'] },
   { title: 'Together', icon: 'heart', lines: ['The Love Tree grows on days you both', 'play. Leave notes in the mailbox.', 'Answer the daily question. Cook a', 'dish together when both online.', 'Special days bring fireworks.'] },
-  { title: 'Controls', icon: 'menu', lines: ['Phone: drag left half to move, big', 'button to act. PC: WASD, SPACE.', 'Number keys pick seeds. J journal,', 'M map. In Decorate: arrows move,', 'ENTER places, ESC stops.'] },
+  { title: 'Controls', icon: 'menu', lines: ['Phone: drag left half to move, big', 'button to act, bag button top left.', 'PC: WASD, SPACE. 1-8 seeds, B bag,', 'J journal, M map. In Decorate:', 'arrows move, ENTER places, ESC stops.'] },
 ];
 
 export class HudScene extends Phaser.Scene {
@@ -82,7 +82,11 @@ export class HudScene extends Phaser.Scene {
   private coinText!: Phaser.GameObjects.Text;
   private repBar!: Phaser.GameObjects.Graphics;
   private repText!: Phaser.GameObjects.Text;
-  private itemRow!: Phaser.GameObjects.Container;
+  private bagBtn!: Phaser.GameObjects.Container;
+  private bagBadge!: Phaser.GameObjects.Text;
+  private lastBagTotal = -1;
+  private bagTab: 'produce' | 'seeds' | 'dishes' | 'home' = 'produce';
+  private bagSel: string | null = null;
   private hotbar!: Phaser.GameObjects.Container;
   private slotGfx: Phaser.GameObjects.Graphics[] = [];
   private slotCounts: Phaser.GameObjects.Text[] = [];
@@ -130,7 +134,19 @@ export class HudScene extends Phaser.Scene {
     this.add.image(6, 19, 'icons', 'heart').setOrigin(0, 0);
     this.repBar = this.add.graphics();
     this.repText = this.add.text(66, 21, '0', style({ color: '#ff8fa3' })).setOrigin(0, 0);
-    this.itemRow = this.add.container(6, 34);
+    // bag button replaces the old row of loose item icons
+    {
+      const g = this.add.graphics();
+      panel(g, -12, -12, 24, 24, 0xfff4dc);
+      const icon = this.add.image(0, -1, 'icons', 'bag').setScale(1.5);
+      this.bagBadge = this.add.text(13, 13, '0', style()).setOrigin(1, 1);
+      const z = this.add.zone(0, 0, 26, 26).setInteractive({ useHandCursor: true });
+      z.on('pointerdown', () => {
+        audio.play('open');
+        this.overlay ? this.closeOverlay() : this.openBag();
+      });
+      this.bagBtn = this.add.container(0, 0, [g, icon, this.bagBadge, z]);
+    }
 
     // top centre: area + weather + partner
     this.areaText = this.add.text(0, 6, '', style({ color: '#fff' })).setOrigin(0.5, 0);
@@ -191,7 +207,9 @@ export class HudScene extends Phaser.Scene {
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
       audio.unlock();
       if (this.overlay || this.world.isUiOpen() || !this.isTouch) return;
-      if (p.x < this.scale.width * 0.5 && p.y > 44 && this.joyPointer === null) {
+      // taps on HUD buttons (bag, hotbar, decorate) must not start the joystick
+      if (this.input.hitTestPointer(p).length > 0) return;
+      if (p.x < this.scale.width * 0.5 && p.y > 30 && this.joyPointer === null) {
         this.joyPointer = p.id;
         this.joyOrigin = { x: p.x, y: p.y };
         this.joyBase.setPosition(p.x, p.y).setVisible(true);
@@ -224,6 +242,9 @@ export class HudScene extends Phaser.Scene {
     this.input.keyboard?.on('keydown-ESC', () => this.closeOverlay());
     this.input.keyboard?.on('keydown-J', () => (this.overlay ? this.closeOverlay() : this.openJournal('quests')));
     this.input.keyboard?.on('keydown-M', () => (this.overlay ? this.closeOverlay() : this.openMap()));
+    const bagKey = () => (this.overlay ? this.closeOverlay() : this.openBag());
+    this.input.keyboard?.on('keydown-B', bagKey);
+    this.input.keyboard?.on('keydown-I', bagKey);
 
     this.scale.on('resize', () => this.layout());
     this.layout();
@@ -294,8 +315,9 @@ export class HudScene extends Phaser.Scene {
     this.helpBtn.setPosition(W - 58, 12);
     this.questBox.setPosition(W - 72, 12);
     this.emoteBtn.setPosition(W - 30, H - 78);
-    this.decorBtn.setPosition(6, 50);
-    this.decorStop.setPosition(6, 50);
+    this.bagBtn.setPosition(18, 46);
+    this.decorBtn.setPosition(6, 64);
+    this.decorStop.setPosition(6, 64);
     this.areaText.setOrigin(1, 0).setPosition(W - 8, 26);
     this.partnerText.setOrigin(1, 0).setPosition(W - 8, 38);
     this.weatherIcon.setPosition(W - 8 - this.areaText.width - 10, 32);
@@ -311,20 +333,12 @@ export class HudScene extends Phaser.Scene {
     this.repBar.fillStyle(0x4a2a3f, 1).fillRect(20, 22, 44, 6);
     this.repBar.fillStyle(0xff8fa3, 1).fillRect(21, 23, Math.round(42 * (d.reputation / 100)), 4);
     this.repText.setText(String(Math.floor(d.reputation)));
-    this.itemRow.removeAll(true);
-    let x = 0;
-    for (const id of SELLABLE) {
-      const n = d.inventory[id] ?? 0;
-      if (!n) continue;
-      if (x > 200) break;
-      this.itemRow.add(this.add.image(x, 0, 'icons', ITEMS[id].icon).setOrigin(0, 0));
-      this.itemRow.add(this.add.text(x + 13, 3, String(n), style()).setOrigin(0, 0));
-      x += 28;
-    }
-    if (d.dishes) {
-      this.itemRow.add(this.add.image(x, 0, 'icons', 'plate').setOrigin(0, 0));
-      this.itemRow.add(this.add.text(x + 13, 3, `${d.dishes}/${d.dishCap}`, style({ color: d.dishes >= d.dishCap ? '#ff6b6b' : '#fff' })).setOrigin(0, 0));
-    }
+    // bag badge: produce + dishes carried; a little hop when something new goes in
+    let total = d.dishes;
+    for (const id of SELLABLE) total += d.inventory[id] ?? 0;
+    this.bagBadge.setText(total > 99 ? '99+' : String(total)).setColor(d.dishes >= d.dishCap ? '#ff6b6b' : '#ffffff');
+    if (this.lastBagTotal >= 0 && total > this.lastBagTotal && !this.tweens.isTweening(this.bagBtn)) this.tweens.add({ targets: this.bagBtn, y: this.bagBtn.y - 4, duration: 90, yoyo: true });
+    this.lastBagTotal = total;
     // hotbar: only crops you own seeds of or that are unlocked
     this.slotSeeds = CROP_IDS.filter((c) => (d.inventory[`seed:${c}`] ?? 0) > 0 || CROPS[c].unlockRep <= d.reputation);
     const n = this.slotSeeds.length;
@@ -1101,6 +1115,124 @@ export class HudScene extends Phaser.Scene {
       c.add(b.container);
     });
     c.add(this.add.text(0, h / 2 - 9, 'New requests every day', plain({ color: '#7a6a70' })).setOrigin(0.5));
+  }
+
+  // ---------- bag ----------
+
+  private bagEntries(tab: 'produce' | 'seeds' | 'dishes' | 'home'): { key: string; icon: string; count: number; name: string }[] {
+    const st = this.world.state;
+    if (tab === 'produce') return SELLABLE.filter((id) => st.count(id) > 0).map((id) => ({ key: id, icon: ITEMS[id].icon, count: st.count(id), name: ITEMS[id].name }));
+    if (tab === 'seeds') return CROP_IDS.filter((c) => st.count(`seed:${c}`) > 0).map((c) => ({ key: c, icon: `seed-${c}`, count: st.count(`seed:${c}`), name: `${CROPS[c].name} seeds` }));
+    if (tab === 'home') return FURNITURE_IDS.filter((f) => st.furnitureOwned(f) > 0).map((f) => ({ key: f, icon: `furn-${f}`, count: st.furnitureOwned(f), name: FURNITURE[f].name }));
+    // dishes grouped by recipe and grade, best grade first
+    const groups = new Map<string, { key: string; icon: string; count: number; name: string }>();
+    for (const d of [...st.world.dishes].sort((a, b) => b.grade - a.grade)) {
+      const key = `${d.recipe}:${d.grade}`;
+      const g = groups.get(key) ?? { key, icon: `dish-${d.recipe}`, count: 0, name: `${RECIPES[d.recipe].name} ${GRADE_NAMES[d.grade]}` };
+      g.count++;
+      groups.set(key, g);
+    }
+    return [...groups.values()];
+  }
+
+  /** Item icon for the bag; furniture uses its real sprite shrunk to fit. */
+  private bagIcon(tab: string, key: string, icon: string, x: number, y: number, size: number) {
+    if (tab === 'home') {
+      const img = this.add.image(x, y, 'furniture', key);
+      img.setScale(Math.min(size / img.width, size / img.height, 1));
+      return img;
+    }
+    return this.add.image(x, y, 'icons', icon).setScale(size / 12 >= 2 ? 2 : 1.5);
+  }
+
+  /** Pokemon-style bag: pockets, a grid of item slots, details for the selected item. */
+  private openBag(tab: 'produce' | 'seeds' | 'dishes' | 'home' = this.bagTab) {
+    this.bagTab = tab;
+    const st = this.world.state;
+    const w = 300;
+    const h = 176;
+    const c = this.openOverlay(w, h, `Bag   (dishes ${st.world.dishes.length}/${st.dishCap})`);
+    this.tabs(c, w, h, [
+      ['Food', () => this.openBag('produce')],
+      ['Seeds', () => this.openBag('seeds')],
+      ['Dishes', () => this.openBag('dishes')],
+      ['Home', () => this.openBag('home')],
+    ], ['produce', 'seeds', 'dishes', 'home'].indexOf(tab));
+
+    const entries = this.bagEntries(tab).slice(0, 30);
+    if (!entries.some((e) => e.key === this.bagSel)) this.bagSel = entries[0]?.key ?? null;
+
+    // grid: 10 x 3 slots
+    const cols = 10;
+    const slot = 26;
+    const x0 = -(cols * slot) / 2;
+    const y0 = -h / 2 + 40;
+    for (let i = 0; i < cols * 3; i++) {
+      const sx = x0 + (i % cols) * slot;
+      const sy = y0 + Math.floor(i / cols) * slot;
+      const e = entries[i];
+      const g = this.add.graphics();
+      const sel = !!e && e.key === this.bagSel;
+      panel(g, sx, sy, 24, 24, sel ? 0xffe066 : e ? 0xffffff : 0xefe4d2, sel ? 0xff8fcf : e ? 0x4a2a3f : 0xd9c9b8);
+      c.add(g);
+      if (!e) continue;
+      c.add(this.bagIcon(tab, e.key, e.icon, sx + 12, sy + 12, 20));
+      if (e.count > 1) c.add(this.add.text(sx + 25, sy + 26, String(e.count), style()).setOrigin(1, 1));
+      const z = this.add.zone(sx + 12, sy + 12, 24, 24).setInteractive({ useHandCursor: true });
+      z.on('pointerdown', () => {
+        audio.play('blip');
+        this.bagSel = e.key;
+        this.openBag(tab);
+      });
+      c.add(z);
+    }
+
+    // details of the selected item
+    const dy = y0 + 3 * slot + 4;
+    const line = this.add.graphics();
+    line.fillStyle(0xd9c9b8, 1).fillRect(-w / 2 + 8, dy, w - 16, 1);
+    c.add(line);
+    const sel = entries.find((e) => e.key === this.bagSel);
+    if (!sel) {
+      const empty = { produce: 'Harvest, forage, fish or collect from animals', seeds: 'Buy seeds at the farm stall or the store', dishes: 'Cook something in the kitchen', home: 'Buy furniture at the store in town' }[tab];
+      c.add(this.add.text(0, dy + 22, `Nothing here yet. ${empty}.`, plain({ color: '#7a6a70', align: 'center', wordWrap: { width: w - 24 } })).setOrigin(0.5));
+      return;
+    }
+    const cut = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
+    const tx = -w / 2 + 38;
+    c.add(this.bagIcon(tab, sel.key, sel.icon, -w / 2 + 20, dy + 20, 26));
+    c.add(this.add.text(tx, dy + 9, `${sel.name}  x${sel.count}`, plain()).setOrigin(0, 0.5));
+    let info = '';
+    let hint = '';
+    let action: [string, () => void] | null = null;
+    if (tab === 'produce') {
+      const id = sel.key as ItemId;
+      info = `Sells for ${st.sellPrice(id)}c today`;
+      const uses = Object.values(RECIPES).filter((r) => r.ingredients[id]).map((r) => r.name);
+      hint = uses.length ? `Used in ${uses[0]}${uses.length > 1 ? ` +${uses.length - 1} more` : ''}` : 'Sell at the stall or store';
+    } else if (tab === 'seeds') {
+      const id = sel.key as CropId;
+      info = `Grows in ${this.growText(id)}, sells ${CROPS[id].sellPrice}c`;
+      hint = st.selectedSeed === id ? 'In hand. Plant on tilled soil' : 'Hold it to plant it';
+      if (st.selectedSeed !== id) action = ['Hold', () => { this.world.selectSeed(id); this.openBag('seeds'); }];
+    } else if (tab === 'dishes') {
+      const [recipe, grade] = sel.key.split(':');
+      const price = st.priceOf({ recipe: recipe as RecipeId, grade: Number(grade) as 0 | 1 | 2 | 3 });
+      info = `Worth ${price}c each`;
+      hint = 'Serve, sell or fill an order';
+    } else {
+      const id = sel.key as FurnitureId;
+      const placed = st.world.furniturePlaced.filter((p) => p.id === id).length;
+      info = `+${FURNITURE[id].cozy} coziness, ${placed} already placed`;
+      if (this.last?.area === 'home') action = ['Place', () => { this.closeOverlay(); this.world.startDecorate(id, 'place'); }];
+      else hint = 'Place it inside your home';
+    }
+    c.add(this.add.text(tx, dy + 21, cut(info, 30), plain({ color: '#b07a00' })).setOrigin(0, 0.5));
+    if (hint) c.add(this.add.text(tx, dy + 33, cut(hint, 30), plain({ color: '#7a6a70' })).setOrigin(0, 0.5));
+    if (action) {
+      const b = button(this, w / 2 - 58, dy + 12, 48, 16, action[0], action[1], 0x7de8c8);
+      c.add(b.container);
+    }
   }
 
   // ---------- map ----------

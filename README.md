@@ -55,6 +55,7 @@ A farm has exactly two seats. *Keep my seat (email)* lets you restore your seat 
 | Move | Drag on the left half of the screen | WASD |
 | Act | Big round button | SPACE or E |
 | Seeds | Tap the hotbar | 1 to 8 |
+| Bag (food, seeds, dishes, furniture) | Bag button, top left | B or I |
 | Journal / Map / Help | Top-right buttons | J / M / top-right buttons |
 | Decorate | Decorate button at home; tap the floor, then Place | Arrow keys move, ENTER places, ESC stops |
 | Emotes | Heart button (when your partner is online) | same |
