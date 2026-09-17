@@ -1,0 +1,15 @@
+{
+  "name": "our-journey",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w @hh/client",
+    "build": "npm run build -w @hh/client",
+    "preview": "npm run preview -w @hh/client",
+    "test": "npm run test -w @hh/shared",
+    "typecheck": "npm run typecheck -w @hh/client"
+  }
+}

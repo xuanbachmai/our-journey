@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="theme-color" content="#7ecbff" />
+    <title>Our Journey</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet" />
+    <style>
+      html, body { margin: 0; padding: 0; height: 100%; background: #7ecbff; overflow: hidden; }
+      body { display: flex; align-items: center; justify-content: center; touch-action: none; -webkit-user-select: none; user-select: none; }
+      #game { display: flex; align-items: center; justify-content: center; width: 100vw; height: 100vh; }
+      canvas { image-rendering: pixelated; image-rendering: crisp-edges; }
+      #rotate {
+        display: none; position: fixed; inset: 0; background: #7ecbff; color: #3b2a3a; z-index: 10;
+        font-family: 'Press Start 2P', monospace; font-size: 14px; text-align: center; line-height: 2;
+        align-items: center; justify-content: center; flex-direction: column;
+      }
+      @media (orientation: portrait) and (max-width: 700px) { #rotate { display: flex; } }
+    </style>
+  </head>
+  <body>
+    <div id="game"></div>
+    <div id="rotate"><div style="font-size:40px">📱↻</div>Please rotate<br />your phone</div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
