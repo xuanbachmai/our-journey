@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { BootScene } from './scenes/BootScene';
-import { FarmScene } from './scenes/FarmScene';
+import { WorldScene } from './scenes/WorldScene';
 import { HudScene } from './scenes/HudScene';
 import { MiniGameScene } from './scenes/MiniGameScene';
 import { TitleScene } from './scenes/TitleScene';
@@ -25,7 +25,7 @@ function createGame(type: number) {
     scale: { mode: Phaser.Scale.NONE, autoRound: true },
     input: { activePointers: 3 },
     fps: { forceSetTimeOut: useTimer, target: 60 },
-    scene: [BootScene, TitleScene, FarmScene, HudScene, MiniGameScene],
+    scene: [BootScene, TitleScene, WorldScene, HudScene, MiniGameScene],
   });
   g.events.once('ready', () => {
     if (game !== g) return;
@@ -88,7 +88,8 @@ document.addEventListener('contextmenu', (e) => e.preventDefault());
 Object.defineProperty(window, '__game', { get: () => game });
 
 void probeAnimationFrame().then((ok) => {
-  useTimer = !ok;
+  // ?timer=1 forces the timer loop (useful for automated tests in hidden panes)
+  useTimer = !ok || new URLSearchParams(window.location.search).get('timer') === '1';
   if (useTimer) console.warn('requestAnimationFrame is not firing; using a timer-driven game loop');
   game = createGame(Phaser.AUTO);
 });

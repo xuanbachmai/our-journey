@@ -19,7 +19,18 @@ type SfxName =
   | 'cluck'
   | 'quest'
   | 'splash'
-  | 'open';
+  | 'open'
+  | 'door'
+  | 'serve'
+  | 'tip'
+  | 'bark'
+  | 'meow'
+  | 'moo'
+  | 'baa'
+  | 'firework'
+  | 'place'
+  | 'pop'
+  | 'whistle';
 
 class Audio {
   private ctx: AudioContext | null = null;
@@ -158,6 +169,76 @@ class Audio {
         this.tone(700, 0.06, 'square', 0.1, -200);
         this.tone(900, 0.08, 'square', 0.1, -300, 0.08);
         break;
+      case 'door':
+        this.noise(0.08, 0.2, 700);
+        this.tone(320, 0.12, 'triangle', 0.15, -80, 0.05);
+        break;
+      case 'serve':
+        this.tone(988, 0.08, 'triangle', 0.2);
+        this.tone(1319, 0.16, 'triangle', 0.2, 0, 0.08);
+        break;
+      case 'tip':
+        [1319, 1568, 2093].forEach((f, i) => this.tone(f, 0.1, 'square', 0.12, 0, i * 0.06));
+        break;
+      case 'bark':
+        this.tone(300, 0.08, 'square', 0.15, 200);
+        this.tone(260, 0.1, 'square', 0.15, 150, 0.12);
+        break;
+      case 'meow':
+        this.tone(600, 0.25, 'triangle', 0.15, 500);
+        break;
+      case 'moo':
+        this.tone(160, 0.45, 'sawtooth', 0.1, -40);
+        break;
+      case 'baa':
+        this.tone(420, 0.12, 'sawtooth', 0.08, 0);
+        this.tone(420, 0.12, 'sawtooth', 0.08, 0, 0.14);
+        this.tone(420, 0.12, 'sawtooth', 0.08, 0, 0.28);
+        break;
+      case 'firework':
+        this.tone(200, 0.3, 'sine', 0.2, 900);
+        this.noise(0.5, 0.35, 1800, 0.32);
+        break;
+      case 'place':
+        this.tone(440, 0.06, 'square', 0.15);
+        this.tone(660, 0.1, 'square', 0.15, 0, 0.06);
+        break;
+      case 'pop':
+        this.tone(700, 0.05, 'sine', 0.2, 500);
+        break;
+      case 'whistle':
+        this.tone(1200, 0.15, 'sine', 0.15, 600);
+        this.tone(1800, 0.15, 'sine', 0.15, -600, 0.15);
+        break;
+    }
+  }
+
+  private rainSrc: AudioBufferSourceNode | null = null;
+  private rainGain: GainNode | null = null;
+
+  /** Soft looping rain; safe to call repeatedly. */
+  setRain(on: boolean) {
+    if (!this.ctx || !this.master || !this.noiseBuf) return;
+    if (on && !this.rainSrc) {
+      const s = this.ctx.createBufferSource();
+      s.buffer = this.noiseBuf;
+      s.loop = true;
+      const f = this.ctx.createBiquadFilter();
+      f.type = 'lowpass';
+      f.frequency.value = 900;
+      const g = this.ctx.createGain();
+      g.gain.value = 0;
+      g.gain.setTargetAtTime(this.sfxOn ? 0.12 : 0, this.ctx.currentTime, 1.5);
+      s.connect(f).connect(g).connect(this.master);
+      s.start();
+      this.rainSrc = s;
+      this.rainGain = g;
+    } else if (!on && this.rainSrc) {
+      const src = this.rainSrc;
+      this.rainGain?.gain.setTargetAtTime(0, this.ctx.currentTime, 0.8);
+      setTimeout(() => src.stop(), 2500);
+      this.rainSrc = null;
+      this.rainGain = null;
     }
   }
 

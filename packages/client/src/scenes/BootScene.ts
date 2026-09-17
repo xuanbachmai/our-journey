@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { buildCharacterTexture, CUSTOMER_LOOKS, LOOKS } from '../art/characters';
+import { buildCharacterTexture, CUSTOMER_LOOKS, LOOKS, SHOPKEEPER_LOOKS } from '../art/characters';
 import { buildObjectTextures } from '../art/objects';
 import { buildTileset } from '../art/tiles';
 
@@ -20,6 +20,7 @@ export class BootScene extends Phaser.Scene {
     buildCharacterTexture(this, LOOKS.xb);
     buildCharacterTexture(this, LOOKS.qd);
     CUSTOMER_LOOKS.forEach((l) => buildCharacterTexture(this, l));
+    Object.values(SHOPKEEPER_LOOKS).forEach((l) => buildCharacterTexture(this, l));
 
     const mk = (key: string, frames: string[], rate: number) => {
       if (this.anims.exists(key)) return;

@@ -1,31 +1,61 @@
 import {
+  ACCESSORIES,
+  ANIMALS,
+  animalCount,
+  BOOKS,
   bump,
-  chickens,
+  clothingKey,
   counterSlots,
+  cozy,
   CROPS,
   currentQuest,
+  daysTogether,
+  dayKey,
+  dishCap,
   dishPrice,
+  DYES,
   emptyPlot,
+  FURNITURE,
+  HAIR_COLORS,
+  HATS,
   ITEMS,
+  loveTreeStage,
+  migrateWorld,
   newWorld,
+  PET_AFFECTION_PER_PET,
+  PET_COOLDOWN_MS,
+  PET_GIFTS,
+  PETS,
+  POSTCARD_MILESTONES,
   questDone,
   SELLABLE,
+  sellPriceToday,
   simulateWorld,
   UPGRADES,
   upgradeLevel,
-  MAX_CHICKENS,
+  MAX_TABLES,
+  BASE_TABLES,
+  type AnimalId,
+  type AreaId,
+  type BookId,
   type CropId,
   type Dish,
+  type FurnitureId,
   type ItemId,
+  type Order,
+  type Outfit,
+  type PetId,
+  type PlacedFurniture,
   type PlayerId,
   type PlotState,
+  type Postcard,
   type UpgradeId,
   type WorldEvent,
   type WorldState,
 } from '@hh/shared';
 
 export interface SaveData {
-  version: 2;
+  version: 3;
   world: WorldState;
   lastPlayer: PlayerId | null;
   selectedSeed: CropId;
@@ -34,22 +64,11 @@ export interface SaveData {
   musicOn: boolean;
 }
 
-const KEY = 'hearth-harvest-save-v1';
+const KEY = 'our-journey-save-v3';
+const OLD_KEY = 'hearth-harvest-save-v1';
 
 export function plotKey(tx: number, ty: number) {
   return `${tx},${ty}`;
-}
-
-function fresh(now: number): SaveData {
-  return {
-    version: 2,
-    world: newWorld(now),
-    lastPlayer: null,
-    selectedSeed: 'tomato',
-    seenLetter: false,
-    soundOn: true,
-    musicOn: true,
-  };
 }
 
 export interface AwaySummary {
@@ -57,15 +76,22 @@ export interface AwaySummary {
   events: WorldEvent[];
 }
 
-/** Local-only world state. The server (M3) will own the WorldState later; this wrapper stays. */
+/**
+ * The world plus local preferences. Every player-caused change goes through
+ * touch(), which bumps the change counter and notifies the sync layer.
+ */
 export class GameState {
   data: SaveData;
   away: AwaySummary | null = null;
+  me: PlayerId = 'xb';
+  /** Called after player-caused changes (used by online sync). */
+  onChange: ((w: WorldState) => void) | null = null;
   private dirty = false;
 
-  constructor() {
+  constructor(initialWorld?: WorldState) {
     const now = Date.now();
     this.data = this.load(now);
+    if (initialWorld) this.data.world = initialWorld;
     const awayMs = now - this.data.world.lastSimulatedAt;
     const { world, events } = simulateWorld(this.data.world, now);
     this.data.world = world;
@@ -78,29 +104,28 @@ export class GameState {
   }
 
   private load(now: number): SaveData {
+    const fresh = (): SaveData => ({ version: 3, world: newWorld(now), lastPlayer: null, selectedSeed: 'wheat', seenLetter: false, soundOn: true, musicOn: true });
     try {
-      const raw = localStorage.getItem(KEY);
-      if (!raw) return fresh(now);
+      const raw = localStorage.getItem(KEY) ?? localStorage.getItem(OLD_KEY);
+      if (!raw) return fresh();
       const parsed = JSON.parse(raw) as Record<string, unknown>;
-      if (parsed.version === 2) {
-        const d = parsed as unknown as SaveData;
-        d.world = { ...newWorld(now), ...d.world };
-        return { ...fresh(now), ...d };
+      const d = fresh();
+      if (parsed.version === 3 && parsed.world) {
+        d.world = migrateWorld(parsed.world, now);
+      } else if (parsed.version === 2 && parsed.world) {
+        d.world = migrateWorld(parsed.world, now);
+      } else if (parsed.version === 1) {
+        d.world = migrateWorld({ coins: parsed.coins, inventory: parsed.inventory, plots: parsed.plots, lastSimulatedAt: parsed.lastSimulatedAt }, now);
       }
-      if (parsed.version === 1) {
-        // migrate the first prototype's save
-        const d = fresh(now);
-        d.world.coins = (parsed.coins as number) ?? d.world.coins;
-        d.world.inventory = (parsed.inventory as SaveData['world']['inventory']) ?? d.world.inventory;
-        d.world.plots = (parsed.plots as SaveData['world']['plots']) ?? {};
-        d.world.lastSimulatedAt = (parsed.lastSimulatedAt as number) ?? now;
-        d.seenLetter = !!parsed.seenLetter;
-        d.selectedSeed = (parsed.selectedSeed as CropId) ?? 'tomato';
-        return d;
-      }
-      return fresh(now);
+      d.lastPlayer = (parsed.lastPlayer as PlayerId) ?? null;
+      d.selectedSeed = (parsed.selectedSeed as CropId) ?? 'wheat';
+      if (!CROPS[d.selectedSeed]) d.selectedSeed = 'wheat';
+      d.seenLetter = !!parsed.seenLetter;
+      d.soundOn = parsed.soundOn !== false;
+      d.musicOn = parsed.musicOn !== false;
+      return d;
     } catch {
-      return fresh(now);
+      return fresh();
     }
   }
 
@@ -117,16 +142,59 @@ export class GameState {
     if (this.dirty) this.save();
   }
 
+  /** Mark a player-caused change. */
   touch() {
+    this.dirty = true;
+    this.world.changeCounter++;
+    this.onChange?.(this.world);
+  }
+
+  /** Adopt a copy received from the partner. Keeps nothing local; the caller refreshes the scene. */
+  replaceWorld(w: WorldState) {
+    this.data.world = w;
     this.dirty = true;
   }
 
-  /** Advance to `now`; returns the events that happened. */
   tick(now: number): WorldEvent[] {
     const { world, events } = simulateWorld(this.data.world, now);
     this.data.world = world;
     this.dirty = true;
     return events;
+  }
+
+  // ----- players -----
+  get meData() {
+    return this.world.players[this.me];
+  }
+
+  setPlace(area: AreaId, x: number, y: number) {
+    this.meData.place = { area, x, y };
+    this.dirty = true;
+  }
+
+  /** Records today for the Love Tree. Returns true if it is a new day for me. */
+  markPlayedToday(): boolean {
+    const k = dayKey(Date.now());
+    const list = this.meData.daysPlayed;
+    if (list.includes(k)) return false;
+    list.push(k);
+    this.touch();
+    return true;
+  }
+
+  get daysTogether() {
+    return daysTogether({ xb: this.world.players.xb.daysPlayed, qd: this.world.players.qd.daysPlayed });
+  }
+
+  get loveTreeStage() {
+    return loveTreeStage(this.daysTogether);
+  }
+
+  discover(area: AreaId): boolean {
+    if (this.world.discovered.includes(area)) return false;
+    this.world.discovered.push(area);
+    this.touch();
+    return true;
   }
 
   // ----- plots -----
@@ -178,17 +246,21 @@ export class GameState {
 
   set selectedSeed(c: CropId) {
     this.data.selectedSeed = c;
-    this.touch();
+    this.dirty = true;
   }
 
-  // ----- market -----
+  // ----- prices & selling -----
+  sellPrice(item: ItemId) {
+    return sellPriceToday(item, this.world.seed, Date.now());
+  }
+
   sellAllProduce(): { total: number; count: number } {
     let total = 0;
     let count = 0;
     for (const id of SELLABLE) {
       const n = this.count(id);
       if (n > 0) {
-        total += n * ITEMS[id].sellPrice;
+        total += n * this.sellPrice(id);
         count += n;
         this.world.inventory[id] = 0;
       }
@@ -198,14 +270,29 @@ export class GameState {
     return { total, count };
   }
 
+  sellItem(id: ItemId, qty: number): number {
+    const n = Math.min(qty, this.count(id));
+    if (n <= 0) return 0;
+    const total = n * this.sellPrice(id);
+    this.world.inventory[id] = this.count(id) - n;
+    this.world.coins += total;
+    this.touch();
+    return total;
+  }
+
+  seedUnlocked(id: CropId) {
+    return CROPS[id].unlockRep <= this.reputation;
+  }
+
   buySeed(id: CropId, qty = 1): boolean {
     const price = CROPS[id].seedPrice * qty;
-    if (this.world.coins < price) return false;
+    if (this.world.coins < price || !this.seedUnlocked(id)) return false;
     this.world.coins -= price;
     this.add(`seed:${id}`, qty);
     return true;
   }
 
+  // ----- upgrades & books -----
   upgradeLevel(id: UpgradeId) {
     return upgradeLevel(this.world, id);
   }
@@ -214,7 +301,6 @@ export class GameState {
     const def = UPGRADES[id];
     const lvl = this.upgradeLevel(id);
     if (lvl >= def.prices.length) return null;
-    if (id === 'chicken' && lvl >= MAX_CHICKENS) return null;
     return def.prices[lvl];
   }
 
@@ -228,20 +314,46 @@ export class GameState {
 
   buyUpgrade(id: UpgradeId): boolean {
     if (!this.canBuyUpgrade(id)) return false;
-    const price = this.upgradePrice(id) as number;
-    this.world.coins -= price;
+    this.world.coins -= this.upgradePrice(id) as number;
     this.world.upgrades[id] = this.upgradeLevel(id) + 1;
     if (id === 'counter') this.world.counter.push({ dish: null });
-    if (id === 'flowers') this.addRep(5);
-    if (id === 'chicken' && chickens(this.world) === 1) this.world.eggAnchor = Date.now();
+    if (id === 'flowers') this.world.reputation = Math.min(100, this.world.reputation + 5);
     this.touch();
     return true;
   }
 
+  hasBook(id: BookId) {
+    return this.world.books.includes(id);
+  }
+
+  buyBook(id: BookId): boolean {
+    if (this.hasBook(id) || this.world.coins < BOOKS[id].price) return false;
+    this.world.coins -= BOOKS[id].price;
+    this.world.books.push(id);
+    this.touch();
+    return true;
+  }
+
+  get tables() {
+    return Math.min(MAX_TABLES, BASE_TABLES + this.upgradeLevel('tables'));
+  }
+
   // ----- dishes & counter -----
-  addDish(d: Dish) {
+  get dishCap() {
+    return dishCap(this.world);
+  }
+
+  addDish(d: Dish): boolean {
+    if (this.world.dishes.length >= this.dishCap) return false;
     this.world.dishes.push(d);
     this.touch();
+    return true;
+  }
+
+  removeDish(index: number): Dish | null {
+    const d = this.world.dishes.splice(index, 1)[0] ?? null;
+    if (d) this.touch();
+    return d;
   }
 
   freeSlots(): number {
@@ -253,13 +365,14 @@ export class GameState {
     if (slot === -1 || !this.world.dishes[dishIndex]) return false;
     const [d] = this.world.dishes.splice(dishIndex, 1);
     this.world.counter[slot].dish = d;
-    this.stat('listed');
+    bump(this.world, 'listed');
+    this.touch();
     return true;
   }
 
   takeDish(slot: number): boolean {
     const s = this.world.counter[slot];
-    if (!s?.dish) return false;
+    if (!s?.dish || this.world.dishes.length >= this.dishCap) return false;
     this.world.dishes.push(s.dish);
     s.dish = null;
     this.touch();
@@ -267,25 +380,258 @@ export class GameState {
   }
 
   priceOf(d: Dish) {
-    return dishPrice(d, this.world.reputation);
+    return dishPrice(d, this.world.reputation, cozy(this.world));
+  }
+
+  get cozyBonus() {
+    return cozy(this.world);
   }
 
   slotCount() {
     return counterSlots(this.world);
   }
 
-  // ----- chickens -----
-  collectEggs(): number {
-    const n = this.world.eggsWaiting;
-    if (n <= 0) return 0;
-    this.world.eggsWaiting = 0;
-    this.add('egg', n);
-    this.stat('egg', n);
+  // ----- animals -----
+  animalCount(id: AnimalId) {
+    return animalCount(this.world, id);
+  }
+
+  animalPrice(id: AnimalId): number | null {
+    const def = ANIMALS[id];
+    if (this.animalCount(id) >= def.max) return null;
+    return Math.round(def.price * (1 + this.animalCount(id) * 0.25));
+  }
+
+  canBuyAnimal(id: AnimalId): boolean {
+    const def = ANIMALS[id];
+    const price = this.animalPrice(id);
+    if (price === null) return false;
+    if (def.requires && this.upgradeLevel(def.requires) === 0) return false;
+    return this.world.coins >= price;
+  }
+
+  buyAnimal(id: AnimalId): boolean {
+    if (!this.canBuyAnimal(id)) return false;
+    this.world.coins -= this.animalPrice(id) as number;
+    const p = this.world.producers[id] ?? { count: 0, anchor: Date.now(), waiting: 0 };
+    if (p.count === 0) p.anchor = Date.now();
+    p.count++;
+    this.world.producers[id] = p;
+    this.touch();
+    return true;
+  }
+
+  /** Products waiting at the given home (farm coop/hives or ranch barn). */
+  waitingAt(home: 'farm' | 'ranch', only?: AnimalId[]): { animal: AnimalId; count: number }[] {
+    const out: { animal: AnimalId; count: number }[] = [];
+    for (const id of Object.keys(this.world.producers) as AnimalId[]) {
+      if (ANIMALS[id].home !== home) continue;
+      if (only && !only.includes(id)) continue;
+      const w = this.world.producers[id]?.waiting ?? 0;
+      if (w > 0) out.push({ animal: id, count: w });
+    }
+    return out;
+  }
+
+  collect(home: 'farm' | 'ranch', only?: AnimalId[]): { item: ItemId; count: number }[] {
+    const got: { item: ItemId; count: number }[] = [];
+    for (const { animal, count } of this.waitingAt(home, only)) {
+      const p = this.world.producers[animal];
+      if (!p) continue;
+      p.waiting = 0;
+      const item = ANIMALS[animal].product;
+      this.world.inventory[item] = this.count(item) + count;
+      bump(this.world, `collect:${item}`, count);
+      got.push({ item, count });
+    }
+    if (got.length) this.touch();
+    return got;
+  }
+
+  // ----- forage -----
+  forageAvailable(key: string, respawnMin: number): boolean {
+    const t = this.world.forageTaken[key];
+    return !t || Date.now() - t > respawnMin * 60_000;
+  }
+
+  takeForage(key: string, item: ItemId): number {
+    const n = 1 + (Math.random() < 0.3 ? 1 : 0);
+    this.world.forageTaken[key] = Date.now();
+    this.world.inventory[item] = this.count(item) + n;
+    bump(this.world, 'forage', n);
+    this.touch();
     return n;
   }
 
+  // ----- orders -----
+  orderHave(o: Order): number {
+    if (o.dish) return this.world.dishes.filter((d) => d.recipe === o.dish).length;
+    return this.count(o.item as ItemId);
+  }
+
+  canComplete(o: Order) {
+    return this.orderHave(o) >= o.qty;
+  }
+
+  completeOrder(index: number): Order | null {
+    const o = this.world.orders[index];
+    if (!o || !this.canComplete(o)) return null;
+    if (o.dish) {
+      let left = o.qty;
+      this.world.dishes = this.world.dishes.filter((d) => {
+        if (left > 0 && d.recipe === o.dish) {
+          left--;
+          return false;
+        }
+        return true;
+      });
+    } else {
+      this.world.inventory[o.item as ItemId] = this.count(o.item as ItemId) - o.qty;
+    }
+    this.world.coins += o.reward;
+    this.world.reputation = Math.min(100, this.world.reputation + o.rep);
+    this.world.orders.splice(index, 1);
+    bump(this.world, 'orders');
+    bump(this.world, 'earned', o.reward);
+    this.touch();
+    return o;
+  }
+
+  // ----- furniture -----
+  furnitureOwned(id: FurnitureId) {
+    return this.world.furnitureOwned[id] ?? 0;
+  }
+
+  buyFurniture(id: FurnitureId): boolean {
+    const def = FURNITURE[id];
+    if (this.world.coins < def.price || def.unlockRep > this.reputation) return false;
+    this.world.coins -= def.price;
+    this.world.furnitureOwned[id] = this.furnitureOwned(id) + 1;
+    this.touch();
+    return true;
+  }
+
+  placeFurniture(id: FurnitureId, tx: number, ty: number): boolean {
+    if (this.furnitureOwned(id) <= 0) return false;
+    this.world.furnitureOwned[id] = this.furnitureOwned(id) - 1;
+    this.world.furniturePlaced.push({ id, tx, ty });
+    bump(this.world, 'placed');
+    this.touch();
+    return true;
+  }
+
+  pickUpFurniture(index: number): PlacedFurniture | null {
+    const p = this.world.furniturePlaced.splice(index, 1)[0] ?? null;
+    if (p) {
+      this.world.furnitureOwned[p.id] = this.furnitureOwned(p.id) + 1;
+      this.touch();
+    }
+    return p;
+  }
+
+  // ----- clothing -----
+  owns(kind: 'hat' | 'accessory' | 'dye' | 'hair', id: string) {
+    if (id === 'none' || id === 'default') return true;
+    return this.world.clothingOwned.includes(clothingKey(kind, id));
+  }
+
+  clothingPrice(kind: 'hat' | 'accessory' | 'dye' | 'hair', id: string): { price: number; unlockRep: number } {
+    const def = kind === 'hat' ? HATS[id as keyof typeof HATS] : kind === 'accessory' ? ACCESSORIES[id as keyof typeof ACCESSORIES] : kind === 'dye' ? DYES[id as keyof typeof DYES] : HAIR_COLORS[id as keyof typeof HAIR_COLORS];
+    return { price: def.price, unlockRep: def.unlockRep };
+  }
+
+  buyClothing(kind: 'hat' | 'accessory' | 'dye' | 'hair', id: string): boolean {
+    if (this.owns(kind, id)) return false;
+    const { price, unlockRep } = this.clothingPrice(kind, id);
+    if (this.world.coins < price || unlockRep > this.reputation) return false;
+    this.world.coins -= price;
+    this.world.clothingOwned.push(clothingKey(kind, id));
+    bump(this.world, 'clothes');
+    this.touch();
+    return true;
+  }
+
+  get outfit(): Outfit {
+    return this.meData.outfit;
+  }
+
+  setOutfit(o: Partial<Outfit>) {
+    this.meData.outfit = { ...this.meData.outfit, ...o };
+    this.touch();
+  }
+
+  // ----- pets -----
+  get pet() {
+    return this.meData.pet;
+  }
+
+  adoptPet(type: PetId, name: string): boolean {
+    const price = PETS[type].price;
+    if (this.world.coins < price) return false;
+    this.world.coins -= price;
+    this.meData.pet = { type, name, affection: 0, lastPetAt: 0, lastGiftAt: Date.now() };
+    bump(this.world, 'adopt');
+    this.touch();
+    return true;
+  }
+
+  petPet(): boolean {
+    const p = this.meData.pet;
+    if (!p || Date.now() - p.lastPetAt < PET_COOLDOWN_MS) return false;
+    p.lastPetAt = Date.now();
+    p.affection = Math.min(100, p.affection + PET_AFFECTION_PER_PET);
+    bump(this.world, 'petted');
+    this.touch();
+    return true;
+  }
+
+  /** Called from the game loop; returns a gift item when the pet found one. */
+  petGiftCheck(): ItemId | null {
+    const p = this.meData.pet;
+    if (!p) return null;
+    const every = PETS[p.type].giftMin * 60_000 * (1 - p.affection / 200);
+    if (Date.now() - p.lastGiftAt < every) return null;
+    p.lastGiftAt = Date.now();
+    const total = PET_GIFTS.reduce((s, g) => s + g[1], 0);
+    let r = Math.random() * total;
+    let item = PET_GIFTS[0][0];
+    for (const [id, wgt] of PET_GIFTS) {
+      r -= wgt;
+      if (r <= 0) {
+        item = id;
+        break;
+      }
+    }
+    this.world.inventory[item as ItemId] = this.count(item as ItemId) + 1;
+    bump(this.world, 'petgifts');
+    this.touch();
+    return item as ItemId;
+  }
+
+  // ----- postcards -----
+  /** Returns newly earned postcards. */
+  checkPostcards(): Postcard[] {
+    const got: Postcard[] = [];
+    const ctx = {
+      stats: this.world.stats,
+      daysTogether: this.daysTogether,
+      coins: this.world.coins,
+      pets: (this.world.players.xb.pet ? 1 : 0) + (this.world.players.qd.pet ? 1 : 0),
+      specialToday: false,
+    };
+    for (const m of POSTCARD_MILESTONES) {
+      if (this.world.postcards.some((p) => p.id === m.id)) continue;
+      if (m.check(ctx)) {
+        const card: Postcard = { id: m.id, title: m.title, day: dayKey(Date.now()), scene: m.scene };
+        this.world.postcards.push(card);
+        got.push(card);
+      }
+    }
+    if (got.length) this.touch();
+    return got;
+  }
+
   // ----- quests -----
-  /** Returns the quest just completed (reward paid), if any. */
   checkQuest() {
     const q = currentQuest(this.world);
     if (q && questDone(q, this.world)) {
@@ -295,5 +641,9 @@ export class GameState {
       return q;
     }
     return null;
+  }
+
+  itemName(id: ItemId) {
+    return ITEMS[id].name;
   }
 }

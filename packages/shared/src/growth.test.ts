@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { emptyPlot, isRipe, simulatePlot, WATER_DURATION_MS, type PlotState } from './growth';
-import { CROPS } from './crops';
+import { CROPS, cropTotalSeconds } from './crops';
 
 const T0 = 1_700_000_000_000;
 
 function planted(): PlotState {
-  return { ...emptyPlot(), tilled: true, crop: 'tomato', wateredUntil: T0 + WATER_DURATION_MS };
+  return { ...emptyPlot(), tilled: true, crop: 'wheat', wateredUntil: T0 + WATER_DURATION_MS };
 }
 
 describe('simulatePlot', () => {
@@ -21,19 +21,17 @@ describe('simulatePlot', () => {
 
   it('advances stages using watered seconds', () => {
     const p = planted();
-    const after = simulatePlot(p, T0, T0 + 20_000);
+    const after = simulatePlot(p, T0, T0 + CROPS.wheat.stageSeconds[0] * 1000);
     expect(after.stage).toBe(1);
     expect(after.progress).toBe(0);
   });
 
   it('stops growing when water runs out', () => {
-    const p = planted();
-    const total = CROPS.tomato.stageSeconds.reduce((a, b) => a + b, 0) * 1000;
-    const after = simulatePlot(p, T0, T0 + total + 100_000);
-    // Only WATER_DURATION_MS (90 s) of watered time was available; tomato needs 75 s.
-    expect(after.stage).toBe(3);
-    expect(after.progress).toBe(0);
-    expect(isRipe(after)).toBe(true);
+    // pumpkin needs 6 h; one watering lasts 2 h
+    const p: PlotState = { ...emptyPlot(), tilled: true, crop: 'pumpkin', wateredUntil: T0 + WATER_DURATION_MS };
+    const after = simulatePlot(p, T0, T0 + cropTotalSeconds('pumpkin') * 1000 + 100_000);
+    expect(after.stage).toBe(1);
+    expect(isRipe(after)).toBe(false);
   });
 
   it('one big catch-up equals many small ticks', () => {

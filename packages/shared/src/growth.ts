@@ -1,7 +1,7 @@
 import { CROPS, type CropId } from './crops';
 
-/** How long one watering keeps the soil moist (demo speed). */
-export const WATER_DURATION_MS = 90_000;
+/** How long one watering keeps the soil moist. Rain and the sprinkler cover the rest. */
+export const WATER_DURATION_MS = 2 * 60 * 60 * 1000;
 /** Cap for catch-up simulation so a very long absence stays sane. */
 export const MAX_CATCHUP_MS = 7 * 24 * 60 * 60 * 1000;
 
