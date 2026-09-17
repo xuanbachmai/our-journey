@@ -294,9 +294,9 @@ export class HudScene extends Phaser.Scene {
     this.emoteBtn.setPosition(W - 30, H - 78);
     this.decorBtn.setPosition(6, 50);
     this.decorStop.setPosition(6, 50);
-    this.areaText.setPosition(Math.round(W / 2) + 20, 26);
-    this.weatherIcon.setPosition(Math.round(W / 2) - 6, 32);
-    this.partnerText.setPosition(Math.round(W / 2) + 20, 38);
+    this.areaText.setOrigin(1, 0).setPosition(W - 8, 26);
+    this.partnerText.setOrigin(1, 0).setPosition(W - 8, 38);
+    this.weatherIcon.setPosition(W - 8 - this.areaText.width - 10, 32);
     this.overlay?.setPosition(Math.round(W / 2), Math.round(H / 2));
     this.emoteRow?.setPosition(W - 30, H - 100);
     if (this.last) this.refresh(this.last);

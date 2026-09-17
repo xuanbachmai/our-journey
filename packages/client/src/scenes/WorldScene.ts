@@ -783,11 +783,6 @@ export class WorldScene extends Phaser.Scene {
         return { type: 'serve', label: any ? 'Serve other' : `Needs ${RECIPES[d.recipe].name}`, enabled: any, ref: i };
       }
     }
-    // pet
-    if (this.pet && Math.abs(this.pet.x - ch.x) < 16 && Math.abs(this.pet.y - ch.y) < 16) {
-      const can = this.state.pet && Date.now() - this.state.pet.lastPetAt >= 60_000;
-      return { type: 'pet', label: can ? 'Pet' : 'Happy', enabled: !!can };
-    }
     // npcs
     for (let i = 0; i < this.npcs.length; i++) {
       const n = this.npcs[i];
@@ -827,7 +822,7 @@ export class WorldScene extends Phaser.Scene {
       return this.state.upgradeLevel('rod') > 0 ? { type: 'fish', label: 'Fish', enabled: true } : { type: 'none', label: 'Need rod', enabled: false };
     }
     // field
-    if (!a.farm?.has(plotKey(tx, ty))) return null;
+    if (!a.farm?.has(plotKey(tx, ty))) return this.petAction(ch);
     const p = this.state.plot(tx, ty);
     const now = Date.now();
     const sprinkler = this.state.upgradeLevel('sprinkler') > 0;
@@ -843,6 +838,23 @@ export class WorldScene extends Phaser.Scene {
       return { type: 'none', label: 'No seeds', enabled: false };
     }
     return { type: 'till', label: 'Till', enabled: true };
+  }
+
+  /**
+   * Petting is the lowest-priority action and needs the player to face the pet.
+   * The pet trots right behind you, so without this it would hide every other action.
+   */
+  private petAction(ch: Character): Action | null {
+    const p = this.pet;
+    const st = this.state.pet;
+    if (!p || !st) return null;
+    const dx = p.x - ch.x;
+    const dy = p.y - ch.y;
+    if (Math.hypot(dx, dy) > 22) return null;
+    const d = ch.dir();
+    if (dx * d.x + dy * d.y <= 0) return null;
+    if (Date.now() - st.lastPetAt < 60_000) return null;
+    return { type: 'pet', label: 'Pet', enabled: true };
   }
 
   doAction() {
