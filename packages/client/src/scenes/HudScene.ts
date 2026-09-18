@@ -12,6 +12,12 @@ import {
   clothingDef,
   clothingIds,
   CROP_IDS,
+  SEEDS_PER_CROP,
+  TOOL_IDS,
+  TOOL_REACH,
+  TOOL_TIERS,
+  TOOLS,
+  type ToolId,
   FURNITURE_CATS,
   isFreeClothing,
   type ClothingKind,
@@ -88,7 +94,7 @@ interface HelpPage {
 
 const HELP: HelpPage[] = [
   { title: 'Your journey', icon: 'star', lines: ['The bar at the top shows your next', 'task. Follow the yellow arrow to', 'where it happens. Tap the bar for', 'the Story: 12 chapters with rewards.', 'Today has 3 small daily tasks.'] },
-  { title: 'Farming', icon: 'seed-tomato', lines: ['Till a plot, plant a seed, water it.', 'Crops grow in real time, even when', 'the game is closed. Dry soil pauses.', 'Rain and the sprinkler water for you.', 'Ripe crops sparkle. Harvest them!'] },
+  { title: 'Farming', icon: 'seed-tomato', lines: ['Till a plot, plant a seed, water it.', 'Crops grow in real time, even when', 'the game is closed. Dry soil pauses.', 'Rain and the sprinkler water for you.', 'Upgrade the hoe, can and sickle at', 'the stall to work 3 or 9 tiles.'] },
   { title: 'Cooking', icon: 'dish-tomato_soup', lines: ['Cook at the kitchen by the house or', 'inside the restaurant. Each recipe', 'is a few mini-games. Good timing', 'means a better grade: C, B, A or S.', 'Reputation and books unlock recipes.'] },
   { title: 'Selling', icon: 'coin', lines: ['Counter by the road: dishes sell by', 'themselves, day and night.', 'Restaurant: diners sit down and order.', 'Bring the dish fast for a tip.', 'Town board: orders pay extra.'] },
   { title: 'Exploring', icon: 'map', lines: ['Roads lead east to Maple Town,', 'west to Sunny Ranch. North of town', 'is Whisper Forest, east of town is', 'Family Lane with both family homes.', 'Every door opens. The map travels', 'to places you have discovered.'] },
@@ -109,7 +115,7 @@ export class HudScene extends Phaser.Scene {
   private bagBtn!: Phaser.GameObjects.Container;
   private bagBadge!: Phaser.GameObjects.Text;
   private lastBagTotal = -1;
-  private bagTab: 'produce' | 'seeds' | 'dishes' | 'home' = 'produce';
+  private bagTab: 'produce' | 'seeds' | 'dishes' | 'home' | 'tools' = 'produce';
   private bagSel: string | null = null;
   private hotbar!: Phaser.GameObjects.Container;
   private slotGfx: Phaser.GameObjects.Graphics[] = [];
@@ -281,7 +287,7 @@ export class HudScene extends Phaser.Scene {
     this.world = w;
     const f = w.events;
     // the world scene object survives area changes; drop the listeners from the previous visit
-    for (const ev of ['hud', 'toast', 'openStall', 'openStore', 'openTailor', 'openPetshop', 'openFurnshop', 'openWardrobe', 'openMail', 'openCounter', 'openRecipes', 'openBoard', 'openSign', 'openLoveTree', 'cookResult', 'away', 'progress', 'guideEdge', 'postcard', 'coopInvite', 'notes', 'dialog', 'catch']) f.removeAllListeners(ev);
+    for (const ev of ['hud', 'toast', 'openStall', 'openStore', 'openTailor', 'openPetshop', 'openFurnshop', 'openWardrobe', 'openMail', 'openCounter', 'openRecipes', 'openBoard', 'openSign', 'openLoveTree', 'cookResult', 'away', 'progress', 'guideEdge', 'postcard', 'coopInvite', 'notes', 'dialog', 'catch', 'openSeedMaker']) f.removeAllListeners(ev);
     f.on('hud', (d: HudData) => this.refresh(d));
     f.on('toast', (msg: string) => this.showToast(msg));
     f.on('openStall', () => this.openStall('seeds'));
@@ -296,6 +302,7 @@ export class HudScene extends Phaser.Scene {
       this.openClothes('buy', 'top');
     });
     f.on('openPetshop', () => this.openPetshop('pets'));
+    f.on('openSeedMaker', () => this.openSeedMaker());
     f.on('openWardrobe', () => {
       this.shopSel = null;
       this.page = 0;
@@ -877,17 +884,19 @@ export class HudScene extends Phaser.Scene {
   }
 
   // ---------- stall (farm) ----------
-  private openStall(tab: 'seeds' | 'upgrades' | 'sell') {
+  private openStall(tab: 'seeds' | 'tools' | 'upgrades' | 'sell') {
     const w = 270;
     const h = 168;
     const st = this.world.state;
     const c = this.openOverlay(w, h, `Farm stall   (coins: ${st.coins})`);
     this.tabs(c, w, h, [
       ['Seeds', () => this.openStall('seeds')],
-      ['Tools', () => this.openStall('upgrades')],
+      ['Tools', () => this.openStall('tools')],
+      ['Farm', () => this.openStall('upgrades')],
       ['Sell', () => this.openStall('sell')],
-    ], ['seeds', 'upgrades', 'sell'].indexOf(tab));
+    ], ['seeds', 'tools', 'upgrades', 'sell'].indexOf(tab));
     if (tab === 'seeds') this.seedList(c, w, h, () => this.openStall('seeds'));
+    else if (tab === 'tools') this.upgradeList(c, w, h, 'tools', () => this.openStall('tools'));
     else if (tab === 'upgrades') this.upgradeList(c, w, h, 'stall', () => this.openStall('upgrades'));
     else this.sellList(c, w, h, () => this.openStall('sell'));
   }
@@ -934,7 +943,7 @@ export class HudScene extends Phaser.Scene {
     }
   }
 
-  private upgradeList(c: Phaser.GameObjects.Container, w: number, h: number, shop: 'stall' | 'store' | 'petshop', reopen: () => void) {
+  private upgradeList(c: Phaser.GameObjects.Container, w: number, h: number, shop: 'stall' | 'tools' | 'store' | 'petshop', reopen: () => void) {
     const st = this.world.state;
     const top = -h / 2 + 46;
     UPGRADE_IDS.filter((u) => UPGRADES[u].shop === shop).forEach((id, i) => {
@@ -943,7 +952,8 @@ export class HudScene extends Phaser.Scene {
       const lvl = st.upgradeLevel(id);
       const price = st.upgradePrice(id);
       c.add(this.add.image(-w / 2 + 14, y, 'icons', def.icon));
-      const lvlText = def.prices.length > 1 ? ` ${lvl}/${def.prices.length}` : lvl ? ' (owned)' : '';
+      const isTool = (TOOL_IDS as string[]).includes(id);
+      const lvlText = isTool ? ` (${TOOL_TIERS[lvl]})` : def.prices.length > 1 ? ` ${lvl}/${def.prices.length}` : lvl ? ' (owned)' : '';
       c.add(this.add.text(-w / 2 + 24, y - 5, `${def.name}${lvlText}`, plain()).setOrigin(0, 0.5));
       c.add(this.add.text(-w / 2 + 24, y + 5, def.desc, plain({ color: '#7a6a70' })).setOrigin(0, 0.5));
       if (price !== null) {
@@ -1283,6 +1293,40 @@ export class HudScene extends Phaser.Scene {
     c.add(this.add.text(gx + 90, h / 2 - 12, `Sale: ${FURNITURE[sale].name} -30%`, plain({ color: '#d94a4a' })).setOrigin(0.5));
   }
 
+  // ---------- seed maker ----------
+  private openSeedMaker() {
+    const st = this.world.state;
+    const w = 270;
+    const h = 168;
+    const c = this.openOverlay(w, h, 'Seed maker');
+    const crops = CROP_IDS.filter((id) => st.count(`crop:${id}`) > 0);
+    const top = -h / 2 + 30;
+    c.add(this.add.text(0, top, `Clean 1 crop into ${SEEDS_PER_CROP} seeds`, plain({ color: '#7a6a70' })).setOrigin(0.5));
+    if (!crops.length) {
+      c.add(this.add.text(0, 10, 'No crops in the bag.\nHarvest something first!', plain({ color: '#7a6a70', align: 'center' })).setOrigin(0.5));
+      return;
+    }
+    crops.slice(0, 6).forEach((id, i) => {
+      const y = top + 20 + i * ROW;
+      const have = st.count(`crop:${id}`);
+      c.add(this.add.image(-w / 2 + 14, y, 'icons', `crop-${id}`));
+      c.add(this.add.text(-w / 2 + 24, y, `${CROPS[id].name} x${have}`, plain()).setOrigin(0, 0.5));
+      c.add(this.add.image(-w / 2 + 120, y, 'icons', `seed-${id}`));
+      c.add(this.add.text(-w / 2 + 130, y, `${st.count(`seed:${id}`)}`, plain({ color: '#7a6a70' })).setOrigin(0, 0.5));
+      const make = (n: number) => {
+        const got = st.makeSeeds(id, n);
+        if (!got) return audio.play('bad');
+        audio.play('pop');
+        this.showToast(`+${got} ${CROPS[id].name} seeds`);
+        this.world.afterChange();
+        this.openSeedMaker();
+      };
+      const one = button(this, w / 2 - 98, y - 7, 40, 14, 'x1', () => make(1), 0x7de8c8);
+      const all = button(this, w / 2 - 54, y - 7, 44, 14, 'All', () => make(have), 0xffe066);
+      c.add([one.container, all.container]);
+    });
+  }
+
   // ---------- pet shop ----------
   private openPetshop(tab: 'pets' | 'animals' | 'build') {
     const w = 300;
@@ -1568,8 +1612,14 @@ export class HudScene extends Phaser.Scene {
 
   // ---------- bag ----------
 
-  private bagEntries(tab: 'produce' | 'seeds' | 'dishes' | 'home'): { key: string; icon: string; count: number; name: string }[] {
+  private bagEntries(tab: 'produce' | 'seeds' | 'dishes' | 'home' | 'tools'): { key: string; icon: string; count: number; name: string }[] {
     const st = this.world.state;
+    if (tab === 'tools') {
+      const out: { key: string; icon: string; count: number; name: string }[] = TOOL_IDS.map((id) => ({ key: id as string, icon: TOOLS[id].icon, count: 1, name: `${TOOL_TIERS[st.upgradeLevel(id)]} ${TOOLS[id].name.toLowerCase()}` }));
+      if (st.upgradeLevel('rod')) out.push({ key: 'rod', icon: 'rod', count: 1, name: 'Fishing rod' });
+      if (st.upgradeLevel('seedmaker')) out.push({ key: 'seedmaker', icon: 'seedmaker', count: 1, name: 'Seed maker' });
+      return out;
+    }
     if (tab === 'produce') return SELLABLE.filter((id) => st.count(id) > 0).map((id) => ({ key: id, icon: ITEMS[id].icon, count: st.count(id), name: ITEMS[id].name }));
     if (tab === 'seeds') return CROP_IDS.filter((c) => st.count(`seed:${c}`) > 0).map((c) => ({ key: c, icon: `seed-${c}`, count: st.count(`seed:${c}`), name: `${CROPS[c].name} seeds` }));
     if (tab === 'home') return FURNITURE_IDS.filter((f) => st.furnitureOwned(f) > 0).map((f) => ({ key: f, icon: `furn-${f}`, count: st.furnitureOwned(f), name: FURNITURE[f].name }));
@@ -1595,7 +1645,7 @@ export class HudScene extends Phaser.Scene {
   }
 
   /** Pokemon-style bag: pockets, a grid of item slots, details for the selected item. */
-  private openBag(tab: 'produce' | 'seeds' | 'dishes' | 'home' = this.bagTab) {
+  private openBag(tab: 'produce' | 'seeds' | 'dishes' | 'home' | 'tools' = this.bagTab) {
     this.bagTab = tab;
     const st = this.world.state;
     const w = 300;
@@ -1606,7 +1656,8 @@ export class HudScene extends Phaser.Scene {
       ['Seeds', () => this.openBag('seeds')],
       ['Dishes', () => this.openBag('dishes')],
       ['Home', () => this.openBag('home')],
-    ], ['produce', 'seeds', 'dishes', 'home'].indexOf(tab));
+      ['Tools', () => this.openBag('tools')],
+    ], ['produce', 'seeds', 'dishes', 'home', 'tools'].indexOf(tab));
 
     const entries = this.bagEntries(tab).slice(0, 30);
     if (!entries.some((e) => e.key === this.bagSel)) this.bagSel = entries[0]?.key ?? null;
@@ -1643,18 +1694,30 @@ export class HudScene extends Phaser.Scene {
     c.add(line);
     const sel = entries.find((e) => e.key === this.bagSel);
     if (!sel) {
-      const empty = { produce: 'Harvest, forage, fish or collect from animals', seeds: 'Buy seeds at the farm stall or the store', dishes: 'Cook something in the kitchen', home: 'Buy furniture at the store in town' }[tab];
+      const empty = { produce: 'Harvest, forage, fish or collect from animals', seeds: 'Buy seeds at the farm stall or the store', dishes: 'Cook something in the kitchen', home: 'Buy furniture at Cozy Corner in town', tools: '' }[tab];
       c.add(this.add.text(0, dy + 22, `Nothing here yet. ${empty}.`, plain({ color: '#7a6a70', align: 'center', wordWrap: { width: w - 24 } })).setOrigin(0.5));
       return;
     }
     const cut = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
     const tx = -w / 2 + 38;
     c.add(this.bagIcon(tab, sel.key, sel.icon, -w / 2 + 20, dy + 20, 26));
-    c.add(this.add.text(tx, dy + 9, `${sel.name}  x${sel.count}`, plain()).setOrigin(0, 0.5));
+    c.add(this.add.text(tx, dy + 9, tab === 'tools' ? sel.name : `${sel.name}  x${sel.count}`, plain()).setOrigin(0, 0.5));
     let info = '';
     let hint = '';
     let action: [string, () => void] | null = null;
-    if (tab === 'produce') {
+    if (tab === 'tools') {
+      if ((TOOL_IDS as string[]).includes(sel.key)) {
+        const lvl = st.upgradeLevel(sel.key as ToolId);
+        info = `Works on ${TOOL_REACH[lvl]}`;
+        hint = lvl < 2 ? `${TOOL_TIERS[lvl + 1]} upgrade at the farm stall` : 'Best tool there is!';
+      } else if (sel.key === 'rod') {
+        info = 'Catch 10 kinds of fish';
+        hint = 'Face a pond and press act';
+      } else {
+        info = `1 crop into ${SEEDS_PER_CROP} seeds`;
+        hint = 'It stands by the field';
+      }
+    } else if (tab === 'produce') {
       const id = sel.key as ItemId;
       info = `Sells for ${st.sellPrice(id)}c today`;
       const uses = Object.values(RECIPES).filter((r) => r.ingredients[id]).map((r) => r.name);

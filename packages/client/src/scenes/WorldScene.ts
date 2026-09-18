@@ -39,6 +39,8 @@ import {
   type Weather,
   type WorldEvent,
   type WorldState,
+  toolTiles,
+  type ToolId,
 } from '@hh/shared';
 import { getArea } from '../areas';
 import type { AreaDef, AreaObject, InteractId } from '../areas/types';
@@ -152,6 +154,13 @@ export class WorldScene extends Phaser.Scene {
   private lastCustomerSpawn = 0;
   private critters: Critter[] = [];
   private horse?: Phaser.GameObjects.Sprite;
+
+  /** A quick tool swing over the player's head. */
+  private toolSwing(ch: Character, tool: ToolId) {
+    const d = ch.dir();
+    const img = this.add.image(ch.x + d.x * 8, ch.y - 20, 'icons', tool).setDepth(ch.y + 5).setFlipX(d.x < 0);
+    this.tweens.add({ targets: img, angle: d.x < 0 ? -70 : 70, y: img.y + 6, duration: 180, onComplete: () => img.destroy() });
+  }
 
   /** Riding lives in the game registry so it survives walking through doors. */
   get riding(): boolean {
@@ -871,8 +880,8 @@ export class WorldScene extends Phaser.Scene {
     const now = Date.now();
     const sprinkler = this.state.upgradeLevel('sprinkler') > 0;
     if (p.crop) {
-      if (isRipe(p)) return { type: 'harvest', label: 'Harvest', enabled: true };
-      if (!isWatered(p, now) && !sprinkler) return { type: 'water', label: 'Water', enabled: true };
+      if (isRipe(p)) return { type: 'harvest', label: this.toolLabel('sickle', 'Harvest'), enabled: true };
+      if (!isWatered(p, now) && !sprinkler) return { type: 'water', label: this.toolLabel('can', 'Water'), enabled: true };
       const left = cropTotalSeconds(p.crop) * (1 - growthFraction(p));
       return { type: 'none', label: formatDuration(left), enabled: false };
     }
@@ -881,7 +890,20 @@ export class WorldScene extends Phaser.Scene {
       if (seeds > 0) return { type: 'plant', label: 'Plant', enabled: true };
       return { type: 'none', label: 'No seeds', enabled: false };
     }
-    return { type: 'till', label: 'Till', enabled: true };
+    return { type: 'till', label: this.toolLabel('hoe', 'Till'), enabled: true };
+  }
+
+  /** Action label with the tool's reach, e.g. "Till x3". */
+  private toolLabel(tool: ToolId, verb: string) {
+    const lvl = this.state.upgradeLevel(tool);
+    return lvl >= 2 ? `${verb} x9` : lvl === 1 ? `${verb} x3` : verb;
+  }
+
+  /** Farm tiles the tool reaches from where the player faces. */
+  private toolReach(tool: ToolId, ch: Character) {
+    const { tx, ty } = ch.facingTile;
+    const d = ch.dir();
+    return toolTiles(this.state.upgradeLevel(tool), tx, ty, d.x, d.y).filter((t) => this.area.farm?.has(plotKey(t.tx, t.ty)));
   }
 
   /**
@@ -919,12 +941,20 @@ export class WorldScene extends Phaser.Scene {
     const cx = tx * TILE + 8;
     const cy = ty * TILE + 8;
     switch (a.type) {
-      case 'till':
-        this.state.setPlot(tx, ty, { ...emptyPlot(), tilled: true });
-        this.state.stat('till');
-        this.puff(cx, cy, 'dust');
+      case 'till': {
+        let n = 0;
+        for (const t of this.toolReach('hoe', ch)) {
+          const q = this.state.plot(t.tx, t.ty);
+          if (q.tilled || q.crop) continue;
+          this.state.setPlot(t.tx, t.ty, { ...emptyPlot(), tilled: true });
+          this.puff(t.tx * TILE + 8, t.ty * TILE + 8, 'dust');
+          n++;
+        }
+        this.state.stat('till', n);
+        this.toolSwing(ch, 'hoe');
         audio.play('till');
         break;
+      }
       case 'plant': {
         const id = this.state.selectedSeed;
         this.state.add(`seed:${id}`, -1);
@@ -934,23 +964,40 @@ export class WorldScene extends Phaser.Scene {
         audio.play('plant');
         break;
       }
-      case 'water':
-        this.state.setPlot(tx, ty, { ...p, wateredUntil: now + WATER_DURATION_MS });
-        this.state.stat('water');
-        this.puff(cx, cy, 'drop');
+      case 'water': {
+        let n = 0;
+        for (const t of this.toolReach('can', ch)) {
+          const q = this.state.plot(t.tx, t.ty);
+          if (!q.crop || isRipe(q) || isWatered(q, now)) continue;
+          this.state.setPlot(t.tx, t.ty, { ...q, wateredUntil: now + WATER_DURATION_MS });
+          this.puff(t.tx * TILE + 8, t.ty * TILE + 8, 'drop');
+          n++;
+        }
+        this.state.stat('water', n);
+        this.toolSwing(ch, 'can');
         audio.play('water');
         break;
+      }
       case 'harvest': {
-        const id = p.crop as CropId;
-        const qty = ITEMS[`crop:${id}`] ? (id === 'wheat' || id === 'potato' || id === 'blueberry' ? 2 : 1) : 1;
-        this.state.add(`crop:${id}`, qty);
-        this.state.setPlot(tx, ty, { ...emptyPlot(), tilled: true });
-        this.state.stat('harvest', qty);
-        this.state.stat(`harvest:${id}`, qty);
-        this.pop(cx, cy, `crop-${id}`, `+${qty}`);
+        for (const t of this.toolReach('sickle', ch)) {
+          const q = this.state.plot(t.tx, t.ty);
+          if (!q.crop || !isRipe(q)) continue;
+          const id = q.crop as CropId;
+          const qty = ITEMS[`crop:${id}`] ? (id === 'wheat' || id === 'potato' || id === 'blueberry' ? 2 : 1) : 1;
+          this.state.add(`crop:${id}`, qty);
+          this.state.setPlot(t.tx, t.ty, { ...emptyPlot(), tilled: true });
+          this.state.stat('harvest', qty);
+          this.state.stat(`harvest:${id}`, qty);
+          this.pop(t.tx * TILE + 8, t.ty * TILE + 8, `crop-${id}`, `+${qty}`);
+        }
+        this.toolSwing(ch, 'sickle');
         audio.play('harvest');
         break;
       }
+      case 'seedmaker':
+        audio.play('open');
+        this.events.emit('openSeedMaker');
+        return;
       case 'coop':
       case 'hives':
       case 'barn': {
@@ -1752,6 +1799,12 @@ export class WorldScene extends Phaser.Scene {
       this.cursor.strokeRect(this.decorate.tx * TILE + 0.5, this.decorate.ty * TILE + 0.5, d.w * TILE - 1, d.h * TILE - 1);
     } else if (a && ['till', 'plant', 'water', 'harvest', 'none', 'fish'].includes(a.type)) {
       const { tx, ty } = this.player.facingTile;
+      // upgraded tools show their full reach, faintly
+      const tool: ToolId | null = a.type === 'till' ? 'hoe' : a.type === 'water' ? 'can' : a.type === 'harvest' ? 'sickle' : null;
+      if (tool) {
+        this.cursor.lineStyle(1, 0xffffff, 0.45);
+        for (const t of this.toolReach(tool, this.player)) if (t.tx !== tx || t.ty !== ty) this.cursor.strokeRect(t.tx * TILE + 0.5, t.ty * TILE + 0.5, TILE - 1, TILE - 1);
+      }
       this.cursor.lineStyle(1, a.enabled ? 0xffffff : 0xffe066, 1);
       this.cursor.strokeRect(tx * TILE + 0.5, ty * TILE + 0.5, TILE - 1, TILE - 1);
     }

@@ -142,6 +142,10 @@ export function buildFarm(): AreaDef {
   fillRect(tiles, 6, 21, 1, 1, T.PATH);
   fillRect(tiles, 7, 19, 1, 3, T.PATH);
 
+  // seed maker next to the field path (upgrade)
+  const seedMaker = { tx: 12, ty: 13 };
+  objects.push({ key: 'seedmaker', tx: seedMaker.tx, ty: seedMaker.ty, w: 1, h: 1, dy: 0, requiresUpgrade: 'seedmaker', interact: 'seedmaker', label: 'Seeds' });
+
   // chicken coop (left of the path, below the house) and bee garden, both upgrades
   const coopTx = 2;
   const coopTy = 11;
@@ -239,6 +243,7 @@ export function buildFarm(): AreaDef {
     upgradeBlocks: [
       { upgrade: 'coop', tiles: coopTiles },
       { upgrade: 'beehive', tiles: hives },
+      { upgrade: 'seedmaker', tiles: [seedMaker] },
     ],
     pens: [pen, { ...pen, animal: 'duck' as const }],
     sprinklers,

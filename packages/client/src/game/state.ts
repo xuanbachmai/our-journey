@@ -11,6 +11,7 @@ import {
   furnitureSaleToday,
   isFreeClothing,
   salePrice,
+  SEEDS_PER_CROP,
   type ClothingKind,
   counterSlots,
   cozy,
@@ -491,6 +492,19 @@ export class GameState {
     }
     if (got.length) this.touch();
     return got;
+  }
+
+  // ----- seed maker -----
+  /** Turn crops into seeds at the seed maker. Returns seeds made. */
+  makeSeeds(crop: CropId, n: number): number {
+    const have = this.count(`crop:${crop}`);
+    const k = Math.min(n, have);
+    if (k <= 0 || this.upgradeLevel('seedmaker') === 0) return 0;
+    this.add(`crop:${crop}`, -k);
+    this.add(`seed:${crop}`, k * SEEDS_PER_CROP);
+    bump(this.world, 'seedsmade', k * SEEDS_PER_CROP);
+    this.touch();
+    return k * SEEDS_PER_CROP;
   }
 
   // ----- forage -----

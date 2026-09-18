@@ -1036,6 +1036,21 @@ export function buildObjectTextures(scene: Phaser.Scene) {
   bl.frame('furnshop', 480, 0, 80, 72);
   bl.done();
 
+  // seed maker: a wooden box with a hopper on top and a seed bag at its feet
+  const sm = new PixelCanvas(scene, 'seedmaker', 16, 26);
+  sm.rect(3, 0, 10, 7, P.outline);
+  sm.rect(4, 1, 8, 5, '#c9c9d9');
+  sm.rect(5, 2, 6, 2, P.yellow);
+  sm.rect(1, 7, 14, 17, P.outline);
+  sm.rect(2, 8, 12, 15, P.wood);
+  sm.rect(2, 8, 12, 2, P.woodLight);
+  sm.rect(5, 13, 6, 5, P.outline);
+  sm.rect(6, 14, 4, 3, P.cream);
+  sm.px(7, 15, P.leaf);
+  sm.px(8, 15, P.leaf);
+  sm.rect(2, 23, 12, 3, P.woodDark);
+  sm.done();
+
   const sb = new PixelCanvas(scene, 'stable', 64, 56);
   facade(sb, 0, 0, 64, 56, '#c98b4e', '#a86a3c', '#8a5a33', '#6e4426', { windows: 2 });
   sb.rows(28, 24, ['.oooo.', 'oo..oo', 'o....o', 'o....o'], { o: P.coin });
@@ -1181,6 +1196,36 @@ export function buildObjectTextures(scene: Phaser.Scene) {
     icons.rect(x0 + 3, 5, 6, 5, P.white);
     icons.rect(x0 + 4, 2, 4, 1, P.white);
     icons.rect(x0 + 3, 7, 6, 2, P.blue);
+  });
+  I('hoe', (x0) => {
+    for (let i = 0; i < 8; i++) icons.px(x0 + 2 + i, 11 - i, P.woodDark);
+    icons.rect(x0 + 7, 1, 4, 2, P.outline);
+    icons.rect(x0 + 8, 1, 3, 1, '#c9c9d9');
+    icons.rect(x0 + 10, 3, 1, 2, P.outline);
+  });
+  I('can', (x0) => {
+    icons.rect(x0 + 2, 4, 7, 6, P.outline);
+    icons.rect(x0 + 3, 5, 5, 4, '#6fb8ff');
+    icons.rect(x0 + 3, 5, 5, 1, '#b3dcff');
+    icons.rect(x0 + 8, 5, 3, 1, P.outline);
+    icons.rect(x0 + 10, 3, 1, 2, P.outline);
+    icons.rect(x0 + 3, 2, 4, 1, P.outline);
+    icons.px(x0 + 2, 3, P.outline);
+    icons.px(x0 + 7, 3, P.outline);
+    icons.px(x0 + 11, 2, P.water);
+  });
+  I('sickle', (x0) => {
+    icons.rows(x0 + 2, 1, ['..oooo..', '.o....o.', '......o.', '......o.', '.....o..', '...oo...'], { o: '#c9c9d9' });
+    icons.rect(x0 + 4, 7, 2, 1, P.outline);
+    for (let i = 0; i < 4; i++) icons.px(x0 + 3 - (i > 1 ? 1 : 0), 7 + i, P.woodDark);
+  });
+  I('seedmaker', (x0) => {
+    icons.rect(x0 + 2, 4, 8, 7, P.outline);
+    icons.rect(x0 + 3, 5, 6, 5, P.wood);
+    icons.rect(x0 + 3, 1, 6, 3, P.outline);
+    icons.rect(x0 + 4, 2, 4, 1, P.yellow);
+    icons.px(x0 + 5, 7, P.leaf);
+    icons.px(x0 + 6, 8, P.leaf);
   });
   I('duck', (x0) => icons.rows(x0, 1, ['.......ooo..', '......owwwo.', '......oweoBB', '.......owo..', '.ooooooowo..', 'owwwwwwwwo..', 'owgwwwwwwo..', '.owwwwwwo...', '..oooooo....'], { o: P.outline, w: '#fafafa', g: '#d8d8e6', e: P.eye, B: P.orange }));
   I('pig', (x0) => icons.rows(x0 + 1, 2, ['.oo....oo.', 'odpoooopdo', 'oppppppppo', 'opeppppepo', 'oppnnnnppo', 'oppnoonppo', '.oppppppo.', '..oooooo..'], { o: P.outline, p: '#ffb3c8', d: '#ff8fa8', e: P.eye, n: '#ff7aa0' }));

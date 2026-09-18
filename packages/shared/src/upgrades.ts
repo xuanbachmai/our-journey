@@ -1,4 +1,4 @@
-export type UpgradeId = 'sprinkler' | 'counter' | 'coop' | 'stove' | 'rod' | 'flowers' | 'tables' | 'beehive' | 'decor' | 'bigbag' | 'pasture' | 'stable' | 'bigcoop';
+export type UpgradeId = 'sprinkler' | 'counter' | 'coop' | 'stove' | 'rod' | 'flowers' | 'tables' | 'beehive' | 'decor' | 'bigbag' | 'pasture' | 'stable' | 'bigcoop' | 'hoe' | 'can' | 'sickle' | 'seedmaker';
 
 export interface UpgradeDef {
   id: UpgradeId;
@@ -9,11 +9,15 @@ export interface UpgradeDef {
   requires?: UpgradeId;
   icon: string;
   /** Where it is sold. */
-  shop: 'stall' | 'store' | 'petshop';
+  shop: 'stall' | 'tools' | 'store' | 'petshop';
 }
 
 export const UPGRADES: Record<UpgradeId, UpgradeDef> = {
-  rod: { id: 'rod', name: 'Fishing rod', desc: 'Fish in ponds', prices: [90], icon: 'rod', shop: 'stall' },
+  rod: { id: 'rod', name: 'Fishing rod', desc: 'Fish in ponds', prices: [90], icon: 'rod', shop: 'tools' },
+  hoe: { id: 'hoe', name: 'Hoe', desc: 'Row of 3, then 3x3', prices: [250, 700], icon: 'hoe', shop: 'tools' },
+  can: { id: 'can', name: 'Watering can', desc: 'Row of 3, then 3x3', prices: [250, 700], icon: 'can', shop: 'tools' },
+  sickle: { id: 'sickle', name: 'Sickle', desc: 'Row of 3, then 3x3', prices: [300, 800], icon: 'sickle', shop: 'tools' },
+  seedmaker: { id: 'seedmaker', name: 'Seed maker', desc: '1 crop into 2 seeds', prices: [350], icon: 'seedmaker', shop: 'tools' },
   counter: { id: 'counter', name: 'Counter slot', desc: 'One more counter slot', prices: [120, 220, 380], icon: 'plate', shop: 'stall' },
   coop: { id: 'coop', name: 'Chicken coop', desc: 'Home for chickens', prices: [250], icon: 'egg', shop: 'petshop' },
   beehive: { id: 'beehive', name: 'Bee garden', desc: 'Lets you keep bee hives', prices: [300], icon: 'honey', shop: 'petshop' },

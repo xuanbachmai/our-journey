@@ -17,6 +17,7 @@ export type InteractId =
   | 'petshop'
   | 'furnshop'
   | 'stable'
+  | 'seedmaker'
   | 'wardrobe'
   | 'lovetree'
   | 'sign'
