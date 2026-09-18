@@ -1,4 +1,4 @@
-export type UpgradeId = 'sprinkler' | 'counter' | 'coop' | 'stove' | 'rod' | 'flowers' | 'tables' | 'beehive' | 'decor' | 'bigbag';
+export type UpgradeId = 'sprinkler' | 'counter' | 'coop' | 'stove' | 'rod' | 'flowers' | 'tables' | 'beehive' | 'decor' | 'bigbag' | 'pasture' | 'stable' | 'bigcoop';
 
 export interface UpgradeDef {
   id: UpgradeId;
@@ -17,6 +17,9 @@ export const UPGRADES: Record<UpgradeId, UpgradeDef> = {
   counter: { id: 'counter', name: 'Counter slot', desc: 'One more counter slot', prices: [120, 220, 380], icon: 'plate', shop: 'stall' },
   coop: { id: 'coop', name: 'Chicken coop', desc: 'Home for chickens', prices: [250], icon: 'egg', shop: 'petshop' },
   beehive: { id: 'beehive', name: 'Bee garden', desc: 'Lets you keep bee hives', prices: [300], icon: 'honey', shop: 'petshop' },
+  bigcoop: { id: 'bigcoop', name: 'Bigger coop', desc: '+2 room: hens, ducks', prices: [600], requires: 'coop', icon: 'egg', shop: 'petshop' },
+  pasture: { id: 'pasture', name: 'Pasture', desc: 'Pig and goat pens', prices: [900, 1800], icon: 'fence', shop: 'petshop' },
+  stable: { id: 'stable', name: 'Horse stable', desc: 'Stable and paddock', prices: [1200], icon: 'horse', shop: 'petshop' },
   sprinkler: { id: 'sprinkler', name: 'Sprinkler', desc: 'Waters the whole field', prices: [320], icon: 'drop', shop: 'stall' },
   stove: { id: 'stove', name: 'Better stove', desc: 'Easier cooking timing', prices: [200, 400], icon: 'flame', shop: 'stall' },
   flowers: { id: 'flowers', name: 'Flower beds', desc: 'Pretty, +5 reputation', prices: [150], icon: 'flower', shop: 'stall' },

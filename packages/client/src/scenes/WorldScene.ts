@@ -151,6 +151,33 @@ export class WorldScene extends Phaser.Scene {
   private customerTex = 0;
   private lastCustomerSpawn = 0;
   private critters: Critter[] = [];
+  private horse?: Phaser.GameObjects.Sprite;
+
+  /** Riding lives in the game registry so it survives walking through doors. */
+  get riding(): boolean {
+    return !!this.registry.get('riding') && this.state.animalCount('horse') > 0;
+  }
+
+  setRiding(on: boolean) {
+    this.registry.set('riding', on);
+    this.applyRiding();
+    // the paddock horse leaves or returns
+    for (const c of this.critters.filter((x) => x.kind === 'horse')) c.destroy();
+    this.critters = this.critters.filter((x) => x.kind !== 'horse');
+    this.spawnCritters();
+  }
+
+  /** Outdoors a ridden horse carries you (faster, drawn under you); indoors it waits outside. */
+  private applyRiding() {
+    const on = this.riding && AREAS[this.areaId].outdoor;
+    this.player.speed = on ? 62 * 1.7 : 62;
+    this.player.sprite.setOrigin(0.5, on ? 1 + 10 / 28 : 1);
+    if (on && !this.horse) this.horse = this.add.sprite(this.player.x, this.player.y, 'critters', 'horse0').setOrigin(0.5, 1).setScale(2);
+    if (!on && this.horse) {
+      this.horse.destroy();
+      this.horse = undefined;
+    }
+  }
   private npcs: Npc[] = [];
   private diners: Diner[] = [];
   private nextDiner = 0;
@@ -199,6 +226,7 @@ export class WorldScene extends Phaser.Scene {
     this.customerQueue = [];
     this.lastCustomerSpawn = 0;
     this.critters = [];
+    this.horse = undefined;
     this.npcs = [];
     this.diners = [];
     this.nextDiner = 0;
@@ -288,6 +316,8 @@ export class WorldScene extends Phaser.Scene {
     if (this.state.pet) {
       this.pet = new Pet(this, this.state.pet.type, this.state.pet.name, this.player.x - 12, this.player.y, this.player);
     }
+
+    this.applyRiding();
 
     // ---- partner ----
     this.setupPartner(collision);
@@ -803,9 +833,10 @@ export class WorldScene extends Phaser.Scene {
     for (const { obj } of this.objectSprites) {
       if (!obj.interact || !this.nearObject(obj, ch)) continue;
       if (obj.interact === 'coop') {
-        const w = this.state.waitingAt('farm', ['chicken']);
-        const hens = this.state.animalCount('chicken');
-        return w.length ? { type: 'coop', label: `Eggs ${w[0].count}`, enabled: true } : { type: 'none', label: hens ? 'No eggs yet' : 'No hens', enabled: false };
+        const w = this.state.waitingAt('farm', ['chicken', 'duck']);
+        const n = w.reduce((s, x) => s + x.count, 0);
+        const birds = this.state.animalCount('chicken') + this.state.animalCount('duck');
+        return n ? { type: 'coop', label: `Eggs ${n}`, enabled: true } : { type: 'none', label: birds ? 'No eggs yet' : 'No birds', enabled: false };
       }
       if (obj.interact === 'hives') {
         const w = this.state.waitingAt('farm', ['bee']);
@@ -814,7 +845,11 @@ export class WorldScene extends Phaser.Scene {
       if (obj.interact === 'barn') {
         const w = this.state.waitingAt('ranch');
         const n = w.reduce((s, x) => s + x.count, 0);
-        return n ? { type: 'barn', label: `Collect ${n}`, enabled: true } : { type: 'none', label: this.state.animalCount('cow') + this.state.animalCount('sheep') ? 'Nothing yet' : 'No animals', enabled: false };
+        return n ? { type: 'barn', label: `Collect ${n}`, enabled: true } : { type: 'none', label: (['cow', 'sheep', 'goat', 'pig'] as const).some((id) => this.state.animalCount(id) > 0) ? 'Nothing yet' : 'No animals', enabled: false };
+      }
+      if (obj.interact === 'stable') {
+        if (!this.state.animalCount('horse')) return { type: 'none', label: 'No horse', enabled: false };
+        return { type: 'stable', label: this.riding ? 'Unsaddle' : 'Ride', enabled: true };
       }
       return { type: obj.interact, label: obj.label ?? 'Use', enabled: true, text: obj.text };
     }
@@ -919,13 +954,18 @@ export class WorldScene extends Phaser.Scene {
       case 'coop':
       case 'hives':
       case 'barn': {
-        const got = this.state.collect(a.type === 'barn' ? 'ranch' : 'farm', a.type === 'coop' ? ['chicken'] : a.type === 'hives' ? ['bee'] : undefined);
+        const got = this.state.collect(a.type === 'barn' ? 'ranch' : 'farm', a.type === 'coop' ? ['chicken', 'duck'] : a.type === 'hives' ? ['bee'] : undefined);
         got.forEach((g, i) => this.time.delayedCall(i * 250, () => this.pop(ch.x, ch.y - 10, ITEMS[g.item].icon, `+${g.count}`)));
         audio.play(a.type === 'barn' ? 'moo' : a.type === 'hives' ? 'pop' : 'cluck');
         this.eggBang?.destroy();
         this.eggBang = undefined;
         break;
       }
+      case 'stable':
+        this.setRiding(!this.riding);
+        audio.play(this.riding ? 'great' : 'pop');
+        this.events.emit('toast', this.riding ? 'Giddy up! Riding is faster outdoors.' : 'Your horse is back in the stable.');
+        break;
       case 'forage': {
         const f = this.area.forage.find((x) => x.key === a.text);
         if (!f) return;
@@ -1329,7 +1369,8 @@ export class WorldScene extends Phaser.Scene {
     for (const pen of this.area.pens ?? []) {
       const want = this.state.animalCount(pen.animal);
       const have = this.critters.filter((c) => c.kind === pen.animal).length;
-      for (let i = have; i < want; i++) this.critters.push(new Critter(this, pen.animal, pen, pen.animal === 'chicken' ? 22 : 14));
+      const out = pen.animal === 'horse' && this.riding ? 1 : 0;
+      for (let i = have; i < want - out; i++) this.critters.push(new Critter(this, pen.animal, pen, pen.animal === 'chicken' || pen.animal === 'duck' ? 20 : pen.animal === 'horse' ? 24 : 14));
     }
   }
 
@@ -1639,6 +1680,10 @@ export class WorldScene extends Phaser.Scene {
     if (this.uiOpen) dx = dy = 0;
     const moved = this.player.move(dx, dy, dt);
     this.player.update();
+    if (this.horse) {
+      this.horse.setPosition(this.player.x + (this.player.facing === 'left' ? -6 : 6), this.player.y + 6).setDepth(this.player.sprite.depth + 1).setFlipX(this.player.facing === 'left');
+      this.horse.setFrame(this.player.moving ? `horse${Math.floor(time / 140) % 2}` : 'horse0');
+    }
     if (moved || (!this.player.moving && this.lastMoving)) this.broadcastPos(!this.player.moving && this.lastMoving);
     this.lastMoving = this.player.moving;
     if (moved && time - this.lastPlaceSave > 2000) {

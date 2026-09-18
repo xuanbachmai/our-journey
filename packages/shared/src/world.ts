@@ -120,6 +120,14 @@ export function upgradeLevel(w: WorldState, id: UpgradeId): number {
   return w.upgrades[id] ?? 0;
 }
 
+/** How many of an animal fit: the base, plus room from the bigger coop or the second pasture level. */
+export function animalMax(w: WorldState, id: AnimalId): number {
+  const def = ANIMALS[id];
+  if (id === 'horse' || id === 'bee') return def.max;
+  if (def.home === 'farm') return def.max + (upgradeLevel(w, 'bigcoop') > 0 ? 2 : 0);
+  return def.max + (upgradeLevel(w, 'pasture') >= 2 ? 2 : 0);
+}
+
 export function counterSlots(w: WorldState): number {
   return BASE_COUNTER_SLOTS + upgradeLevel(w, 'counter');
 }
@@ -241,7 +249,7 @@ export function simulateWorld(input: WorldState, now: number): { world: WorldSta
   // ---- animals ----
   for (const id of ANIMAL_IDS) {
     const p = w.producers[id];
-    if (!p) continue;
+    if (!p || !ANIMALS[id].product) continue;
     if (p.count <= 0) {
       p.anchor = now;
       continue;

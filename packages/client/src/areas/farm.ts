@@ -240,7 +240,7 @@ export function buildFarm(): AreaDef {
       { upgrade: 'coop', tiles: coopTiles },
       { upgrade: 'beehive', tiles: hives },
     ],
-    pens: [pen],
+    pens: [pen, { ...pen, animal: 'duck' as const }],
     sprinklers,
     flowerBeds,
     hives,

@@ -28,7 +28,10 @@ export type RecipeId =
   | 'pumpkin_pie'
   | 'honey_toast'
   | 'cream_pudding'
-  | 'fish_tacos';
+  | 'fish_tacos'
+  | 'goat_cheese_salad'
+  | 'egg_tart'
+  | 'truffle_pasta';
 
 export type BookId = 'bakery_book' | 'seafood_book';
 
@@ -63,6 +66,9 @@ export const RECIPES: Record<RecipeId, Recipe> = {
   pumpkin_pie: { id: 'pumpkin_pie', name: 'Pumpkin Pie', ingredients: { 'crop:pumpkin': 1, 'crop:wheat': 2, egg: 1, milk: 1 }, steps: ['chop', 'stir', 'heat', 'plate'], basePrice: 320, unlockRep: 45, color: '#ff8c3c', colorLight: '#ffbf8a' },
   honey_toast: { id: 'honey_toast', name: 'Honey Toast', ingredients: { 'crop:wheat': 2, honey: 1, berry: 1 }, steps: ['heat', 'plate', 'season'], basePrice: 240, unlockRep: 25, book: 'bakery_book', color: '#f2c14e', colorLight: '#ffe8a0' },
   cream_pudding: { id: 'cream_pudding', name: 'Cream Pudding', ingredients: { milk: 2, egg: 2, honey: 1 }, steps: ['stir', 'heat', 'plate', 'season'], basePrice: 340, unlockRep: 35, book: 'bakery_book', color: '#fff0c0', colorLight: '#ffffff' },
+  goat_cheese_salad: { id: 'goat_cheese_salad', name: 'Goat Cheese Salad', ingredients: { goat_milk: 1, 'crop:tomato': 1, herb: 1 }, steps: ['chop', 'stir', 'season'], basePrice: 200, unlockRep: 10, color: '#fff4d6', colorLight: '#9be07a' },
+  egg_tart: { id: 'egg_tart', name: 'Duck Egg Tart', ingredients: { duck_egg: 1, 'crop:wheat': 1, milk: 1 }, steps: ['stir', 'heat', 'plate'], basePrice: 210, unlockRep: 12, color: '#ffcf4f', colorLight: '#fff0b0' },
+  truffle_pasta: { id: 'truffle_pasta', name: 'Truffle Pasta', ingredients: { 'crop:wheat': 2, truffle: 1, milk: 1 }, steps: ['stir', 'heat', 'season', 'plate'], basePrice: 420, unlockRep: 25, color: '#f2dca0', colorLight: '#6b4a3a' },
   fish_tacos: { id: 'fish_tacos', name: 'Fish Tacos', ingredients: { fish: 2, 'crop:corn': 1, 'crop:tomato': 1 }, steps: ['chop', 'flip', 'season', 'plate'], basePrice: 300, unlockRep: 30, book: 'seafood_book', color: '#7fb8e6', colorLight: '#d8f0ff' },
 };
 

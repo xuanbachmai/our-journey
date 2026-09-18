@@ -6,7 +6,7 @@ import { blockRect, boolGrid, fillRect, grid, type AreaDef, type AreaObject } fr
 export function buildRanch(): AreaDef {
   const rnd = mulberry32(17);
   const w = 36;
-  const h = 24;
+  const h = 32;
   const tiles = grid(w, h, T.GRASS);
   const blocked = boolGrid(w, h, false);
   const objects: AreaObject[] = [];
@@ -71,7 +71,40 @@ export function buildRanch(): AreaDef {
     objects.push({ key: 'props', frame: 'hay', tx, ty, w: 1, h: 1, blocked: true });
     blockRect(blocked, tx, ty, 1, 1);
   }
-  objects.push({ key: 'props', frame: 'sign', tx: 31, ty: 11, w: 1, h: 1, blocked: true, interact: 'sign', label: 'Read', text: 'Sunny Ranch\nCows: milk. Sheep: wool.\nBuy them at the pet shop.' });
+  // south pastures (Pasture upgrade): pigs on the left, goats on the right
+  const pigPen = { x: 6, y: 22, w: 8, h: 6 };
+  const goatPen = { x: 17, y: 22, w: 10, h: 6 };
+  const pastureTiles: { tx: number; ty: number }[] = [];
+  const fencePen = (p: { x: number; y: number; w: number; h: number }, upgrade: string, tilesOut: { tx: number; ty: number }[]) => {
+    fillRect(tiles, p.x, p.y, p.w, p.h, T.DARKGRASS);
+    for (let x = p.x - 1; x <= p.x + p.w; x++) {
+      for (const y of [p.y - 1, p.y + p.h]) {
+        objects.push({ key: 'woodfence', frame: 0, tx: x, ty: y, w: 1, h: 1, requiresUpgrade: upgrade });
+        tilesOut.push({ tx: x, ty: y });
+      }
+    }
+    for (let y = p.y; y < p.y + p.h; y++) {
+      for (const x of [p.x - 1, p.x + p.w]) {
+        objects.push({ key: 'woodfence', frame: 1, tx: x, ty: y, w: 1, h: 1, requiresUpgrade: upgrade });
+        tilesOut.push({ tx: x, ty: y });
+      }
+    }
+    for (let y = p.y; y < p.y + p.h; y++) for (let x = p.x; x < p.x + p.w; x++) tilesOut.push({ tx: x, ty: y });
+  };
+  fencePen(pigPen, 'pasture', pastureTiles);
+  fencePen(goatPen, 'pasture', pastureTiles);
+  objects.push({ key: 'props', frame: 'hay', tx: 12, ty: 22, w: 1, h: 1, requiresUpgrade: 'pasture' });
+
+  // stable (Stable upgrade): ride your horse from here
+  const stable = { tx: 29, ty: 20 };
+  const paddock = { x: 29, y: 25, w: 4, h: 3 };
+  const stableTiles: { tx: number; ty: number }[] = [];
+  objects.push({ key: 'stable', tx: stable.tx, ty: stable.ty, w: 4, h: 3, dy: 0, requiresUpgrade: 'stable', interact: 'stable', label: 'Ride' });
+  for (let y = stable.ty; y < stable.ty + 3; y++) for (let x = stable.tx; x < stable.tx + 4; x++) stableTiles.push({ tx: x, ty: y });
+  fencePen(paddock, 'stable', stableTiles);
+  fillRect(tiles, 30, 13, 1, 7, T.ROAD);
+
+  objects.push({ key: 'props', frame: 'sign', tx: 31, ty: 11, w: 1, h: 1, blocked: true, interact: 'sign', label: 'Read', text: 'Sunny Ranch\nCows: milk. Sheep: wool.\nPigs, goats and horses too:\nbuild pens at the pet shop.' });
   blockRect(blocked, 31, 11, 1, 1);
 
   return {
@@ -88,6 +121,13 @@ export function buildRanch(): AreaDef {
     pens: [
       { x: pen.x, y: pen.y, w: Math.floor(pen.w / 2), h: pen.h, animal: 'cow' },
       { x: pen.x + Math.floor(pen.w / 2), y: pen.y, w: Math.ceil(pen.w / 2), h: pen.h, animal: 'sheep' },
+      { ...pigPen, animal: 'pig' },
+      { ...goatPen, animal: 'goat' },
+      { ...paddock, animal: 'horse' },
+    ],
+    upgradeBlocks: [
+      { upgrade: 'pasture', tiles: pastureTiles },
+      { upgrade: 'stable', tiles: stableTiles },
     ],
     party: [{ tx: barn.tx - 1, ty: barn.ty + 2 }],
   };

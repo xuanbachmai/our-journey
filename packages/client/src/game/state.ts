@@ -2,6 +2,7 @@ import {
   ACCESSORIES,
   ANIMALS,
   animalCount,
+  animalMax,
   BOOKS,
   bump,
   clothingDef,
@@ -435,9 +436,13 @@ export class GameState {
     return animalCount(this.world, id);
   }
 
+  animalMax(id: AnimalId) {
+    return animalMax(this.world, id);
+  }
+
   animalPrice(id: AnimalId): number | null {
     const def = ANIMALS[id];
-    if (this.animalCount(id) >= def.max) return null;
+    if (this.animalCount(id) >= this.animalMax(id)) return null;
     return Math.round(def.price * (1 + this.animalCount(id) * 0.25));
   }
 
@@ -479,6 +484,7 @@ export class GameState {
       if (!p) continue;
       p.waiting = 0;
       const item = ANIMALS[animal].product;
+      if (!item) continue;
       this.world.inventory[item] = this.count(item) + count;
       bump(this.world, `collect:${item}`, count);
       got.push({ item, count });

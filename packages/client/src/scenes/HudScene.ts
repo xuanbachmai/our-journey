@@ -54,6 +54,7 @@ import {
   SELLABLE,
   UPGRADE_IDS,
   UPGRADES,
+  type AnimalId,
   type AreaId,
   type BookId,
   type CropId,
@@ -94,7 +95,7 @@ const HELP: HelpPage[] = [
   { title: 'Home', icon: 'furn-sofa', lines: ['Buy furniture at Cozy Corner, place', 'it at home with Decorate. There is', 'a sale every day. Coziness raises', 'dish prices. Rosa sells outfits,', 'hats and dyes; try them on first.'] },
   { title: 'Friends', icon: 'heart', lines: ['Talk to villagers every day and give', 'one gift each. Hearts unlock rewards', 'at 2 and 4. Loved gifts give the most', 'hearts; you learn them as you go.', 'The Book (Journal) tracks it all.'] },
   { title: 'Fishing', icon: 'fish-koi', lines: ['10 kinds of fish live in the ponds.', 'Some bite only at night or in rain.', 'Rare fish pull harder. The first of', 'each kind pays a bonus. Check the', 'Book to see what is left to catch.'] },
-  { title: 'Animals', icon: 'cow', lines: ['Hens lay eggs at the coop. Cows and', 'sheep at the ranch make milk and wool.', 'Bees make honey. Collect at the barn,', 'coop or hives. Pets follow you and', 'dig up little gifts. Pet them!'] },
+  { title: 'Animals', icon: 'cow', lines: ['Hens and ducks lay eggs at the coop.', 'Cows, sheep, goats and pigs live at', 'the ranch: collect at the barn. Build', 'pens at the pet shop. Buy a horse and', 'ride it from the stable: much faster!'] },
   { title: 'Together', icon: 'heart', lines: ['The Love Tree grows on days you both', 'play. Leave notes in the mailbox.', 'Answer the daily question. Cook a', 'dish together when both online.', 'Special days bring fireworks.'] },
   { title: 'Controls', icon: 'menu', lines: ['Phone: drag left half to move, big', 'button to act, bag button top left.', 'PC: WASD, SPACE. 1-8 seeds, B bag,', 'J journal, M map. In Decorate:', 'arrows move, ENTER places, ESC stops.'] },
 ];
@@ -937,7 +938,7 @@ export class HudScene extends Phaser.Scene {
     const st = this.world.state;
     const top = -h / 2 + 46;
     UPGRADE_IDS.filter((u) => UPGRADES[u].shop === shop).forEach((id, i) => {
-      const y = top + i * 18;
+      const y = top + i * 21;
       const def = UPGRADES[id];
       const lvl = st.upgradeLevel(id);
       const price = st.upgradePrice(id);
@@ -1283,16 +1284,22 @@ export class HudScene extends Phaser.Scene {
   }
 
   // ---------- pet shop ----------
-  private openPetshop(tab: 'pets' | 'animals') {
-    const w = 270;
-    const h = 168;
+  private openPetshop(tab: 'pets' | 'animals' | 'build') {
+    const w = 300;
+    const h = 176;
     const st = this.world.state;
     const c = this.openOverlay(w, h, `Pet & Barn Shop   (coins: ${st.coins})`);
     this.tabs(c, w, h, [
       ['Pets', () => this.openPetshop('pets')],
-      ['Farm animals', () => this.openPetshop('animals')],
-    ], tab === 'pets' ? 0 : 1);
+      ['Animals', () => { this.shopSel = null; this.openPetshop('animals'); }],
+      ['Build', () => this.openPetshop('build')],
+    ], ['pets', 'animals', 'build'].indexOf(tab));
     const top = -h / 2 + 46;
+    if (tab === 'build') {
+      this.upgradeList(c, w, h, 'petshop', () => this.openPetshop('build'));
+      c.add(this.add.text(0, h / 2 - 12, 'New pens show up right away', plain({ color: '#7a6a70' })).setOrigin(0.5));
+      return;
+    }
     if (tab === 'pets') {
       PET_IDS.forEach((id, i) => {
         const y = top + i * 20;
@@ -1317,46 +1324,68 @@ export class HudScene extends Phaser.Scene {
         c.add(b.container);
       });
       c.add(this.add.text(0, h / 2 - 12, st.pet ? `${st.pet.name} loves you ${st.pet.affection}%` : 'One pet per person. Pet it daily!', plain({ color: '#7a6a70' })).setOrigin(0.5));
-    } else {
-      ANIMAL_IDS.forEach((id, i) => {
-        const y = top + i * 20;
-        const def = ANIMALS[id];
-        const price = st.animalPrice(id);
-        const n = st.animalCount(id);
-        c.add(this.add.image(-w / 2 + 14, y, 'icons', def.icon));
-        c.add(this.add.text(-w / 2 + 24, y - 5, `${def.name}  ${n}/${def.max}`, plain()).setOrigin(0, 0.5));
-        c.add(this.add.text(-w / 2 + 24, y + 5, `${ITEMS[def.product].name} / ${def.intervalMin}m, ${def.home}`, plain({ color: '#7a6a70' })).setOrigin(0, 0.5));
-        if (price === null) {
-          c.add(this.add.text(w / 2 - 16, y, 'max', plain({ color: '#3f9a5f' })).setOrigin(1, 0.5));
-          return;
-        }
-        const locked = def.requires && st.upgradeLevel(def.requires) === 0;
-        if (locked) {
-          const up = UPGRADES[def.requires as UpgradeId];
-          const upPrice = st.upgradePrice(def.requires as UpgradeId) ?? 0;
-          const b = button(this, w / 2 - 96, y - 7, 84, 14, `${def.requires === 'coop' ? 'Coop' : 'Garden'} ${upPrice}c`, () => {
-            if (this.world.purchaseUpgrade(def.requires as UpgradeId)) {
-              this.showToast(`${up.name} built!`);
-              this.openPetshop('animals');
-            } else audio.play('bad');
-          }, 0xffe066);
-          b.setEnabled(st.canBuyUpgrade(def.requires as UpgradeId));
-          c.add(b.container);
-          return;
-        }
-        this.priceTag(c, w / 2 - 66, y, price, st.coins >= price);
-        const b = button(this, w / 2 - 62, y - 7, 50, 14, 'Buy', () => {
-          if (st.buyAnimal(id)) {
-            audio.play(id === 'cow' ? 'moo' : id === 'sheep' ? 'baa' : id === 'chicken' ? 'cluck' : 'pop');
-            this.showToast(`A new ${def.name.toLowerCase()} is waiting at the ${def.home}!`);
-            this.world.afterChange();
-            this.openPetshop('animals');
-          } else audio.play('bad');
-        }, 0x7de8c8);
-        b.setEnabled(st.canBuyAnimal(id));
-        c.add(b.container);
-      });
+      return;
     }
+
+    // ---- farm animals: preview on the left, cards on the right ----
+    const sel = (this.shopSel && ANIMAL_IDS.includes(this.shopSel as AnimalId) ? this.shopSel : 'chicken') as AnimalId;
+    const def = ANIMALS[sel];
+    const pt = -h / 2 + 38;
+    const pw = 108;
+    const pxl = -w / 2 + 8;
+    const g = this.add.graphics();
+    panel(g, pxl, pt, pw, h / 2 - 8 - pt, 0xfff9ee);
+    g.fillStyle(0xcfe9a8, 1).fillRect(pxl + 2, pt + 30, pw - 4, 16);
+    c.add(g);
+    const cx = pxl + pw / 2;
+    const bigKey = sel === 'bee' ? null : `${sel}0`;
+    if (bigKey) c.add(this.fitImage(this.add.image(cx, pt + 42, 'critters', bigKey).setOrigin(0.5, 1), pw - 20, 38, 3));
+    else c.add(this.add.image(cx, pt + 26, 'icons', 'honey').setScale(3));
+    const n = st.animalCount(sel);
+    const max = st.animalMax(sel);
+    c.add(this.add.text(cx, pt + 55, `${def.name}  ${n}/${max}`, plain()).setOrigin(0.5));
+    c.add(this.add.text(cx, pt + 67, def.product ? `${ITEMS[def.product].name} ${def.intervalMin}m` : 'Ride it outdoors', plain({ color: '#7a6a70' })).setOrigin(0.5));
+    const price = st.animalPrice(sel);
+    const locked = def.requires && st.upgradeLevel(def.requires) === 0;
+    let label = price === null ? 'Full' : `Buy ${price}c`;
+    if (locked) label = `Needs ${UPGRADES[def.requires as UpgradeId].name}`;
+    const b = button(this, pxl + 6, pt + 77, pw - 12, 16, label, () => {
+      if (locked) {
+        this.openPetshop('build');
+        return;
+      }
+      if (st.buyAnimal(sel)) {
+        audio.play(sel === 'cow' ? 'moo' : sel === 'sheep' ? 'baa' : sel === 'chicken' || sel === 'duck' ? 'cluck' : 'pop');
+        this.showToast(sel === 'horse' ? 'Your horse waits at the stable. Ride it!' : `A new ${def.name.toLowerCase()} is waiting at the ${def.home === 'farm' ? 'farm' : 'ranch'}!`);
+        this.world.afterChange();
+        this.openPetshop('animals');
+      } else audio.play('bad');
+    }, locked ? 0xe8dcc8 : 0x7de8c8);
+    b.setEnabled(!!locked || (price !== null && st.canBuyAnimal(sel)));
+    c.add(b.container);
+    c.add(this.add.text(cx, pt + 98, def.blurb, plain({ color: '#7a6a70', wordWrap: { width: pw - 8 }, align: 'center' })).setOrigin(0.5, 0));
+
+    const gx = pxl + pw + 8;
+    const cs = 42;
+    ANIMAL_IDS.forEach((id, i) => {
+      const x = gx + (i % 4) * (cs + 2);
+      const y = pt + Math.floor(i / 4) * (cs + 2);
+      const d = ANIMALS[id];
+      const isLocked = d.requires && st.upgradeLevel(d.requires) === 0;
+      const cg = this.add.graphics();
+      panel(cg, x, y, cs, cs, id === sel ? 0xffe066 : 0xffffff, id === sel ? 0xff8fcf : 0x4a2a3f);
+      c.add(cg);
+      const img = id === 'bee' ? this.add.image(x + cs / 2, y + cs / 2 - 4, 'icons', 'honey').setScale(2) : this.fitImage(this.add.image(x + cs / 2, y + cs / 2 - 3, 'critters', `${id}0`), cs - 8, cs - 16, 2);
+      c.add(img.setAlpha(isLocked ? 0.4 : 1));
+      c.add(this.add.text(x + cs / 2, y + cs - 7, `${st.animalCount(id)}/${st.animalMax(id)}`, plain({ color: '#7a6a70' })).setOrigin(0.5));
+      const z = this.add.zone(x + cs / 2, y + cs / 2, cs, cs).setInteractive({ useHandCursor: true });
+      z.on('pointerdown', () => {
+        this.shopSel = id;
+        audio.play('blip');
+        this.openPetshop('animals');
+      });
+      c.add(z);
+    });
   }
 
   // ---------- counter ----------

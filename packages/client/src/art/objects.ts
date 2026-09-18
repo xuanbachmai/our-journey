@@ -630,6 +630,22 @@ function crittersSheet(pc: PixelCanvas) {
   frame('cat1', 12, 10, ['.o......o...', 'obo....obo..', 'obbooooobbo.', '.obbbbbbbeo.', '.obbpbbbbbo.', '..obbbbbbo..', '..obddddbo..', '.oo..oo..oo.', '.oo..oo..ooo', '............'], catP);
   const bunP = { o: P.outline, w: '#fafafa', p: P.pink, e: P.eye };
   frame('bunny0', 10, 10, ['.oo...oo..', 'opwo.owpo.', 'opwo.owpo.', '.owwwwwo..', 'owwwwwweo.', 'owwpwwwwo.', '.owwwwwo..', '..oo.oo...', '..oo.oo...', '..........'], bunP);
+  const pigP = { o: P.outline, p: '#ffb3c8', d: '#ff8fa8', e: P.eye, n: '#ff7aa0' };
+  const pigTop = ['.....ooooooo....', '....opppppppoo..', '.o.oppppppppdo..', 'o.opppppppppppo.', '.oppppppppppeppo', '.opppppppppppnno', '.oppppppppppppo.', '..oddddddddddo..'];
+  frame('pig0', 16, 10, [...pigTop, '...oo.oo..oo.oo.', '...oo.oo..oo.oo.'], pigP);
+  frame('pig1', 16, 10, [...pigTop, '..oo..oo.oo..oo.', '..oo..oo.oo..oo.'], pigP);
+  const goatP = { o: P.outline, w: '#f0ece0', g: '#c9c0a8', e: P.eye, h: '#8a7a60' };
+  const goatTop = ['...........o.o..', '..........ohoo..', '...oooooooowwwo.', '..owwwwwwwowweo.', '.owwwwwwwwwwwwo.', 'owwwwwwwwwwwwwgo', '.owwwwwwwwwwwo..', '..ogggggggggo.g.'];
+  frame('goat0', 16, 11, [...goatTop, '...oo.oo.oo.oo..', '...oo.oo.oo.oo..', '...hh.hh.hh.hh..'], goatP);
+  frame('goat1', 16, 11, [...goatTop, '..oo..oo.oo..oo.', '..oo..oo.oo..oo.', '..hh..hh.hh..hh.'], goatP);
+  const duckP = { o: P.outline, w: '#fafafa', g: '#d8d8e6', e: P.eye, B: P.orange, y: P.orange };
+  const duckTop = ['.......ooo..', '......owwwo.', '......oweoBB', '.......owo..', '.ooooooowo..', 'owwwwwwwwo..', 'owgwwwwwwo..', '.owwwwwwo...', '..oooooo....'];
+  frame('duck0', 12, 10, [...duckTop, '...y..y.....'], duckP);
+  frame('duck1', 12, 10, [...duckTop, '..y....y....'], duckP);
+  const horseP = { o: P.outline, b: '#a0663c', d: '#7a4a28', m: '#3b2a3a', e: P.eye };
+  const horseTop = ['..............oo......', '.............ommo.....', '............ommbbo....', '...........ommbbbbo...', '..........ommbbbebbo..', '.........ommbbbbbbbbo.', '..ooooooommbbbbooobbo.', '.obbbbbbbbbbbbbo..oo..', 'mobbbbbbbbbbbbbbo.....', 'mobbbbbbbbbbbbbbo.....', '.mobbbbbbbbbbbbo......', '..oddddddddddddo......'];
+  frame('horse0', 22, 16, [...horseTop, '..obo.obo..obo.obo....', '..obo.obo..obo.obo....', '..obo.obo..obo.obo....', '..omo.omo..omo.omo....'], horseP);
+  frame('horse1', 22, 16, [...horseTop, '...obo.obo.obo.obo....', '...obo.obo.obo.obo....', '..obo...obo..obo.obo..', '..omo...omo..omo.omo..'], horseP);
   frame('bunny1', 10, 10, ['.oo...oo..', 'opwo.owpo.', 'opwo.owpo.', '.owwwwwo..', 'owwwwwweo.', 'owwpwwwwo.', '.owwwwwo..', '.oo...oo..', '.oo...oo..', '..........'], bunP);
 }
 
@@ -1020,6 +1036,11 @@ export function buildObjectTextures(scene: Phaser.Scene) {
   bl.frame('furnshop', 480, 0, 80, 72);
   bl.done();
 
+  const sb = new PixelCanvas(scene, 'stable', 64, 56);
+  facade(sb, 0, 0, 64, 56, '#c98b4e', '#a86a3c', '#8a5a33', '#6e4426', { windows: 2 });
+  sb.rows(28, 24, ['.oooo.', 'oo..oo', 'o....o', 'o....o'], { o: P.coin });
+  sb.done();
+
   const f = new PixelCanvas(scene, 'fence', 32, 16);
   f.rect(0, 6, 16, 3, P.outline);
   f.rect(0, 7, 16, 1, P.white);
@@ -1081,7 +1102,7 @@ export function buildObjectTextures(scene: Phaser.Scene) {
   furnitureSheet(fu);
   fu.done();
 
-  const cr = new PixelCanvas(scene, 'critters', 200, 14);
+  const cr = new PixelCanvas(scene, 'critters', 360, 16);
   crittersSheet(cr);
   cr.done();
 
@@ -1160,6 +1181,40 @@ export function buildObjectTextures(scene: Phaser.Scene) {
     icons.rect(x0 + 3, 5, 6, 5, P.white);
     icons.rect(x0 + 4, 2, 4, 1, P.white);
     icons.rect(x0 + 3, 7, 6, 2, P.blue);
+  });
+  I('duck', (x0) => icons.rows(x0, 1, ['.......ooo..', '......owwwo.', '......oweoBB', '.......owo..', '.ooooooowo..', 'owwwwwwwwo..', 'owgwwwwwwo..', '.owwwwwwo...', '..oooooo....'], { o: P.outline, w: '#fafafa', g: '#d8d8e6', e: P.eye, B: P.orange }));
+  I('pig', (x0) => icons.rows(x0 + 1, 2, ['.oo....oo.', 'odpoooopdo', 'oppppppppo', 'opeppppepo', 'oppnnnnppo', 'oppnoonppo', '.oppppppo.', '..oooooo..'], { o: P.outline, p: '#ffb3c8', d: '#ff8fa8', e: P.eye, n: '#ff7aa0' }));
+  I('goat', (x0) => icons.rows(x0 + 1, 1, ['o........o', '.o......o.', '..oooooo..', '.owwwwwwo.', '.owewwewo.', '..owwwwo..', '..owwwwo..', '...oggo...', '....gg....'], { o: P.outline, w: '#f0ece0', g: '#c9c0a8', e: P.eye }));
+  I('horse', (x0) => icons.rows(x0 + 1, 1, ['..oo......', '.ommo.....', 'ommbbo....', 'ombbbbo...', 'obbbebbo..', 'obbbbbbbo.', 'obbboobbbo', 'obbo..oooo', 'obbo......', 'oooo......'], { o: P.outline, b: '#a0663c', m: '#3b2a3a', e: P.eye }));
+  I('fence', (x0) => {
+    for (const px of [1, 5, 9]) icons.rect(x0 + px, 2, 2, 9, P.outline);
+    for (const px of [1, 5, 9]) icons.rect(x0 + px, 3, 1, 7, P.white);
+    icons.rect(x0, 4, 12, 2, P.outline);
+    icons.rect(x0, 8, 12, 2, P.outline);
+    icons.rect(x0, 4, 12, 1, P.white);
+    icons.rect(x0, 8, 12, 1, P.white);
+  });
+  I('duck_egg', (x0) => {
+    icons.disc(x0 + 6, 7, 4, P.outline);
+    icons.disc(x0 + 6, 5, 3, P.outline);
+    icons.disc(x0 + 6, 7, 3, '#d8f0ff');
+    icons.disc(x0 + 6, 5, 2, '#d8f0ff');
+    icons.px(x0 + 5, 4, P.white);
+    icons.px(x0 + 7, 7, '#a8d0ea');
+  });
+  I('goat_milk', (x0) => {
+    icons.rect(x0 + 3, 1, 6, 3, P.outline);
+    icons.rect(x0 + 2, 4, 8, 7, P.outline);
+    icons.rect(x0 + 3, 5, 6, 5, '#fff8e6');
+    icons.rect(x0 + 4, 2, 4, 1, P.leaf);
+    icons.rect(x0 + 3, 7, 6, 2, P.leaf);
+  });
+  I('truffle', (x0) => {
+    icons.disc(x0 + 6, 7, 4, P.outline);
+    icons.disc(x0 + 6, 7, 3, '#5a3a2a');
+    icons.px(x0 + 5, 5, '#8a5a3a');
+    icons.px(x0 + 7, 7, '#8a5a3a');
+    icons.px(x0 + 4, 8, '#3b2a1f');
   });
   I('wool', (x0) => {
     icons.disc(x0 + 6, 6, 5, P.outline);

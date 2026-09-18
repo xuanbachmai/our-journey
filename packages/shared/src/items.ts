@@ -1,6 +1,6 @@
 import { CROPS, CROP_IDS, type CropId } from './crops';
 
-export type ProduceId = 'egg' | 'fish' | 'milk' | 'wool' | 'mushroom' | 'berry' | 'herb' | 'honey';
+export type ProduceId = 'egg' | 'fish' | 'milk' | 'wool' | 'mushroom' | 'berry' | 'herb' | 'honey' | 'duck_egg' | 'goat_milk' | 'truffle';
 export type ItemId = `seed:${CropId}` | `crop:${CropId}` | ProduceId;
 
 export interface ItemDef {
@@ -28,9 +28,12 @@ export const ITEMS: Record<ItemId, ItemDef> = {
   berry: { id: 'berry', name: 'Wild berry', sellPrice: 16, icon: 'berry' },
   herb: { id: 'herb', name: 'Herb', sellPrice: 14, icon: 'herb' },
   honey: { id: 'honey', name: 'Honey', sellPrice: 60, icon: 'honey' },
+  duck_egg: { id: 'duck_egg', name: 'Duck egg', sellPrice: 38, icon: 'duck_egg' },
+  goat_milk: { id: 'goat_milk', name: 'Goat milk', sellPrice: 55, icon: 'goat_milk' },
+  truffle: { id: 'truffle', name: 'Truffle', sellPrice: 120, icon: 'truffle' },
 };
 
-export const PRODUCE_IDS: ProduceId[] = ['egg', 'fish', 'milk', 'wool', 'mushroom', 'berry', 'herb', 'honey'];
+export const PRODUCE_IDS: ProduceId[] = ['egg', 'duck_egg', 'milk', 'goat_milk', 'wool', 'honey', 'truffle', 'fish', 'mushroom', 'berry', 'herb'];
 export const SELLABLE: ItemId[] = [...CROP_IDS.map((c) => `crop:${c}` as ItemId), ...PRODUCE_IDS];
 
 export function itemIcon(id: ItemId) {

@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { TILE } from '../art/tiles';
+import type { CritterKind } from '../areas/types';
 
 export interface PenRect {
   x: number;
@@ -18,7 +19,7 @@ export class Critter {
 
   constructor(
     private scene: Phaser.Scene,
-    readonly kind: 'chicken' | 'cow' | 'sheep',
+    readonly kind: CritterKind,
     private pen: PenRect,
     private speed = 20,
   ) {

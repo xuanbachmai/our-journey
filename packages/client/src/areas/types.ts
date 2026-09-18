@@ -1,5 +1,7 @@
 import type { AreaId } from '@hh/shared';
 
+export type CritterKind = 'chicken' | 'duck' | 'cow' | 'sheep' | 'goat' | 'pig' | 'horse';
+
 /** What happens when the player presses the action button next to an object. */
 export type InteractId =
   | 'stall'
@@ -14,6 +16,7 @@ export type InteractId =
   | 'tailor'
   | 'petshop'
   | 'furnshop'
+  | 'stable'
   | 'wardrobe'
   | 'lovetree'
   | 'sign'
@@ -90,7 +93,7 @@ export interface Pen {
   y: number;
   w: number;
   h: number;
-  animal: 'chicken' | 'cow' | 'sheep';
+  animal: CritterKind;
 }
 
 export interface AreaDef {
