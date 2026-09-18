@@ -948,7 +948,7 @@ export class WorldScene extends Phaser.Scene {
         n.facePlayer(ch.x, ch.y);
         if (n.def.opens) {
           audio.play('open');
-          this.events.emit(n.def.opens === 'store' ? 'openStore' : n.def.opens === 'tailor' ? 'openTailor' : 'openPetshop');
+          this.events.emit(n.def.opens === 'store' ? 'openStore' : n.def.opens === 'tailor' ? 'openTailor' : n.def.opens === 'furnshop' ? 'openFurnshop' : 'openPetshop');
         } else {
           audio.play('blip');
           const line = n.talk(this.playerId);
@@ -1030,6 +1030,10 @@ export class WorldScene extends Phaser.Scene {
       case 'petshop':
         audio.play('open');
         this.events.emit('openPetshop');
+        return;
+      case 'furnshop':
+        audio.play('open');
+        this.events.emit('openFurnshop');
         return;
       case 'wardrobe':
         audio.play('open');
@@ -1286,9 +1290,9 @@ export class WorldScene extends Phaser.Scene {
     for (const f of this.state.world.furniturePlaced) {
       const d = FURNITURE[f.id];
       const by = (f.ty + d.h) * TILE + (d.wall ? -2 : 0);
-      const img = this.add.image(f.tx * TILE, by, 'furniture', f.id).setOrigin(0, 1).setDepth(f.id === 'rug' ? -12 : d.wall ? -11 : by - 2);
+      const img = this.add.image(f.tx * TILE, by, 'furniture', f.id).setOrigin(0, 1).setDepth(d.floor ? -12 : d.wall ? -11 : by - 2);
       this.furnitureSprites.push(img);
-      if (!d.wall && f.id !== 'rug') for (let y = f.ty; y < f.ty + d.h; y++) for (let x = f.tx; x < f.tx + d.w; x++) this.blocked[y][x] = true;
+      if (!d.wall && !d.floor) for (let y = f.ty; y < f.ty + d.h; y++) for (let x = f.tx; x < f.tx + d.w; x++) this.blocked[y][x] = true;
     }
   }
 

@@ -1,7 +1,7 @@
 import type { AreaId } from '@hh/shared';
 import { buildFarm } from './farm';
 import { buildForest } from './forest';
-import { buildHome, buildPetshop, buildQdHome, buildRestaurant, buildStore, buildTailor, buildXbHome } from './interiors';
+import { buildHome, buildFurnshop, buildPetshop, buildQdHome, buildRestaurant, buildStore, buildTailor, buildXbHome } from './interiors';
 import { buildLane } from './lane';
 import { buildRanch } from './ranch';
 import { buildTown } from './town';
@@ -22,6 +22,7 @@ const builders: Record<AreaId, () => AreaDef> = {
   store: buildStore,
   tailor: buildTailor,
   petshop: buildPetshop,
+  furnshop: buildFurnshop,
 };
 
 /** Areas are deterministic, so each is generated once and reused. */

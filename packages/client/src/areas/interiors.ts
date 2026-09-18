@@ -91,7 +91,7 @@ export function buildRestaurant(): AreaDef {
   };
 }
 
-function shop(id: 'store' | 'tailor' | 'petshop', floor: number, keeper: NpcDef, extra: (objects: AreaObject[], blocked: boolean[][]) => void, town: { tx: number; ty: number }): AreaDef {
+function shop(id: 'store' | 'tailor' | 'petshop' | 'furnshop', floor: number, keeper: NpcDef, extra: (objects: AreaObject[], blocked: boolean[][]) => void, town: { tx: number; ty: number }): AreaDef {
   const w = 16;
   const h = 11;
   const { tiles, blocked, doorTx } = room(w, h, floor);
@@ -119,7 +119,7 @@ export function buildStore(): AreaDef {
   return shop(
     'store',
     T.FLOOR_WOOD,
-    { id: 'mabel', lookId: 'mabel', tx: 7, ty: 2, wander: 0, opens: 'store', lines: ['Seeds, furniture and recipe books. And I buy anything you grow.'] },
+    { id: 'mabel', lookId: 'mabel', tx: 7, ty: 2, wander: 0, opens: 'store', lines: ['Seeds and recipe books. And I buy anything you grow.'] },
     (objects, blocked) => {
       for (const tx of [1, 2, 13, 14]) {
         objects.push({ key: 'furniture', frame: 'bookshelf', tx, ty: 1, w: 1, h: 1, dy: 4, blocked: true });
@@ -140,7 +140,7 @@ export function buildTailor(): AreaDef {
   return shop(
     'tailor',
     T.FLOOR_PINK,
-    { id: 'rosa', lookId: 'rosa', tx: 7, ty: 2, wander: 0, opens: 'tailor', lines: ['Hats, dyes and hair colour. Try the bunny ears, everyone loves them.'] },
+    { id: 'rosa', lookId: 'rosa', tx: 7, ty: 2, wander: 0, opens: 'tailor', lines: ['Outfits, hats, dyes and hair colour. Try things on, it is free!'] },
     (objects, blocked) => {
       for (const [tx, ty] of [
         [2, 5],
@@ -154,6 +154,32 @@ export function buildTailor(): AreaDef {
       objects.push({ key: 'furniture', frame: 'rug', tx: 6, ty: 6, w: 3, h: 2, floor: true });
     },
     { tx: 32, ty: 7 },
+  );
+}
+
+export function buildFurnshop(): AreaDef {
+  return shop(
+    'furnshop',
+    T.FLOOR_WOOD,
+    { id: 'ivy', lookId: 'ivy', tx: 7, ty: 2, wander: 0, opens: 'furnshop', lines: ['Welcome to Cozy Corner! Everything here makes a house a home.'] },
+    (objects, blocked) => {
+      const show: [string, number, number, number, number][] = [
+        ['sofa', 1, 5, 2, 1],
+        ['armchair', 3, 5, 1, 1],
+        ['records', 12, 5, 1, 1],
+        ['tv', 13, 5, 2, 1],
+        ['lamp', 1, 8, 1, 1],
+        ['vase', 14, 8, 1, 1],
+      ];
+      for (const [frame, tx, ty, w, h] of show) {
+        objects.push({ key: 'furniture', frame, tx, ty, w, h, blocked: true });
+        blockRect(blocked, tx, ty, w, h);
+      }
+      objects.push({ key: 'furniture', frame: 'heartrug', tx: 6, ty: 6, w: 3, h: 2, floor: true });
+      objects.push({ key: 'furniture', frame: 'clock', tx: 10, ty: 1, w: 1, h: 1, dy: -2, floor: true });
+      objects.push({ key: 'furniture', frame: 'lights', tx: 4, ty: 1, w: 2, h: 1, dy: -8, floor: true });
+    },
+    { tx: 16, ty: 7 },
   );
 }
 

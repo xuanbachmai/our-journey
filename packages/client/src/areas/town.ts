@@ -40,8 +40,9 @@ export function buildTown(): AreaDef {
   fillRect(tiles, 34, 12, 10, 2, T.ROAD);
 
   // shops along the top: footprints 5x3 with the door tile below
-  const shops: { key: string; tx: number; portalTo: 'store' | 'tailor' | 'petshop' }[] = [
+  const shops: { key: string; tx: number; portalTo: 'store' | 'tailor' | 'petshop' | 'furnshop' }[] = [
     { key: 'store', tx: 6, portalTo: 'store' },
+    { key: 'furnshop', tx: 14, portalTo: 'furnshop' },
     { key: 'tailor', tx: 30, portalTo: 'tailor' },
     { key: 'petshop', tx: 36, portalTo: 'petshop' },
   ];
@@ -55,8 +56,6 @@ export function buildTown(): AreaDef {
     fillRect(tiles, s.tx + 2, ty + 4, 1, 9 - (ty + 4), T.COBBLE);
     portals.push({ tx: s.tx + 2, ty: ty + 3, w: 1, h: 1, to: s.portalTo, targetTx: 8, targetTy: 8, facing: 'up', label: s.key });
   }
-  // tailor sits closer to the plaza: nudge its road
-  fillRect(tiles, 14, 3, 5, 6, T.GRASS);
 
   // fountain in the middle
   objects.push({ key: 'props', frame: 'fountain', tx: 21, ty: 13, w: 2, h: 2, blocked: true });
@@ -101,7 +100,6 @@ export function buildTown(): AreaDef {
   for (const [tx, ty] of [
     [12, 22],
     [30, 23],
-    [16, 5],
     [26, 5],
   ]) {
     objects.push({ key: 'bushes', frame: Math.floor(rnd() * 3), tx, ty, w: 1, h: 1, blocked: true });
@@ -110,7 +108,7 @@ export function buildTown(): AreaDef {
 
   const npcs: NpcDef[] = [
     { id: 'mayor', lookId: 'mayor', tx: 24, ty: 16, wander: 2, lines: ['Welcome to Maple Town! I am Mayor Bea.', 'The board by the fountain lists what folks want. Good coin in it.', 'Prices at the store change every day. Sell high!', 'Our forest hides mushrooms and berries. Go look!'] },
-    { id: 'lily', lookId: 'c0', tx: 16, ty: 14, wander: 4, lines: ['Your restaurant smells amazing from here!', 'I heard cows at the ranch give milk every so often.', 'Rosa can dye your overalls any colour.', 'Rainy days water the fields for free.'] },
+    { id: 'lily', lookId: 'c0', tx: 16, ty: 14, wander: 4, lines: ['Your restaurant smells amazing from here!', 'I heard cows at the ranch give milk every so often.', 'Ivy at Cozy Corner has a new love seat. Cute!', 'Rainy days water the fields for free.'] },
     { id: 'tom', lookId: 'c1', tx: 28, ty: 18, wander: 3, lines: ['Back in my day we fished with a stick.', 'Serve diners fast and they tip well.', 'Furniture makes a house a home. And your food pricier, somehow.', 'The Love Tree only grows when you both show up. Sweet, that.'] },
     { id: 'pip', lookId: 'c2', tx: 20, ty: 19, wander: 5, lines: ['Have you tried Honey Toast? You need a book for it!', 'Finn at the pet shop has puppies!', 'Blueberries take forever but sell for a lot.', 'I once got a gift from a dog. He dug it up!'] },
     { id: 'hana', lookId: 'c5', tx: 12, ty: 17, wander: 3, lines: ['Special days get fireworks on your farm.', 'Ask each other the daily question. It is fun.', 'The bunny ears at Rosa\'s are adorable.', 'Bring me a berry pie some day!'] },

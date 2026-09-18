@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { newWorld, PLAYER_IDS, type PlayerId, type WorldState } from '@hh/shared';
-import { LOOKS } from '../art/characters';
+import { buildCharacterTexture, LOOKS } from '../art/characters';
 import { P } from '../art/palette';
 import { net, type Seats } from '../game/net';
 import { confirmBox, promptText } from '../ui/dom';
@@ -190,8 +190,9 @@ export class TitleScene extends Phaser.Scene {
       const look = LOOKS[id];
       const seat = seats?.[id];
       const taken = !!seat && seat.device !== net.deviceId;
-      const spr = this.add.sprite(x, y, `char-${id}-none-none-default-default`, 0).setOrigin(0.5, 1).setScale(2);
-      spr.play(`char-${id}-none-none-default-default-idle-down`);
+      const tex = buildCharacterTexture(this, look);
+      const spr = this.add.sprite(x, y, tex, 0).setOrigin(0.5, 1).setScale(2);
+      spr.play(`${tex}-idle-down`);
       if (taken) spr.setTint(0x888888);
       else this.tweens.add({ targets: spr, y: y - 4, duration: 500 + i * 120, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
       const name = this.add.text(x, y + 6, taken ? `${look.name} (taken)` : look.name, style({ color: taken ? '#aaaaaa' : look.hair })).setOrigin(0.5, 0);

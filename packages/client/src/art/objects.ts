@@ -476,6 +476,134 @@ function furnitureSheet(pc: PixelCanvas) {
       if (s === 7) pc.rows(x0 + 16, 2, ['.oo.oo.', 'orroro.', 'orrrrro', '.orrro.', '..oro..'], { o: P.outline, r: P.red });
     });
   }
+
+  // ---- Cozy Corner pieces ----
+  frame('armchair', 16, 18, (x0) => {
+    pc.rect(x0 + 1, 1, 14, 15, P.outline);
+    pc.rect(x0 + 2, 2, 12, 13, '#ff9a8a');
+    pc.rect(x0 + 2, 2, 12, 2, '#ffc0b5');
+    pc.rect(x0 + 2, 7, 3, 8, '#e0706a');
+    pc.rect(x0 + 11, 7, 3, 8, '#e0706a');
+    pc.rect(x0 + 5, 9, 6, 4, '#ffb8aa');
+    pc.rect(x0 + 2, 16, 2, 2, P.outline);
+    pc.rect(x0 + 12, 16, 2, 2, P.outline);
+  });
+  frame('beanbag', 16, 16, (x0) => {
+    pc.disc(x0 + 8, 9, 7, P.outline);
+    pc.disc(x0 + 8, 9, 6, '#7de8c8');
+    pc.disc(x0 + 8, 11, 4, '#5fcfad');
+    pc.disc(x0 + 5, 6, 2, '#b3f5e2');
+  });
+  frame('vase', 12, 18, (x0) => {
+    pc.rect(x0 + 5, 5, 1, 6, P.leafDark);
+    pc.rect(x0 + 7, 4, 1, 7, P.leafDark);
+    pc.px(x0 + 4, 8, P.leaf);
+    pc.px(x0 + 8, 7, P.leaf);
+    pc.disc(x0 + 3, 4, 2, P.pink);
+    pc.disc(x0 + 8, 3, 2, P.yellow);
+    pc.disc(x0 + 6, 2, 1, P.red);
+    pc.px(x0 + 3, 4, P.white);
+    pc.rect(x0 + 3, 10, 6, 8, P.outline);
+    pc.rect(x0 + 4, 11, 4, 6, P.blue);
+    pc.px(x0 + 4, 12, P.white);
+  });
+  frame('cactus', 12, 16, (x0) => {
+    pc.rect(x0 + 4, 2, 4, 9, P.outline);
+    pc.rect(x0 + 5, 3, 2, 7, P.leaf);
+    pc.rect(x0 + 2, 5, 3, 2, P.outline);
+    pc.px(x0 + 3, 4, P.outline);
+    pc.px(x0 + 3, 5, P.leaf);
+    pc.px(x0 + 6, 1, P.pink);
+    pc.rect(x0 + 2, 10, 8, 6, P.outline);
+    pc.rect(x0 + 3, 11, 6, 4, '#c9764a');
+  });
+  frame('clock', 14, 14, (x0) => {
+    pc.disc(x0 + 7, 7, 6, P.outline);
+    pc.disc(x0 + 7, 7, 5, P.cream);
+    pc.rect(x0 + 7, 3, 1, 4, P.outline);
+    pc.rect(x0 + 7, 7, 3, 1, P.outline);
+    pc.px(x0 + 7, 7, P.red);
+    for (const [dx, dy] of [[0, -4], [4, 0], [0, 4], [-4, 0]]) pc.px(x0 + 7 + dx, 7 + dy, P.woodDark);
+  });
+  frame('lights', 32, 10, (x0) => {
+    const colors = [P.pink, P.yellow, P.mint, P.blue, P.purple, P.red];
+    for (let x = 0; x < 32; x++) pc.px(x0 + x, 2 + Math.round(Math.sin(x / 5) * 1.5), P.outline);
+    for (let i = 0; i < 7; i++) {
+      const x = 2 + i * 5;
+      const y = 5 + Math.round(Math.sin(x / 5) * 1.5);
+      pc.disc(x0 + x, y, 2, P.outline);
+      pc.disc(x0 + x, y, 1, colors[i % colors.length]);
+    }
+  });
+  frame('tv', 32, 24, (x0) => {
+    pc.rect(x0 + 2, 0, 28, 20, P.outline);
+    pc.rect(x0 + 3, 1, 26, 18, '#b08a50');
+    pc.rect(x0 + 5, 3, 18, 14, P.outline);
+    pc.rect(x0 + 6, 4, 16, 12, '#7ecbff');
+    pc.rect(x0 + 6, 12, 16, 4, P.grass);
+    pc.disc(x0 + 17, 7, 2, P.yellow);
+    pc.px(x0 + 7, 5, P.white);
+    pc.disc(x0 + 26, 6, 1, P.outline);
+    pc.disc(x0 + 26, 11, 1, P.outline);
+    pc.rect(x0 + 5, 20, 2, 4, P.outline);
+    pc.rect(x0 + 25, 20, 2, 4, P.outline);
+    pc.rect(x0 + 14, -0, 1, 1, P.outline);
+  });
+  frame('records', 16, 22, (x0) => {
+    pc.px(x0 + 12, 0, P.pink);
+    pc.px(x0 + 13, 1, P.pink);
+    pc.rect(x0 + 1, 5, 14, 6, P.outline);
+    pc.rect(x0 + 2, 6, 12, 4, '#8a5a33');
+    pc.disc(x0 + 7, 8, 2, '#2e2e3a');
+    pc.px(x0 + 7, 8, P.red);
+    pc.rect(x0 + 11, 6, 1, 3, '#c9c9d9');
+    pc.rect(x0 + 1, 10, 14, 12, P.outline);
+    pc.rect(x0 + 2, 11, 12, 10, P.wood);
+    pc.rect(x0 + 3, 12, 4, 8, '#ff8fcf');
+    pc.rect(x0 + 8, 12, 4, 8, P.blue);
+  });
+  frame('petbed', 16, 10, (x0) => {
+    pc.rect(x0 + 1, 1, 14, 9, P.outline);
+    pc.rect(x0 + 2, 2, 12, 7, '#ff8fcf');
+    pc.rect(x0 + 4, 3, 8, 5, '#ffd2ea');
+    pc.rows(x0 + 6, 4, ['o..o', 'oooo'], { o: P.white });
+  });
+  frame('heartrug', 48, 32, (x0) => {
+    const inside = (px: number, py: number, k: number) => {
+      const nx = (px - 23.5) / (17 * k);
+      const ny = ((15 - py) / (14 * k)) * 1.1;
+      const a = nx * nx + ny * ny - 1;
+      return a * a * a - nx * nx * ny * ny * ny <= 0;
+    };
+    for (let y = 0; y < 32; y++)
+      for (let x = 0; x < 48; x++) {
+        if (!inside(x, y, 1)) continue;
+        const edge = !inside(x - 1, y, 1) || !inside(x + 1, y, 1) || !inside(x, y - 1, 1) || !inside(x, y + 1, 1);
+        pc.px(x0 + x, y, edge ? P.outline : inside(x, y, 0.7) ? (inside(x, y, 0.4) ? P.white : '#ffb3d9') : '#ff8fa3');
+      }
+  });
+  frame('dresser', 32, 24, (x0) => {
+    pc.rect(x0 + 20, 0, 8, 6, P.outline);
+    pc.rect(x0 + 21, 1, 6, 4, P.window);
+    pc.px(x0 + 22, 2, P.white);
+    pc.rect(x0 + 4, 3, 4, 3, P.pink);
+    pc.rect(x0, 6, 32, 18, P.outline);
+    pc.rect(x0 + 1, 7, 30, 16, P.woodLight);
+    for (let r = 0; r < 3; r++) {
+      pc.rect(x0 + 2, 8 + r * 5, 28, 4, P.wood);
+      pc.rect(x0 + 15, 9 + r * 5, 2, 2, P.coin);
+    }
+  });
+  frame('loveseat', 32, 18, (x0) => {
+    pc.rect(x0, 2, 32, 14, P.outline);
+    pc.rect(x0 + 1, 3, 30, 12, '#ff8fcf');
+    pc.rect(x0 + 3, 8, 26, 6, '#ffb3d9');
+    pc.rect(x0 + 1, 3, 4, 12, '#e05fa8');
+    pc.rect(x0 + 27, 3, 4, 12, '#e05fa8');
+    pc.rect(x0 + 3, 16, 2, 2, P.outline);
+    pc.rect(x0 + 27, 16, 2, 2, P.outline);
+    pc.rows(x0 + 13, 3, ['.oo.oo.', 'orroro.', 'orrrrro', '.orrro.', '..oro..'], { o: P.outline, r: P.red });
+  });
 }
 
 function crittersSheet(pc: PixelCanvas) {
@@ -862,7 +990,7 @@ export function buildObjectTextures(scene: Phaser.Scene) {
   bn.done();
 
   // town buildings: store (blue), tailor (pink), petshop (green), restaurant (orange)
-  const bl = new PixelCanvas(scene, 'buildings', 80 * 6, 72);
+  const bl = new PixelCanvas(scene, 'buildings', 80 * 7, 72);
   facade(bl, 0, 8, 80, 64, '#fff3dc', '#eedcc0', '#5fa8ff', '#3f7fd0', { sign: 'STORE', windows: 2, awning: '#5fa8ff' });
   facade(bl, 80, 8, 80, 64, '#fff0f6', '#f0d8e6', '#ff8fcf', '#e05fa8', { sign: 'ROSA', windows: 2, awning: '#ff8fcf' });
   facade(bl, 160, 8, 80, 64, '#f0fff0', '#d8f0d8', '#7bd36a', '#4fa84a', { sign: 'PETS', windows: 2 });
@@ -885,6 +1013,11 @@ export function buildObjectTextures(scene: Phaser.Scene) {
   }
   bl.frame('house_qd', 320, 0, 80, 72);
   bl.frame('house_xb', 400, 0, 80, 72);
+  // Cozy Corner furniture shop: sunny yellow roof, a sofa in the window
+  facade(bl, 480, 8, 80, 64, '#fffbea', '#f0e4c0', '#ffd23f', '#e6a800', { sign: 'HOME', windows: 2, awning: '#ffd23f' });
+  bl.rect(480 + 11, 43, 12, 5, '#ff8fcf');
+  bl.rect(480 + 57, 45, 10, 3, P.woodDark);
+  bl.frame('furnshop', 480, 0, 80, 72);
   bl.done();
 
   const f = new PixelCanvas(scene, 'fence', 32, 16);
@@ -944,7 +1077,7 @@ export function buildObjectTextures(scene: Phaser.Scene) {
   });
   b.done();
 
-  const fu = new PixelCanvas(scene, 'furniture', 980, 48);
+  const fu = new PixelCanvas(scene, 'furniture', 1400, 48);
   furnitureSheet(fu);
   fu.done();
 

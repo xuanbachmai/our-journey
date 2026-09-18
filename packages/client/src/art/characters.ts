@@ -37,7 +37,8 @@ export const CUSTOMER_LOOKS: CharacterLook[] = [
   { id: 'c5', name: 'Hana', hair: '#ff6b6b', hairDark: '#d94a4a', outfit: '#7de8c8', outfitDark: '#4fbf9f', accent: '#d94a4a', shoes: '#3b2a3a' },
 ];
 
-export const SHOPKEEPER_LOOKS: Record<'mabel' | 'rosa' | 'finn' | 'mayor', CharacterLook> = {
+export const SHOPKEEPER_LOOKS: Record<'mabel' | 'rosa' | 'finn' | 'mayor' | 'ivy', CharacterLook> = {
+  ivy: { id: 'ivy', name: 'Ivy', hair: '#f2c14e', hairDark: '#d19a2a', outfit: '#ffd23f', outfitDark: '#e6a800', accent: '#ff8fcf', shoes: '#6b3a2a' },
   mabel: { id: 'mabel', name: 'Mabel', hair: '#8a5a33', hairDark: '#5e3a1f', outfit: '#6fb8ff', outfitDark: '#3f8fe0', accent: '#ffffff', shoes: '#3b2a3a' },
   rosa: { id: 'rosa', name: 'Rosa', hair: '#ff7bac', hairDark: '#e2569a', outfit: '#ff8fcf', outfitDark: '#e05fa8', accent: '#ffffff', shoes: '#4a2a3f' },
   finn: { id: 'finn', name: 'Finn', hair: '#7bd36a', hairDark: '#4fa84a', outfit: '#ffa94d', outfitDark: '#e07f20', accent: '#4fa84a', shoes: '#6b3a2a' },
@@ -188,10 +189,71 @@ const HATS_ART: Record<string, Hat> = {
     down: ['....oo....oo....', '...opqo..oqpo...', '...opqo..oqpo...', '...opqo..oqpo...', '...oppo..oppo...', '....oo....oo....'],
     side: ['....oo....oo....', '...opqo..oqpo...', '...opqo..oqpo...', '...opqo..oqpo...', '...oppo..oppo...', '....oo....oo....'],
   },
+  beret: {
+    p: '#c0405a',
+    q: '#8a2a40',
+    down: ['................', '........o.......', '.....oooooooo...', '...oppppppppppo.', '..oppppppppppppo', '..oqqqqqqqqqqqo.'],
+    side: ['................', '........o.......', '.....oooooooo...', '...oppppppppppo.', '..oppppppppppppo', '..oqqqqqqqqqqqo.'],
+  },
+  sunhat: {
+    p: '#fff0c8',
+    q: '#e0cfa0',
+    down: ['................', '.....oooooo.....', '....oppppppo....', '...okkkkkkkko...', 'oooppppppppppooo', 'oqqqqqqqqqqqqqqo'],
+    side: ['................', '.....oooooo.....', '....oppppppo....', '...okkkkkkkko...', 'oooppppppppppooo', 'oqqqqqqqqqqqqqqo'],
+  },
+  catears: {
+    p: '#3b2a3a',
+    q: '#ff8fcf',
+    down: ['................', '................', '...o........o...', '..opo......opo..', '..oqpo....opqo..', '..oppo....oppo..'],
+    side: ['................', '................', '...o........o...', '..opo......opo..', '..oqpo....opqo..', '..oppo....oppo..'],
+  },
+  party: {
+    p: '#7de8c8',
+    q: '#ffd23f',
+    down: ['......owwo......', '......oppo......', '......opqo......', '.....oqppqo.....', '....oppqqppo....', '...oqqppppqqo...'],
+    side: ['......owwo......', '......oppo......', '......opqo......', '.....oqppqo.....', '....oppqqppo....', '...oqqppppqqo...'],
+  },
+  frog: {
+    p: '#7bd36a',
+    q: '#4fa84a',
+    down: ['...oo......oo...', '..owwo....owwo..', '..oowo....owoo..', '..oppoooooooppo.', '..oppppppppppo..', '..oqqqqqqqqqqo..'].map((r) => r.slice(0, 16).padEnd(16, '.')),
+    side: ['...oo......oo...', '..owwo....owwo..', '..oowo....owoo..', '..oppoooooooppo.', '..oppppppppppo..', '..oqqqqqqqqqqo..'].map((r) => r.slice(0, 16).padEnd(16, '.')),
+  },
+  tiara: {
+    p: '#e6e6f2',
+    q: '#ff5c8a',
+    down: ['................', '................', '.......oo.......', '...o..oqqo..o...', '...opoppppopo...', '...oooooooooo...'],
+    side: ['................', '................', '.......oo.......', '...o..oqqo..o...', '...opoppppopo...', '...oooooooooo...'],
+  },
+};
+
+// ---- tops: rows 13-18 of each frame; legs recoloured for skirts, shorts and jeans ----
+// Legend adds n / N: shorts or trousers
+type Top = { down: string[]; side: string[]; up: string[]; legs?: string };
+const JEANS = '#5a6fa8';
+const TOPS_ART: Record<string, Top> = {
+  dress: {
+    down: ['....obbwwbbo....', '..osobbbbbboso..', '..osoBbbbbBoso..', '...oobbbbbboo...', '...obbbbbbbbo...', '...owwwwwwwwo...'],
+    side: ['....obbwbbbo....', '....obbsbbbo....', '....obbsbbBo....', '...oobbbbbboo...', '...obbbbbbbbo...', '...owwwwwwwwo...'],
+    up: ['....obbbbbbo....', '..osobbbbbboso..', '..osobbbbbboso..', '...oobbbbbboo...', '...obbbbbbbbo...', '...owwwwwwwwo...'],
+    legs: P.skin,
+  },
+  hoodie: {
+    down: ['...obbwbbwbbo...', '..obobbbbbbobo..', '..obobBBBBbobo..', '..osobbbbbboso..', '....oBbbbbBo....', '....oobbbboo....'],
+    side: ['...obbbwbbbo....', '....obbbbbbo....', '....obbbbbBo....', '....obbsbbbo....', '....oBbbbbBo....', '....oobbbboo....'],
+    up: ['...obbBBBBbbo...', '..obobbbbbbobo..', '..obobbbbbbobo..', '..osobbbbbboso..', '....oBbbbbBo....', '....oobbbboo....'],
+    legs: JEANS,
+  },
+  tee: {
+    down: ['....obbbbbbo....', '..obobbbbbbobo..', '..osobbbbbboso..', '..osoBbbbbBoso..', '....onnnnnno....', '....oonnnnoo....'],
+    side: ['....obbbbbbo....', '....obbbbbbo....', '....obbsbbbo....', '....obbsbbBo....', '....onnnnnno....', '....oonnnnoo....'],
+    up: ['....obbbbbbo....', '..obobbbbbbobo..', '..osobbbbbboso..', '..osobbbbbboso..', '....onnnnnno....', '....oonnnnoo....'],
+    legs: P.skin,
+  },
 };
 
 function outfitKey(o: Outfit) {
-  return `${o.hat}-${o.accessory}-${o.dye}-${o.hair}`;
+  return `${o.top ?? 'overalls'}-${o.hat}-${o.accessory}-${o.dye}-${o.hair}`;
 }
 
 export function characterTextureKey(look: CharacterLook, outfit: Outfit = DEFAULT_OUTFIT) {
@@ -199,7 +261,9 @@ export function characterTextureKey(look: CharacterLook, outfit: Outfit = DEFAUL
 }
 
 /** Builds (once) the sprite sheet + animations for a look wearing an outfit. Returns the texture key. */
-export function buildCharacterTexture(scene: Phaser.Scene, look: CharacterLook, outfit: Outfit = DEFAULT_OUTFIT) {
+export function buildCharacterTexture(scene: Phaser.Scene, look: CharacterLook, worn: Outfit = DEFAULT_OUTFIT) {
+  // older saves and partners on an older build may miss newer outfit parts
+  const outfit: Outfit = { ...DEFAULT_OUTFIT, ...worn };
   const key = characterTextureKey(look, outfit);
   if (scene.textures.exists(key)) return key;
   const dye = DYES[outfit.dye];
@@ -217,14 +281,19 @@ export function buildCharacterTexture(scene: Phaser.Scene, look: CharacterLook, 
     b: dye.color || look.outfit,
     B: dye.dark || look.outfitDark,
     k: look.shoes,
+    n: JEANS,
+    N: '#3f4f80',
   };
   const pc = new PixelCanvas(scene, key, CHAR_W * FRAMES.length, CHAR_H);
   const hat = outfit.hat !== 'none' ? HATS_ART[outfit.hat] : null;
-  FRAMES.forEach((rows, i) => {
+  const top = TOPS_ART[outfit.top];
+  FRAMES.forEach((base, i) => {
+    const facing = i < 3 ? 'down' : i < 6 ? 'side' : 'up';
+    const rows = top ? replaceRows(base, 13, top[facing]) : base;
     assertRows(rows, CHAR_W, 22, `${key} frame ${i}`);
     const x0 = i * CHAR_W;
     pc.rows(x0, HAT_ROOM, rows, pal);
-    const facing = i < 3 ? 'down' : i < 6 ? 'side' : 'up';
+    if (top?.legs) pc.rows(x0, HAT_ROOM + 19, rows.slice(19), { ...pal, b: top.legs, B: top.legs });
     // accessories
     if (outfit.accessory === 'glasses') {
       if (facing === 'down') {
@@ -247,6 +316,26 @@ export function buildCharacterTexture(scene: Phaser.Scene, look: CharacterLook, 
       pc.rect(bx, HAT_ROOM + 14, 4, 4, P.outline);
       pc.rect(bx + 1, HAT_ROOM + 15, 2, 2, P.wood);
       pc.rect(bx - 1, HAT_ROOM + 12, 1, 3, P.woodDark);
+    }
+    if (outfit.accessory === 'apron') {
+      if (facing === 'down') {
+        pc.rect(x0 + 5, HAT_ROOM + 14, 6, 4, P.white);
+        pc.rect(x0 + 5, HAT_ROOM + 18, 6, 1, '#dcdcf0');
+        pc.rect(x0 + 7, HAT_ROOM + 16, 2, 1, '#dcdcf0');
+      } else if (facing === 'side') pc.rect(x0 + 10, HAT_ROOM + 14, 2, 4, P.white);
+      else pc.rect(x0 + 5, HAT_ROOM + 15, 6, 1, P.white);
+    }
+    if (outfit.accessory === 'bowtie') {
+      if (facing === 'down') pc.rows(x0 + 5, HAT_ROOM + 13, ['rroorr'], { r: P.red, o: P.outline });
+      else if (facing === 'side') pc.rect(x0 + 10, HAT_ROOM + 13, 2, 1, P.red);
+    }
+    if (outfit.accessory === 'necklace') {
+      if (facing === 'down') pc.rows(x0 + 6, HAT_ROOM + 13, ['y..y', '.rr.'], { y: P.coin, r: P.red });
+      else if (facing === 'side') pc.px(x0 + 10, HAT_ROOM + 14, P.red);
+    }
+    if (outfit.accessory === 'flower') {
+      const fx = facing === 'side' ? x0 + 3 : x0 + 2;
+      pc.rows(fx, HAT_ROOM + 2, ['.k.', 'kyk', '.k.'], { k: P.pink, y: P.yellow });
     }
     if (hat) {
       const rows2 = facing === 'side' ? hat.side : hat.down;

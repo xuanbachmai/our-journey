@@ -299,6 +299,7 @@ export function migrateWorld(raw: unknown, now: number): WorldState {
   }
   if (r.producers) w.producers = { ...w.producers, ...r.producers };
   if (r.players) w.players = { xb: { ...newPlayerData(), ...r.players.xb }, qd: { ...newPlayerData(), ...r.players.qd } };
+  for (const p of ['xb', 'qd'] as const) w.players[p].outfit = { ...DEFAULT_OUTFIT, ...w.players[p].outfit };
   if (!w.discovered.includes('farm')) w.discovered.push('farm');
   while (w.counter.length < counterSlots(w)) w.counter.push({ dish: null });
   if (!w.orders.length) refreshOrders(w, now);

@@ -9,7 +9,14 @@ import {
   canCook,
   cozyPoints,
   CROPS,
+  clothingDef,
+  clothingIds,
   CROP_IDS,
+  FURNITURE_CATS,
+  isFreeClothing,
+  type ClothingKind,
+  type FurnitureCat,
+  type Outfit,
   FISH,
   FISH_IDS,
   friendPoints,
@@ -58,6 +65,7 @@ import {
   type RecipeId,
   type UpgradeId,
 } from '@hh/shared';
+import { buildCharacterTexture, LOOKS } from '../art/characters';
 import { P } from '../art/palette';
 import { LETTER } from '../config/letter';
 import { audio } from '../game/audio';
@@ -83,7 +91,7 @@ const HELP: HelpPage[] = [
   { title: 'Cooking', icon: 'dish-tomato_soup', lines: ['Cook at the kitchen by the house or', 'inside the restaurant. Each recipe', 'is a few mini-games. Good timing', 'means a better grade: C, B, A or S.', 'Reputation and books unlock recipes.'] },
   { title: 'Selling', icon: 'coin', lines: ['Counter by the road: dishes sell by', 'themselves, day and night.', 'Restaurant: diners sit down and order.', 'Bring the dish fast for a tip.', 'Town board: orders pay extra.'] },
   { title: 'Exploring', icon: 'map', lines: ['Roads lead east to Maple Town,', 'west to Sunny Ranch. North of town', 'is Whisper Forest, east of town is', 'Family Lane with both family homes.', 'Every door opens. The map travels', 'to places you have discovered.'] },
-  { title: 'Home', icon: 'furn-sofa', lines: ['Buy furniture at the store and place', 'it inside the house with Decorate.', 'Coziness raises your dish prices.', 'The wardrobe changes hats, dyes', 'and hair from the tailor.'] },
+  { title: 'Home', icon: 'furn-sofa', lines: ['Buy furniture at Cozy Corner, place', 'it at home with Decorate. There is', 'a sale every day. Coziness raises', 'dish prices. Rosa sells outfits,', 'hats and dyes; try them on first.'] },
   { title: 'Friends', icon: 'heart', lines: ['Talk to villagers every day and give', 'one gift each. Hearts unlock rewards', 'at 2 and 4. Loved gifts give the most', 'hearts; you learn them as you go.', 'The Book (Journal) tracks it all.'] },
   { title: 'Fishing', icon: 'fish-koi', lines: ['10 kinds of fish live in the ponds.', 'Some bite only at night or in rain.', 'Rare fish pull harder. The first of', 'each kind pays a bonus. Check the', 'Book to see what is left to catch.'] },
   { title: 'Animals', icon: 'cow', lines: ['Hens lay eggs at the coop. Cows and', 'sheep at the ranch make milk and wool.', 'Bees make honey. Collect at the barn,', 'coop or hives. Pets follow you and', 'dig up little gifts. Pet them!'] },
@@ -272,14 +280,26 @@ export class HudScene extends Phaser.Scene {
     this.world = w;
     const f = w.events;
     // the world scene object survives area changes; drop the listeners from the previous visit
-    for (const ev of ['hud', 'toast', 'openStall', 'openStore', 'openTailor', 'openPetshop', 'openWardrobe', 'openMail', 'openCounter', 'openRecipes', 'openBoard', 'openSign', 'openLoveTree', 'cookResult', 'away', 'progress', 'guideEdge', 'postcard', 'coopInvite', 'notes', 'dialog', 'catch']) f.removeAllListeners(ev);
+    for (const ev of ['hud', 'toast', 'openStall', 'openStore', 'openTailor', 'openPetshop', 'openFurnshop', 'openWardrobe', 'openMail', 'openCounter', 'openRecipes', 'openBoard', 'openSign', 'openLoveTree', 'cookResult', 'away', 'progress', 'guideEdge', 'postcard', 'coopInvite', 'notes', 'dialog', 'catch']) f.removeAllListeners(ev);
     f.on('hud', (d: HudData) => this.refresh(d));
     f.on('toast', (msg: string) => this.showToast(msg));
     f.on('openStall', () => this.openStall('seeds'));
     f.on('openStore', () => this.openStore('seeds'));
-    f.on('openTailor', () => this.openTailor('hat'));
+    f.on('openFurnshop', () => {
+      this.shopSel = null;
+      this.openFurnshop('living');
+    });
+    f.on('openTailor', () => {
+      this.shopSel = null;
+      this.page = 0;
+      this.openClothes('buy', 'top');
+    });
     f.on('openPetshop', () => this.openPetshop('pets'));
-    f.on('openWardrobe', () => this.openWardrobe('hat'));
+    f.on('openWardrobe', () => {
+      this.shopSel = null;
+      this.page = 0;
+      this.openClothes('equip', 'top');
+    });
     f.on('openMail', () => this.openMail('letter'));
     f.on('openCounter', () => this.openCounter());
     f.on('openRecipes', () => this.openRecipes(0));
@@ -781,7 +801,7 @@ export class HudScene extends Phaser.Scene {
     audio.play('great');
     const c = this.openOverlay(250, 124, 'New postcard!');
     this.drawPostcard(c, card, 0, 2);
-    c.add(this.add.text(0, 50, 'Saved in your album', plain({ color: '#7a6a70' })).setOrigin(0.5));
+    c.add(this.add.text(0, 50, 'Saved in your Book', plain({ color: '#7a6a70' })).setOrigin(0.5));
   }
 
   private drawPostcard(c: Phaser.GameObjects.Container, card: Postcard, x: number, y: number) {
@@ -793,10 +813,9 @@ export class HudScene extends Phaser.Scene {
     if (card.scene === 'tree') c.add(this.add.image(x, y + 10, 'furniture', 'lovetree5').setOrigin(0.5, 1));
     if (card.scene === 'restaurant') c.add(this.add.image(x, y + 10, 'buildings', 'restaurant').setOrigin(0.5, 1).setScale(0.5));
     if (card.scene === 'pet') c.add(this.add.image(x + 22, y + 12, 'critters', 'dog0').setOrigin(0.5, 1));
-    const xbTex = `char-xb-${this.world.state.world.players.xb.outfit.hat}-${this.world.state.world.players.xb.outfit.accessory}-${this.world.state.world.players.xb.outfit.dye}-${this.world.state.world.players.xb.outfit.hair}`;
-    const qdTex = `char-qd-${this.world.state.world.players.qd.outfit.hat}-${this.world.state.world.players.qd.outfit.accessory}-${this.world.state.world.players.qd.outfit.dye}-${this.world.state.world.players.qd.outfit.hair}`;
-    c.add(this.add.image(x - 12, y + 16, this.textures.exists(xbTex) ? xbTex : 'char-xb-none-none-default-default', 0).setOrigin(0.5, 1));
-    c.add(this.add.image(x + 6, y + 16, this.textures.exists(qdTex) ? qdTex : 'char-qd-none-none-default-default', 0).setOrigin(0.5, 1));
+    const players = this.world.state.world.players;
+    c.add(this.add.image(x - 12, y + 16, buildCharacterTexture(this, LOOKS.xb, players.xb.outfit), 0).setOrigin(0.5, 1));
+    c.add(this.add.image(x + 6, y + 16, buildCharacterTexture(this, LOOKS.qd, players.qd.outfit), 0).setOrigin(0.5, 1));
     if (card.scene === 'first_dish' || card.scene === 's_dish') c.add(this.add.image(x - 3, y - 12, 'icons', 'dish-tomato_soup').setScale(1.5));
     if (card.scene === 'rich') c.add(this.add.image(x - 3, y - 12, 'icons', 'coin').setScale(1.5));
     if (card.scene === 'together' || card.scene === 'first_sale' || card.scene === 'orders') c.add(this.add.image(x - 3, y - 14, 'icons', 'heart').setScale(1.5));
@@ -988,17 +1007,16 @@ export class HudScene extends Phaser.Scene {
   }
 
   // ---------- town store ----------
-  private openStore(tab: 'seeds' | 'furniture' | 'books' | 'sell') {
+  private openStore(tab: 'seeds' | 'books' | 'sell') {
     const w = 280;
     const h = 168;
     const st = this.world.state;
     const c = this.openOverlay(w, h, `General Store   (coins: ${st.coins})`);
     this.tabs(c, w, h, [
       ['Seeds', () => this.openStore('seeds')],
-      ['Decor', () => this.openStore('furniture')],
       ['Books+', () => this.openStore('books')],
       ['Sell', () => this.openStore('sell')],
-    ], ['seeds', 'furniture', 'books', 'sell'].indexOf(tab));
+    ], ['seeds', 'books', 'sell'].indexOf(tab));
     const reopen = () => this.openStore(tab);
     if (tab === 'seeds') this.seedList(c, w, h, reopen);
     else if (tab === 'sell') this.sellList(c, w, h, reopen);
@@ -1046,120 +1064,222 @@ export class HudScene extends Phaser.Scene {
           c.add(btn.container);
         } else c.add(this.add.text(w / 2 - 20, y, 'max', plain({ color: '#3f9a5f' })).setOrigin(1, 0.5));
       });
-    } else {
-      const top = -h / 2 + 44;
-      const list = FURNITURE_IDS;
-      list.slice(this.page * 7, this.page * 7 + 7).forEach((id, i) => {
-        const y = top + i * ROW;
-        const def = FURNITURE[id];
-        const open = def.unlockRep <= st.reputation;
-        c.add(this.add.image(-w / 2 + 14, y, 'icons', `furn-${id}`).setAlpha(open ? 1 : 0.4));
-        c.add(this.add.text(-w / 2 + 24, y, open ? `${def.name}${st.furnitureOwned(id) ? ` (x${st.furnitureOwned(id)})` : ''}` : `${def.name} (rep ${def.unlockRep})`, plain({ color: open ? P.outline : '#9a8a90' })).setOrigin(0, 0.5));
-        if (!open) return;
-        c.add(this.add.text(-w / 2 + 150, y, `+${def.cozy} cosy`, plain({ color: '#7a6a70' })).setOrigin(0, 0.5));
-        this.priceTag(c, w / 2 - 62, y, def.price, st.coins >= def.price);
-        const btn = button(this, w / 2 - 58, y - 7, 44, 14, 'Buy', () => {
-          if (st.buyFurniture(id)) {
-            audio.play('coin');
-            this.showToast(`${def.name} bought. Place it at home!`);
-            this.world.afterChange();
-            reopen();
-          } else audio.play('bad');
-        });
-        btn.setEnabled(st.coins >= def.price);
-        c.add(btn.container);
-      });
-      this.pager(c, w, h, this.page, Math.ceil(list.length / 7), (p) => {
-        this.page = p;
-        reopen();
-      });
     }
   }
 
   // ---------- tailor & wardrobe ----------
-  private clothingRows(c: Phaser.GameObjects.Container, w: number, h: number, kind: 'hat' | 'accessory' | 'dye' | 'hair', mode: 'buy' | 'equip', reopen: () => void) {
+  private shopSel: string | null = null;
+  private previewFacing = 0;
+
+  /** Scale an image down (or up to maxScale) so it fits a box. */
+  private fitImage(img: Phaser.GameObjects.Image, maxW: number, maxH: number, maxScale: number) {
+    img.setScale(Math.min(maxScale, maxW / img.width, maxH / img.height));
+    return img;
+  }
+
+  /** Card-grid clothes shop with a try-on mannequin. 'buy' is Rosa's Tailor, 'equip' is the home wardrobe. */
+  private openClothes(mode: 'buy' | 'equip', kind: ClothingKind) {
     const st = this.world.state;
-    const ids = (kind === 'hat' ? HAT_IDS : kind === 'accessory' ? ACCESSORY_IDS : kind === 'dye' ? DYE_IDS : HAIR_IDS) as string[];
-    const defs = kind === 'hat' ? HATS : kind === 'accessory' ? ACCESSORIES : kind === 'dye' ? DYES : HAIR_COLORS;
-    const top = -h / 2 + 44;
-    const list = mode === 'buy' ? ids.filter((id) => id !== 'none' && id !== 'default') : ids;
-    list.slice(this.page * 7, this.page * 7 + 7).forEach((id, i) => {
-      const y = top + i * ROW;
-      const def = (defs as Record<string, { name: string; price: number; unlockRep: number; color?: string }>)[id];
-      const owned = st.owns(kind, id);
-      const open = def.unlockRep <= st.reputation;
-      const equipped = st.outfit[kind] === id;
-      if (def.color) {
-        const sw = this.add.graphics();
-        sw.fillStyle(0x4a2a3f, 1).fillRect(-w / 2 + 9, y - 5, 11, 11);
-        sw.fillStyle(Phaser.Display.Color.HexStringToColor(def.color).color, 1).fillRect(-w / 2 + 10, y - 4, 9, 9);
-        c.add(sw);
-      } else c.add(this.add.image(-w / 2 + 14, y, 'icons', kind === 'hat' ? 'hat' : 'bag').setAlpha(open ? 1 : 0.4));
-      c.add(this.add.text(-w / 2 + 24, y, open ? def.name : `${def.name} (rep ${def.unlockRep})`, plain({ color: open ? P.outline : '#9a8a90' })).setOrigin(0, 0.5));
-      if (mode === 'buy') {
-        if (!open) return;
-        if (owned) {
-          c.add(this.add.text(w / 2 - 16, y, 'owned', plain({ color: '#3f9a5f' })).setOrigin(1, 0.5));
-          return;
+    const w = 300;
+    const h = 176;
+    const c = this.openOverlay(w, h, mode === 'buy' ? `Rosa's Tailor   (coins: ${st.coins})` : 'Wardrobe');
+    const reopen = () => this.openClothes(mode, kind);
+    const kinds: [ClothingKind, string][] = [
+      ['top', 'Outfits'],
+      ['hat', 'Hats'],
+      ['accessory', 'Extras'],
+      ['dye', 'Dyes'],
+      ['hair', 'Hair'],
+    ];
+    this.tabs(
+      c,
+      w,
+      h,
+      kinds.map(([k, label]) => [label, () => {
+        this.shopSel = null;
+        this.page = 0;
+        this.openClothes(mode, k);
+      }]),
+      kinds.findIndex(([k]) => k === kind),
+    );
+    const ids = clothingIds(kind);
+    const list = mode === 'buy' ? ids.filter((id) => !isFreeClothing(id)) : ids.filter((id) => st.owns(kind, id));
+    const worn = st.outfit[kind] as string;
+    const sel = this.shopSel && list.includes(this.shopSel) ? this.shopSel : list.includes(worn) ? worn : list[0];
+    const look = LOOKS[this.world.playerId];
+    const trial = (id: string): Outfit => ({ ...st.outfit, [kind]: id });
+    const top = -h / 2 + 38;
+
+    // ---- try-on mannequin ----
+    const pw = 94;
+    const pxl = -w / 2 + 8;
+    const ph = h / 2 - 8 - top;
+    const g = this.add.graphics();
+    panel(g, pxl, top, pw, ph, 0xfff9ee);
+    c.add(g);
+    const cx = pxl + pw / 2;
+    if (sel) {
+      const def = clothingDef(kind, sel);
+      const tex = buildCharacterTexture(this, look, trial(sel));
+      const img = this.add.image(cx, top + 46, tex, [0, 3, 6][this.previewFacing]).setScale(3);
+      c.add(img);
+      const turn = this.add.zone(cx, top + 46, 50, 84).setInteractive({ useHandCursor: true });
+      turn.on('pointerdown', () => {
+        this.previewFacing = (this.previewFacing + 1) % 3;
+        audio.play('pop');
+        reopen();
+      });
+      c.add(turn);
+      const sale = mode === 'buy' && st.isOnSale(kind, sel);
+      const { price, unlockRep } = st.clothingPrice(kind, sel);
+      if (sale) c.add(this.add.text(pxl + 4, top + 4, 'SALE -30%', plain({ color: '#d94a4a' })).setOrigin(0, 0));
+      c.add(this.add.text(cx, top + 93, def.name, plain()).setOrigin(0.5));
+      const owned = st.owns(kind, sel);
+      const wearing = worn === sel;
+      let label = wearing ? 'Wearing' : 'Wear';
+      let enabled = !wearing;
+      let color = wearing ? 0xffe066 : 0x7de8c8;
+      if (!owned) {
+        if (unlockRep > st.reputation) {
+          label = `Rep ${unlockRep}`;
+          enabled = false;
+          color = 0xe8dcc8;
+        } else {
+          label = `Buy ${price}c`;
+          enabled = st.coins >= price;
+          color = 0xffd23f;
         }
-        this.priceTag(c, w / 2 - 62, y, def.price, st.coins >= def.price);
-        const b = button(this, w / 2 - 58, y - 7, 44, 14, 'Buy', () => {
-          if (st.buyClothing(kind, id)) {
-            audio.play('coin');
-            st.setOutfit({ [kind]: id } as never);
-            this.world.refreshFromState();
-            this.showToast(`${def.name}: yours! Wearing it now.`);
-            this.world.afterChange();
-            reopen();
-          } else audio.play('bad');
-        });
-        b.setEnabled(st.coins >= def.price);
-        c.add(b.container);
-      } else {
-        if (!owned) {
-          if (open) c.add(this.add.text(w / 2 - 16, y, 'at the tailor', plain({ color: '#9a8a90' })).setOrigin(1, 0.5));
-          return;
-        }
-        const b = button(this, w / 2 - 58, y - 7, 44, 14, equipped ? 'Wearing' : 'Wear', () => {
-          st.setOutfit({ [kind]: id } as never);
-          audio.play('pop');
-          this.world.refreshFromState();
-          reopen();
-        }, equipped ? 0xffe066 : 0x7de8c8);
-        b.setEnabled(!equipped);
-        c.add(b.container);
       }
+      const b = button(this, pxl + 6, top + 102, pw - 12, 16, label, () => {
+        if (!owned) {
+          if (!st.buyClothing(kind, sel)) return audio.play('bad');
+          audio.play('coin');
+          this.showToast(`${def.name}: yours! Wearing it now.`);
+        } else audio.play('pop');
+        st.setOutfit({ [kind]: sel } as Partial<Outfit>);
+        this.world.refreshFromState();
+        this.world.afterChange();
+        reopen();
+      }, color);
+      b.setEnabled(enabled);
+      c.add(b.container);
+    } else c.add(this.add.text(cx, top + 50, 'Nothing yet.\nVisit Rosa!', plain({ color: '#7a6a70', align: 'center' })).setOrigin(0.5));
+
+    // ---- item cards: each one is you, wearing it ----
+    const gx = pxl + pw + 8;
+    const cw = 29;
+    const chh = 34;
+    const cols = 6;
+    const per = cols * 3;
+    const pages = Math.max(1, Math.ceil(list.length / per));
+    const page = this.page % pages;
+    list.slice(page * per, page * per + per).forEach((id, i) => {
+      const x = gx + (i % cols) * (cw + 1);
+      const y = top + Math.floor(i / cols) * (chh + 1);
+      const def = clothingDef(kind, id);
+      const owned = st.owns(kind, id);
+      const locked = !owned && def.unlockRep > st.reputation;
+      const isSel = id === sel;
+      const cg = this.add.graphics();
+      panel(cg, x, y, cw, chh, isSel ? 0xffe066 : worn === id ? 0xdff7ee : 0xffffff, isSel ? 0xff8fcf : 0x4a2a3f);
+      c.add(cg);
+      const img = this.add.image(x + cw / 2, y + chh / 2 + 1, buildCharacterTexture(this, look, trial(id)), 0);
+      if (locked) img.setAlpha(0.35);
+      c.add(img);
+      if (mode === 'buy' && st.isOnSale(kind, id)) c.add(this.add.text(x + 2, y + 1, '%', plain({ color: '#d94a4a' })).setOrigin(0, 0));
+      if (mode === 'buy' && owned) c.add(this.add.image(x + cw - 6, y + 6, 'icons', 'heart').setScale(0.6));
+      const z = this.add.zone(x + cw / 2, y + chh / 2, cw, chh).setInteractive({ useHandCursor: true });
+      z.on('pointerdown', () => {
+        this.shopSel = id;
+        audio.play('blip');
+        reopen();
+      });
+      c.add(z);
     });
-    this.pager(c, w, h, this.page, Math.max(1, Math.ceil(list.length / 7)), (p) => {
-      this.page = p;
+    if (pages > 1)
+      this.pager(c, w, h, page, pages, (p) => {
+        this.page = p;
+        reopen();
+      });
+    else if (mode === 'buy') {
+      const s = st.clothingSale;
+      c.add(this.add.text(gx + 93, h / 2 - 12, `Sale: ${clothingDef(s.kind, s.id).name} -30%`, plain({ color: '#d94a4a' })).setOrigin(0.5));
+    } else c.add(this.add.text(gx + 93, h / 2 - 12, 'Tap a card, then Wear', plain({ color: '#7a6a70' })).setOrigin(0.5));
+  }
+
+  // ---------- Cozy Corner (furniture) ----------
+  private openFurnshop(cat: FurnitureCat) {
+    const st = this.world.state;
+    const w = 300;
+    const h = 176;
+    const c = this.openOverlay(w, h, `Cozy Corner   (coins: ${st.coins})`);
+    const reopen = () => this.openFurnshop(cat);
+    this.tabs(
+      c,
+      w,
+      h,
+      FURNITURE_CATS.map((k) => [k.name, () => {
+        this.shopSel = null;
+        this.openFurnshop(k.id);
+      }]),
+      FURNITURE_CATS.findIndex((k) => k.id === cat),
+    );
+    const list = FURNITURE_IDS.filter((id) => FURNITURE[id].cat === cat).sort((a, b) => FURNITURE[a].unlockRep - FURNITURE[b].unlockRep || FURNITURE[a].price - FURNITURE[b].price);
+    const sel = (this.shopSel && list.includes(this.shopSel as FurnitureId) ? this.shopSel : list[0]) as FurnitureId;
+    const sale = st.furnitureSale;
+    const top = -h / 2 + 38;
+
+    // ---- preview ----
+    const pw = 96;
+    const pxl = -w / 2 + 8;
+    const g = this.add.graphics();
+    panel(g, pxl, top, pw, h / 2 - 8 - top, 0xfff9ee);
+    g.fillStyle(0xf0dcc0, 1).fillRect(pxl + 2, top + 56, pw - 4, 20);
+    c.add(g);
+    const cx = pxl + pw / 2;
+    const def = FURNITURE[sel];
+    const open = def.unlockRep <= st.reputation;
+    c.add(this.fitImage(this.add.image(cx, top + 66, 'furniture', sel).setOrigin(0.5, 1), pw - 12, 58, 2.5).setAlpha(open ? 1 : 0.4));
+    if (sel === sale) c.add(this.add.text(pxl + 4, top + 4, 'SALE -30%', plain({ color: '#d94a4a' })).setOrigin(0, 0));
+    c.add(this.add.text(cx, top + 82, def.name, plain()).setOrigin(0.5));
+    const owned = st.furnitureOwned(sel) + st.world.furniturePlaced.filter((p) => p.id === sel).length;
+    c.add(this.add.text(cx, top + 93, `+${def.cozy} cozy${def.wall ? ', wall' : ''}`, plain({ color: '#7a6a70' })).setOrigin(0.5));
+    const price = st.furniturePrice(sel);
+    const b = button(this, pxl + 6, top + 102, pw - 12, 16, open ? `Buy ${price}c` : `Rep ${def.unlockRep}`, () => {
+      if (!st.buyFurniture(sel)) return audio.play('bad');
+      audio.play('coin');
+      this.showToast(`${def.name} bought. Place it at home with Decorate!`);
+      this.world.afterChange();
       reopen();
+    }, open ? 0xffd23f : 0xe8dcc8);
+    b.setEnabled(open && st.coins >= price);
+    c.add(b.container);
+
+    // ---- cards ----
+    const gx = pxl + pw + 8;
+    const cs = 29;
+    const cols = 6;
+    list.forEach((id, i) => {
+      const x = gx + (i % cols) * (cs + 1);
+      const y = top + Math.floor(i / cols) * (cs + 1);
+      const d = FURNITURE[id];
+      const isOpen = d.unlockRep <= st.reputation;
+      const cg = this.add.graphics();
+      panel(cg, x, y, cs, cs, id === sel ? 0xffe066 : 0xffffff, id === sel ? 0xff8fcf : 0x4a2a3f);
+      c.add(cg);
+      c.add(this.fitImage(this.add.image(x + cs / 2, y + cs / 2, 'furniture', id), cs - 5, cs - 5, 1).setAlpha(isOpen ? 1 : 0.35));
+      if (id === sale) c.add(this.add.text(x + 2, y + 1, '%', plain({ color: '#d94a4a' })).setOrigin(0, 0));
+      const have = st.furnitureOwned(id);
+      if (have) c.add(this.add.text(x + cs - 2, y + cs - 1, `x${have}`, style()).setOrigin(1, 1));
+      const z = this.add.zone(x + cs / 2, y + cs / 2, cs, cs).setInteractive({ useHandCursor: true });
+      z.on('pointerdown', () => {
+        this.shopSel = id;
+        audio.play('blip');
+        reopen();
+      });
+      c.add(z);
     });
-  }
-
-  private openTailor(tab: 'hat' | 'accessory' | 'dye' | 'hair') {
-    const w = 270;
-    const h = 168;
-    const c = this.openOverlay(w, h, `Rosa's Tailor   (coins: ${this.world.state.coins})`);
-    this.tabs(c, w, h, [
-      ['Hats', () => this.openTailor('hat')],
-      ['Extras', () => this.openTailor('accessory')],
-      ['Dyes', () => this.openTailor('dye')],
-      ['Hair', () => this.openTailor('hair')],
-    ], ['hat', 'accessory', 'dye', 'hair'].indexOf(tab));
-    this.clothingRows(c, w, h, tab, 'buy', () => this.openTailor(tab));
-  }
-
-  private openWardrobe(tab: 'hat' | 'accessory' | 'dye' | 'hair') {
-    const w = 270;
-    const h = 168;
-    const c = this.openOverlay(w, h, 'Wardrobe');
-    this.tabs(c, w, h, [
-      ['Hats', () => this.openWardrobe('hat')],
-      ['Extras', () => this.openWardrobe('accessory')],
-      ['Dyes', () => this.openWardrobe('dye')],
-      ['Hair', () => this.openWardrobe('hair')],
-    ], ['hat', 'accessory', 'dye', 'hair'].indexOf(tab));
-    this.clothingRows(c, w, h, tab, 'equip', () => this.openWardrobe(tab));
+    c.add(this.add.text(gx + 90, h / 2 - 12, `Sale: ${FURNITURE[sale].name} -30%`, plain({ color: '#d94a4a' })).setOrigin(0.5));
   }
 
   // ---------- pet shop ----------
@@ -1541,7 +1661,7 @@ export class HudScene extends Phaser.Scene {
     const h = 168;
     const st = this.world.state;
     const c = this.openOverlay(w, h, 'Map');
-    const spots: Record<AreaId, [number, number]> = { ranch: [-110, 20], farm: [-40, 20], town: [30, 20], forest: [30, -35], lane: [100, 20], home: [-40, 50], restaurant: [-40, 50], store: [30, 50], tailor: [30, 50], petshop: [30, 50], qdhome: [100, 50], xbhome: [100, 50] };
+    const spots: Record<AreaId, [number, number]> = { ranch: [-110, 20], farm: [-40, 20], town: [30, 20], forest: [30, -35], lane: [100, 20], home: [-40, 50], restaurant: [-40, 50], store: [30, 50], tailor: [30, 50], petshop: [30, 50], furnshop: [30, 50], qdhome: [100, 50], xbhome: [100, 50] };
     const short: Partial<Record<AreaId, string>> = { farm: 'Farm', town: 'Town', forest: 'Forest', ranch: 'Ranch', lane: 'Family' };
     const g = this.add.graphics();
     g.lineStyle(2, 0xc98b4e, 1);

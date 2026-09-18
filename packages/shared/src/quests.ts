@@ -1,6 +1,6 @@
 import type { AreaId } from './areas';
 import { daysTogether } from './couple';
-import type { FurnitureId } from './furniture';
+import { cozyPoints, type FurnitureId } from './furniture';
 import type { ItemId } from './items';
 import { friendPoints, HEART_POINTS, VILLAGERS } from './friends';
 import { dayIndex, roll01 } from './prices';
@@ -54,9 +54,7 @@ const COUNTER = g('farm', 13, 17);
 const STALL = g('farm', 34, 21);
 const STORE = g('store', 7, 5);
 
-const FURN_COZY: Record<string, number> = {
-  chair: 10, table: 20, plant: 15, rug: 30, lamp: 15, bed: 50, painting: 20, bookshelf: 25, sofa: 45, teddy: 35, fireplace: 70, aquarium: 55, photo: 60, piano: 90,
-};
+const FURNSHOP = g('furnshop', 7, 5);
 
 export const CHAPTERS: Chapter[] = [
   {
@@ -114,7 +112,7 @@ export const CHAPTERS: Chapter[] = [
     blurb: 'Make the house feel like ours.',
     tasks: [
       { id: 'c5_home', title: 'Step inside your home', hint: 'The door of the farmhouse', target: 1, reward: 20, progress: visited('home'), guide: g('farm', 7, 8) },
-      { id: 'c5_buy', title: 'Buy a piece of furniture', hint: 'General Store, Decor tab', target: 1, reward: 30, progress: stat('buyfurn'), guide: STORE },
+      { id: 'c5_buy', title: 'Buy a piece of furniture', hint: 'Cozy Corner, the yellow roof in town', target: 1, reward: 30, progress: stat('buyfurn'), guide: FURNSHOP },
       { id: 'c5_place', title: 'Place furniture at home', hint: 'Decorate button inside', target: 1, reward: 30, progress: (w) => w.furniturePlaced.length, guide: g('home', 8, 6) },
       { id: 'c5_dress', title: 'Buy something to wear', hint: "Rosa's Tailor, the pink roof", target: 1, reward: 40, progress: stat('clothes'), guide: g('tailor', 7, 5) },
     ],
@@ -201,7 +199,7 @@ export const CHAPTERS: Chapter[] = [
     blurb: 'Building a life together, one day at a time.',
     tasks: [
       { id: 'c11_rep', title: 'Reach 50 reputation', hint: 'Keep the restaurant busy', target: 50, reward: 200, progress: (w) => Math.floor(w.reputation) },
-      { id: 'c11_cozy', title: 'Reach 200 coziness', hint: 'Decorate your home', target: 200, reward: 150, progress: (w) => w.furniturePlaced.reduce((s, p) => s + (FURN_COZY[p.id] ?? 0), 0), guide: g('home', 8, 6) },
+      { id: 'c11_cozy', title: 'Reach 200 coziness', hint: 'Decorate your home', target: 200, reward: 150, progress: (w) => cozyPoints(w.furniturePlaced), guide: g('home', 8, 6) },
       { id: 'c11_cow', title: 'Raise a cow', hint: 'Pet shop, lives at the ranch', target: 1, reward: 150, progress: (w) => w.producers.cow?.count ?? 0, guide: g('petshop', 7, 5) },
       { id: 'c11_book', title: 'Buy a recipe book', hint: 'General Store, Books tab', target: 1, reward: 150, progress: (w) => w.books.length, guide: STORE },
       { id: 'c11_days', title: 'Play 30 days together', hint: 'Watch the Love Tree bloom', target: 30, reward: 500, progress: (w) => daysTogether({ xb: w.players.xb.daysPlayed, qd: w.players.qd.daysPlayed }), guide: g('farm', 29, 5) },

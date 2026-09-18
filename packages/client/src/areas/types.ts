@@ -13,6 +13,7 @@ export type InteractId =
   | 'store'
   | 'tailor'
   | 'petshop'
+  | 'furnshop'
   | 'wardrobe'
   | 'lovetree'
   | 'sign'
@@ -64,7 +65,7 @@ export interface NpcDef {
   /** Different lines depending on who is visiting (family members). */
   linesFor?: Partial<Record<'xb' | 'qd', string[]>>;
   /** Shopkeepers open a panel instead of just talking. */
-  opens?: 'store' | 'tailor' | 'petshop';
+  opens?: 'store' | 'tailor' | 'petshop' | 'furnshop';
 }
 
 export interface ForageSpot {

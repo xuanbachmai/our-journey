@@ -4,7 +4,13 @@ import {
   animalCount,
   BOOKS,
   bump,
+  clothingDef,
   clothingKey,
+  clothingSaleToday,
+  furnitureSaleToday,
+  isFreeClothing,
+  salePrice,
+  type ClothingKind,
   counterSlots,
   cozy,
   CROPS,
@@ -535,10 +541,21 @@ export class GameState {
     return this.world.furnitureOwned[id] ?? 0;
   }
 
+  /** Today's discounted furniture piece (same for both players). */
+  get furnitureSale(): FurnitureId {
+    return furnitureSaleToday(this.world.seed, dayIndex(Date.now()));
+  }
+
+  furniturePrice(id: FurnitureId) {
+    const p = FURNITURE[id].price;
+    return id === this.furnitureSale ? salePrice(p) : p;
+  }
+
   buyFurniture(id: FurnitureId): boolean {
     const def = FURNITURE[id];
-    if (this.world.coins < def.price || def.unlockRep > this.reputation) return false;
-    this.world.coins -= def.price;
+    const price = this.furniturePrice(id);
+    if (this.world.coins < price || def.unlockRep > this.reputation) return false;
+    this.world.coins -= price;
     this.world.furnitureOwned[id] = this.furnitureOwned(id) + 1;
     bump(this.world, 'buyfurn');
     this.touch();
@@ -564,17 +581,27 @@ export class GameState {
   }
 
   // ----- clothing -----
-  owns(kind: 'hat' | 'accessory' | 'dye' | 'hair', id: string) {
-    if (id === 'none' || id === 'default') return true;
+  owns(kind: ClothingKind, id: string) {
+    if (isFreeClothing(id)) return true;
     return this.world.clothingOwned.includes(clothingKey(kind, id));
   }
 
-  clothingPrice(kind: 'hat' | 'accessory' | 'dye' | 'hair', id: string): { price: number; unlockRep: number } {
-    const def = kind === 'hat' ? HATS[id as keyof typeof HATS] : kind === 'accessory' ? ACCESSORIES[id as keyof typeof ACCESSORIES] : kind === 'dye' ? DYES[id as keyof typeof DYES] : HAIR_COLORS[id as keyof typeof HAIR_COLORS];
-    return { price: def.price, unlockRep: def.unlockRep };
+  /** Today's discounted clothing item at the tailor. */
+  get clothingSale() {
+    return clothingSaleToday(this.world.seed, Date.now());
   }
 
-  buyClothing(kind: 'hat' | 'accessory' | 'dye' | 'hair', id: string): boolean {
+  isOnSale(kind: ClothingKind, id: string) {
+    const s = this.clothingSale;
+    return s.kind === kind && s.id === id;
+  }
+
+  clothingPrice(kind: ClothingKind, id: string): { price: number; unlockRep: number; full: number } {
+    const def = clothingDef(kind, id);
+    return { price: this.isOnSale(kind, id) ? salePrice(def.price) : def.price, unlockRep: def.unlockRep, full: def.price };
+  }
+
+  buyClothing(kind: ClothingKind, id: string): boolean {
     if (this.owns(kind, id)) return false;
     const { price, unlockRep } = this.clothingPrice(kind, id);
     if (this.world.coins < price || unlockRep > this.reputation) return false;

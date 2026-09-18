@@ -1,4 +1,4 @@
-export type AreaId = 'farm' | 'town' | 'forest' | 'ranch' | 'lane' | 'home' | 'store' | 'tailor' | 'petshop' | 'restaurant' | 'qdhome' | 'xbhome';
+export type AreaId = 'farm' | 'town' | 'forest' | 'ranch' | 'lane' | 'home' | 'store' | 'tailor' | 'petshop' | 'furnshop' | 'restaurant' | 'qdhome' | 'xbhome';
 
 export interface AreaInfo {
   id: AreaId;
@@ -21,6 +21,7 @@ export const AREAS: Record<AreaId, AreaInfo> = {
   store: { id: 'store', name: 'General Store', outdoor: false, parent: 'town' },
   tailor: { id: 'tailor', name: "Rosa's Tailor", outdoor: false, parent: 'town' },
   petshop: { id: 'petshop', name: 'Pet & Barn Shop', outdoor: false, parent: 'town' },
+  furnshop: { id: 'furnshop', name: 'Cozy Corner', outdoor: false, parent: 'town' },
 };
 
 export const OUTDOOR_AREAS: AreaId[] = ['farm', 'town', 'forest', 'ranch', 'lane'];
