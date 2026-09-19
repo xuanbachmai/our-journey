@@ -128,7 +128,7 @@ export interface AwaySummary {
 }
 
 /** Actions counted per player, so each of you can see what the other did. */
-export const TRACKED_STATS = ['harvest', 'plant', 'water', 'cook', 'served', 'fish', 'forage', 'gifts', 'photos', 'note'];
+export const TRACKED_STATS = ['harvest', 'plant', 'water', 'cook', 'served', 'fish', 'forage', 'gifts', 'photos', 'note', 'hugs'];
 
 /**
  * The world plus local preferences. Every player-caused change goes through
@@ -202,6 +202,7 @@ export class GameState {
   /** Mark a player-caused change. */
   touch() {
     this.dirty = true;
+    this.meData.lastSeen = Date.now();
     this.world.changeCounter++;
     this.onChange?.(this.world);
   }

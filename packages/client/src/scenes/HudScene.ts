@@ -1472,6 +1472,16 @@ export class HudScene extends Phaser.Scene {
     });
   }
 
+  private lastSeenText(at?: number) {
+    if (this.world.partnerOnline) return 'here now';
+    if (!at) return 'not here yet';
+    const m = Math.round((Date.now() - at) / 60000);
+    if (m < 2) return 'here just now';
+    if (m < 60) return `here ${m}m ago`;
+    if (m < 60 * 36) return `here ${Math.round(m / 60)}h ago`;
+    return `here ${Math.round(m / 1440)} days ago`;
+  }
+
   /** Journal "Us" tab: the bond, the two of you, and little gestures. */
   private usPage(c: Phaser.GameObjects.Container, w: number, h: number, top: number) {
     const st = this.world.state;
@@ -1508,6 +1518,7 @@ export class HudScene extends Phaser.Scene {
       `Days together: ${st.daysTogether}`,
       `Photos: ${st.world.photos?.length ?? 0}   Gifts: ${st.world.stats.giftsent ?? 0}`,
       `Today: +${Object.values(st.world.bond?.got ?? {}).reduce((a, b) => a + b, 0)} bond`,
+      `${other}: ${this.lastSeenText(st.world.players[other].lastSeen)}`,
     ];
     lines.forEach((l, i) => c.add(this.add.text(rx, top + 52 + i * 11, l, plain()).setOrigin(0, 0.5)));
     const heartBtn = button(this, rx, h / 2 - 26, 82, 16, 'Send love', async () => {
@@ -2510,11 +2521,12 @@ export class HudScene extends Phaser.Scene {
       gifts: ['gift', 'gave villagers %n gifts'],
       photos: ['camera', 'took %n photos'],
       note: ['heart', 'wrote you %n notes'],
+      hugs: ['hug', 'hugged you %n times'],
     };
     if (a.partner) for (const { key, n } of a.partner.news.slice(0, 5)) if (say[key]) {
       const t = say[key][1].replace('%n', String(n));
       // one crop, one dish, one note
-      lines.push([say[key][0], `${a.partner.id} ${n === 1 ? t.replace(/(dishes|crops|seeds|plants|diners|things|gifts|photos|notes)/, (m) => (m === 'dishes' ? 'dish' : m.slice(0, -1))) : t}`]);
+      lines.push([say[key][0], `${a.partner.id} ${n === 1 ? t.replace(/(dishes|crops|seeds|plants|diners|things|gifts|photos|notes|times)/, (m) => (m === 'dishes' ? 'dish' : m.slice(0, -1))) : t}`]);
     }
     if (!lines.length) {
       this.showToast(`Welcome back! You were away ${when}.`);

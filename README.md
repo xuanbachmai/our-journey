@@ -51,6 +51,7 @@ A farm has exactly two seats. *Keep my seat (email)* lets you restore your seat 
 8. **Fishing**: 10 kinds of fish across the farm and forest ponds. Some bite only in daytime, at night or in the rain, and rarer fish fight harder in the reel mini-game. The first of each kind pays a bonus, and size records are kept.
 9. **The Book** (Journal): postcards, a fish collection, every recipe with its best grade, and friendship hearts.
 10. **Together**: the Love Tree grows on days you both play. Leave notes in the mailbox, answer the daily question, cook a dish together when both online, set special days for fireworks, collect postcards in the Book.
+11. **Us two**: a shared bond level grows from playing on the same day, notes, the daily question, cooking together, hugs, matching outfits, photos at the five camera spots (both of you appear when you are together) and gifts you wrap for each other at the mailbox. Bond levels give a picnic blanket, heart headbands, a couple bench, couple tees, golden rings and a dish price bonus. When you log in you see what your partner did while you were away, and you can hug their resting avatar. The Journal Us tab shows it all, plus when your partner was last here.
 
 ## Controls
 

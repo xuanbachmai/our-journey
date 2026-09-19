@@ -25,6 +25,8 @@ export interface PlayerData {
   pet: PetState | null;
   /** Local day keys this player opened the game. Feeds the Love Tree. */
   daysPlayed: string[];
+  /** When this player last did something (for "last here 2h ago"). */
+  lastSeen?: number;
 }
 
 export interface WorldState {

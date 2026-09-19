@@ -60,7 +60,7 @@ import { GameState, plotKey } from '../game/state';
 import { style } from '../ui/text';
 import type { MiniGameData } from './MiniGameScene';
 
-export type ActionType = 'till' | 'plant' | 'water' | 'harvest' | 'fish' | 'talk' | 'serve' | 'pet' | 'forage' | 'place' | 'pickup' | InteractId | 'none';
+export type ActionType = 'till' | 'plant' | 'water' | 'harvest' | 'fish' | 'talk' | 'serve' | 'pet' | 'forage' | 'place' | 'pickup' | 'hugpartner' | InteractId | 'none';
 
 export interface Action {
   type: ActionType;
@@ -925,6 +925,14 @@ export class WorldScene extends Phaser.Scene {
         return { type: 'serve', label: any ? 'Serve other' : `Needs ${RECIPES[d.recipe].name}`, enabled: any, ref: i };
       }
     }
+    // your partner's resting avatar (they are offline): give it a hug
+    const resting = this.partnerOnline ? null : (this.remote ?? this.companion);
+    if (resting) {
+      const rdx = resting.x - ch.x;
+      const rdy = resting.y - ch.y;
+      const d = ch.dir();
+      if (Math.hypot(rdx, rdy) < 24 && rdx * d.x + rdy * d.y > 0) return { type: 'hugpartner', label: 'Hug', enabled: true };
+    }
     // npcs
     for (let i = 0; i < this.npcs.length; i++) {
       const n = this.npcs[i];
@@ -1099,6 +1107,18 @@ export class WorldScene extends Phaser.Scene {
       case 'photo':
         this.takePhoto(a.text as PhotoSpot);
         break;
+      case 'hugpartner': {
+        const other = otherPlayer(this.playerId);
+        this.player.showBubble('hug');
+        const pal = this.remote ?? this.companion;
+        pal?.showBubble('heart');
+        this.heartBurst(pal?.x ?? ch.x, (pal?.y ?? ch.y) - 20);
+        audio.play('pop');
+        this.state.stat('hugs');
+        this.state.bond('hug');
+        this.events.emit('toast', `You hugged ${other}. They will know!`);
+        break;
+      }
       case 'coop':
       case 'hives':
       case 'barn': {
