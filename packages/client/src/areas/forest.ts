@@ -1,6 +1,6 @@
 import { mulberry32 } from '../art/pixel';
 import { T } from '../art/tiles';
-import { blockRect, boolGrid, fillRect, grid, type AreaDef, type AreaObject, type ForageSpot } from './types';
+import { blockRect, boolGrid, fillRect, grid, type AreaDef, type AreaObject, type ForageSpot, photoSpot } from './types';
 
 /** Whisper Forest: a winding path, foraging spots, a hidden pond and a clearing. */
 export function buildForest(): AreaDef {
@@ -114,6 +114,8 @@ export function buildForest(): AreaDef {
     forage.push({ key: `f${i}`, tx, ty, item, respawnMin: item === 'berry' ? 25 : 15 });
     blocked[ty][tx] = true;
   });
+
+  photoSpot(objects, blocked, 30, 8, 'pond');
 
   return {
     id: 'forest',

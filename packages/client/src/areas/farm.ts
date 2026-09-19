@@ -1,6 +1,6 @@
 import { mulberry32 } from '../art/pixel';
 import { T } from '../art/tiles';
-import { blockRect, boolGrid, fillRect, grid, type AreaDef, type AreaObject } from './types';
+import { blockRect, boolGrid, fillRect, grid, type AreaDef, type AreaObject, photoSpot } from './types';
 
 /** Our Farm: house, kitchen, restaurant, field, pond, counter by the road, coop, Love Tree. */
 export function buildFarm(): AreaDef {
@@ -221,6 +221,8 @@ export function buildFarm(): AreaDef {
     { tx: rest.tx - 1, ty: rest.ty + 2 },
     { tx: rest.tx + 5, ty: rest.ty + 2 },
   ];
+
+  photoSpot(objects, blocked, 31, 4, 'lovetree');
 
   return {
     id: 'farm',

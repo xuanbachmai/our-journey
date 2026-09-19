@@ -38,6 +38,10 @@ export interface NoteRow {
   read: boolean;
 }
 
+export function shouldDeliverNote(note: Pick<NoteRow, 'to_player'>, player: PlayerId): boolean {
+  return note.to_player === player;
+}
+
 type Handler = (payload: unknown) => void;
 
 const PAIR_KEY = 'oj-pairing';
@@ -63,6 +67,7 @@ class Net {
   private handlers = new Map<string, Handler[]>();
   online = new Set<PlayerId>();
   onPresence: ((online: Set<PlayerId>) => void) | null = null;
+  private channelGeneration = 0;
   private saveTimer: number | null = null;
   private pendingSave: WorldState | null = null;
   lastError = '';
@@ -88,6 +93,7 @@ class Net {
   }
 
   private setPairing(p: Pairing | null) {
+    if (this.pairing?.code !== p?.code) this.cancelScheduledSave();
     this.pairing = p;
     try {
       if (p) localStorage.setItem(PAIR_KEY, JSON.stringify(p));
@@ -127,50 +133,72 @@ class Net {
   /** Claim a character seat for this device. Fails if someone else holds it. */
   async claimSeat(code: string, player: PlayerId): Promise<'ok' | 'taken' | 'error'> {
     if (!this.client) return 'error';
-    const w = await this.fetchWorld(code);
-    if (!w) return 'error';
-    const seat = w.seats[player];
     const uid = await this.userId();
-    if (seat && seat.device !== this.deviceId && !(uid && seat.user === uid)) return 'taken';
-    const seats: Seats = { ...w.seats, [player]: { device: this.deviceId, ...(uid ? { user: uid } : seat?.user ? { user: seat.user } : {}) } };
-    const { error } = await this.client.from('worlds').update({ seats }).eq('code', code);
-    if (error) {
-      this.lastError = error.message;
-      return 'error';
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const w = await this.fetchWorld(code);
+      if (!w) return 'error';
+      const seat = w.seats[player];
+      if (seat && seat.device !== this.deviceId && !(uid && seat.user === uid)) return 'taken';
+      const seats: Seats = { ...w.seats, [player]: { device: this.deviceId, ...(uid ? { user: uid } : seat?.user ? { user: seat.user } : {}) } };
+      const { data, error } = await this.client.from('worlds').update({ seats, version: w.version + 1 }).eq('code', code).eq('version', w.version).select('code').maybeSingle();
+      if (error) {
+        this.lastError = error.message;
+        return 'error';
+      }
+      if (!data) continue;
+      this.setPairing({ code, player });
+      return 'ok';
     }
-    this.setPairing({ code, player });
-    return 'ok';
+    this.lastError = 'The farm changed while claiming the seat. Please try again.';
+    return 'error';
   }
 
   /** Release this device's seat and forget the pairing. */
   async leaveFarm(): Promise<void> {
     const p = this.pairing;
+    await this.flushScheduledSave();
     this.setPairing(null);
     await this.disconnect();
     if (!this.client || !p) return;
-    const w = await this.fetchWorld(p.code);
-    if (!w) return;
-    const seats: Seats = { ...w.seats, [p.player]: null };
-    await this.client.from('worlds').update({ seats }).eq('code', p.code);
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const w = await this.fetchWorld(p.code);
+      if (!w) return;
+      // Do not let an old phone clear a seat that has since been restored elsewhere.
+      if (w.seats[p.player]?.device !== this.deviceId) return;
+      const seats: Seats = { ...w.seats, [p.player]: null };
+      const { data, error } = await this.client.from('worlds').update({ seats, version: w.version + 1 }).eq('code', p.code).eq('version', w.version).select('code').maybeSingle();
+      if (error) {
+        this.lastError = error.message;
+        return;
+      }
+      if (data) return;
+    }
   }
 
   /** Creator can free the partner's seat (lost phone). */
   async resetPartnerSeat(): Promise<boolean> {
     const p = this.pairing;
     if (!this.client || !p) return false;
-    const w = await this.fetchWorld(p.code);
-    if (!w) return false;
     const other: PlayerId = p.player === 'xb' ? 'qd' : 'xb';
-    const seats: Seats = { ...w.seats, [other]: null };
-    const { error } = await this.client.from('worlds').update({ seats }).eq('code', p.code);
-    return !error;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const w = await this.fetchWorld(p.code);
+      if (!w) return false;
+      const seats: Seats = { ...w.seats, [other]: null };
+      const { data, error } = await this.client.from('worlds').update({ seats, version: w.version + 1 }).eq('code', p.code).eq('version', w.version).select('code').maybeSingle();
+      if (error) {
+        this.lastError = error.message;
+        return false;
+      }
+      if (data) return true;
+    }
+    return false;
   }
 
   /** Debounced save. The freshest copy (higher changeCounter) wins. */
   scheduleSave(state: WorldState, delayMs = 1500) {
     if (!this.client || !this.pairing) return;
     this.pendingSave = state;
-    if (this.saveTimer) return;
+    if (this.saveTimer !== null) return;
     this.saveTimer = window.setTimeout(() => {
       this.saveTimer = null;
       const s = this.pendingSave;
@@ -179,23 +207,46 @@ class Net {
     }, delayMs);
   }
 
+  private cancelScheduledSave() {
+    if (this.saveTimer !== null) window.clearTimeout(this.saveTimer);
+    this.saveTimer = null;
+    this.pendingSave = null;
+  }
+
+  private async flushScheduledSave() {
+    if (this.saveTimer !== null) window.clearTimeout(this.saveTimer);
+    this.saveTimer = null;
+    const state = this.pendingSave;
+    this.pendingSave = null;
+    if (state) await this.saveNow(state);
+  }
+
   async saveNow(state: WorldState): Promise<void> {
     if (!this.client || !this.pairing) return;
     const code = this.pairing.code;
     const { data } = await this.client.from('worlds').select('state').eq('code', code).maybeSingle();
     const remote = data?.state as WorldState | undefined;
-    if (remote && remote.changeCounter > state.changeCounter && remote.lastSimulatedAt > state.lastSimulatedAt - 5000) return;
+    // Simulation timestamps advance even when no player does anything. They must
+    // never let a stale snapshot overwrite a farm with more real player changes.
+    if (remote && remote.changeCounter > state.changeCounter) return;
     const { error } = await this.client.from('worlds').update({ state, updated_at: new Date().toISOString() }).eq('code', code);
     if (error) this.lastError = error.message;
   }
 
   // ---------------- realtime ----------------
 
-  async connect(player: PlayerId): Promise<void> {
-    if (!this.client || !this.pairing) return;
-    await this.disconnect();
-    const ch = this.client.channel(`world:${this.pairing.code}`, { config: { presence: { key: player }, broadcast: { self: false } } });
+  async connect(player: PlayerId): Promise<boolean> {
+    if (!this.client || !this.pairing) return false;
+    const generation = ++this.channelGeneration;
+    const previous = this.channel;
+    this.channel = null;
+    if (previous) await this.client.removeChannel(previous);
+    if (generation !== this.channelGeneration || !this.pairing) return false;
+    const code = this.pairing.code;
+    const ch = this.client.channel(`world:${code}`, { config: { presence: { key: player }, broadcast: { self: false } } });
+    this.channel = ch;
     ch.on('presence', { event: 'sync' }, () => {
+      if (this.channel !== ch) return;
       const st = ch.presenceState<{ player: PlayerId }>();
       this.online = new Set(Object.keys(st) as PlayerId[]);
       this.onPresence?.(this.online);
@@ -203,25 +254,34 @@ class Net {
     for (const ev of ['pos', 'state', 'emote', 'coop', 'ping', 'note']) {
       ch.on('broadcast', { event: ev }, ({ payload }) => this.emit(ev, payload));
     }
-    ch.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notes', filter: `code=eq.${this.pairing.code}` }, (p) => this.emit('note', p.new));
-    await new Promise<void>((resolve) => {
+    ch.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notes', filter: `code=eq.${code}` }, (p) => {
+      const note = p.new as NoteRow;
+      if (shouldDeliverNote(note, player)) this.emit('note', note);
+    });
+    const subscribed = await new Promise<boolean>((resolve) => {
       ch.subscribe(async (status) => {
         if (status === 'SUBSCRIBED') {
-          await ch.track({ player, at: Date.now() });
-          resolve();
+          if (generation === this.channelGeneration && this.channel === ch) await ch.track({ player, at: Date.now() });
+          resolve(true);
         }
-        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') resolve();
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') resolve(false);
       });
     });
-    this.channel = ch;
+    if (!subscribed || generation !== this.channelGeneration || this.channel !== ch) {
+      if (this.channel === ch) this.channel = null;
+      await this.client.removeChannel(ch);
+      return false;
+    }
+    return true;
   }
 
   async disconnect() {
-    if (this.channel && this.client) {
-      await this.client.removeChannel(this.channel);
-      this.channel = null;
-    }
+    this.channelGeneration++;
+    const channel = this.channel;
+    this.channel = null;
+    if (channel && this.client) await this.client.removeChannel(channel);
     this.online = new Set();
+    this.onPresence?.(this.online);
   }
 
   send(event: string, payload: unknown) {
@@ -251,7 +311,6 @@ class Net {
   async sendNote(to: PlayerId, body: string): Promise<boolean> {
     if (!this.client || !this.pairing) return false;
     const { error } = await this.client.from('notes').insert({ code: this.pairing.code, from_player: this.pairing.player, to_player: to, body });
-    if (!error) this.send('note', { from: this.pairing.player });
     return !error;
   }
 
@@ -318,10 +377,7 @@ class Net {
       const w = await this.fetchWorld(this.pairing.code);
       if (w) {
         const seat = w.seats[this.pairing.player];
-        if (seat && seat.device === this.deviceId && seat.user !== uid) {
-          const seats: Seats = { ...w.seats, [this.pairing.player]: { device: this.deviceId, user: uid } };
-          await this.client.from('worlds').update({ seats }).eq('code', this.pairing.code);
-        }
+        if (seat && (seat.device === this.deviceId || seat.user === uid)) await this.claimSeat(this.pairing.code, this.pairing.player);
       }
       return this.pairing;
     }
@@ -329,11 +385,9 @@ class Net {
       const { data } = await this.client.from('worlds').select('code, seats').eq(`seats->${player}->>user`, uid).limit(1);
       const row = data?.[0];
       if (row) {
-        const seats = row.seats as Seats;
-        seats[player] = { device: this.deviceId, user: uid };
-        await this.client.from('worlds').update({ seats }).eq('code', row.code as string);
-        this.setPairing({ code: row.code as string, player });
-        return this.pairing;
+        const code = row.code as string;
+        const claimed = await this.claimSeat(code, player);
+        if (claimed === 'ok') return this.pairing;
       }
     }
     return null;

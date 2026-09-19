@@ -5,6 +5,8 @@ import { FURNITURE, FURNITURE_IDS, furnitureSaleToday } from './furniture';
 import { ITEMS } from './items';
 import { RECIPES } from './recipes';
 import { toolTiles } from './tools';
+import { emptyPlot } from './growth';
+import { dayStart, DAY_MS, weatherFor } from './weather';
 import { animalMax, migrateWorld, newWorld, simulateWorld } from './world';
 
 describe('tools', () => {
@@ -66,5 +68,22 @@ describe('shops', () => {
     raw.players.xb.outfit = { hat: 'straw', accessory: 'none', dye: 'red', hair: 'default' };
     const w = migrateWorld(raw, now);
     expect(w.players.xb.outfit).toEqual({ ...DEFAULT_OUTFIT, hat: 'straw', dye: 'red' });
+  });
+});
+
+describe('rain', () => {
+  it('counts as watering so watering tasks can finish on rainy days', () => {
+    const w0 = newWorld(Date.now(), 7);
+    // find a rainy day for this seed
+    let t = dayStart(Date.now()) + 3_600_000;
+    for (let i = 0; i < 60 && weatherFor(w0.seed, t) !== 'rain'; i++) t += DAY_MS;
+    expect(weatherFor(w0.seed, t)).toBe('rain');
+    const w = newWorld(t, 7);
+    w.lastSimulatedAt = t;
+    w.plots['1,1'] = { ...emptyPlot(), tilled: true, crop: 'pumpkin' };
+    w.plots['2,1'] = { ...emptyPlot(), tilled: true, crop: 'pumpkin' };
+    const { world } = simulateWorld(w, t + 60_000);
+    expect(world.stats.water).toBe(2);
+    expect(world.plots['1,1'].wateredUntil).toBeGreaterThan(t);
   });
 });

@@ -12,6 +12,11 @@ import {
   clothingDef,
   clothingIds,
   CROP_IDS,
+  BOND_REWARDS,
+  bondProgress,
+  MAX_BOND,
+  PHOTO_SPOTS,
+  type Photo,
   SEEDS_PER_CROP,
   TOOL_IDS,
   TOOL_REACH,
@@ -93,7 +98,7 @@ interface HelpPage {
 }
 
 const HELP: HelpPage[] = [
-  { title: 'Your journey', icon: 'star', lines: ['The bar at the top shows your next', 'task. Follow the yellow arrow to', 'where it happens. Tap the bar for', 'the Story: 12 chapters with rewards.', 'Today has 3 small daily tasks.'] },
+  { title: 'Your journey', icon: 'star', lines: ['The bar at the top shows your next', 'task. Follow the yellow arrow to', 'where it happens. Tap the bar for', 'the Story: 13 chapters with rewards.', 'Today has 3 small daily tasks.'] },
   { title: 'Farming', icon: 'seed-tomato', lines: ['Till a plot, plant a seed, water it.', 'Crops grow in real time, even when', 'the game is closed. Dry soil pauses.', 'Rain and the sprinkler water for you.', 'Upgrade the hoe, can and sickle at', 'the stall to work 3 or 9 tiles.'] },
   { title: 'Cooking', icon: 'dish-tomato_soup', lines: ['Cook at the kitchen by the house or', 'inside the restaurant. Each recipe', 'is a few mini-games. Good timing', 'means a better grade: C, B, A or S.', 'Reputation and books unlock recipes.'] },
   { title: 'Selling', icon: 'coin', lines: ['Counter by the road: dishes sell by', 'themselves, day and night.', 'Restaurant: diners sit down and order.', 'Bring the dish fast for a tip.', 'Town board: orders pay extra.'] },
@@ -103,6 +108,7 @@ const HELP: HelpPage[] = [
   { title: 'Fishing', icon: 'fish-koi', lines: ['10 kinds of fish live in the ponds.', 'Some bite only at night or in rain.', 'Rare fish pull harder. The first of', 'each kind pays a bonus. Check the', 'Book to see what is left to catch.'] },
   { title: 'Animals', icon: 'cow', lines: ['Hens and ducks lay eggs at the coop.', 'Cows, sheep, goats and pigs live at', 'the ranch: collect at the barn. Build', 'pens at the pet shop. Buy a horse and', 'ride it from the stable: much faster!'] },
   { title: 'Together', icon: 'heart', lines: ['The Love Tree grows on days you both', 'play. Leave notes in the mailbox.', 'Answer the daily question. Cook a', 'dish together when both online.', 'Special days bring fireworks.'] },
+  { title: 'Us two', icon: 'heart', lines: ['Your bond grows when you both play,', 'leave notes, answer the question,', 'cook together, take photos at the', 'camera spots and wrap gifts in the', 'mailbox. Bond levels give rewards!'] },
   { title: 'Controls', icon: 'menu', lines: ['Phone: drag left half to move, big', 'button to act, bag button top left.', 'PC: WASD, SPACE. 1-8 seeds, B bag,', 'J journal, M map. In Decorate:', 'arrows move, ENTER places, ESC stops.'] },
 ];
 
@@ -276,7 +282,9 @@ export class HudScene extends Phaser.Scene {
     this.input.keyboard?.on('keydown-B', bagKey);
     this.input.keyboard?.on('keydown-I', bagKey);
 
-    this.scale.on('resize', () => this.layout());
+    const onResize = () => this.layout();
+    this.scale.on('resize', onResize);
+    this.events.once('shutdown', () => this.scale.off('resize', onResize));
     this.layout();
     this.world.pushHud(true);
   }
@@ -287,7 +295,7 @@ export class HudScene extends Phaser.Scene {
     this.world = w;
     const f = w.events;
     // the world scene object survives area changes; drop the listeners from the previous visit
-    for (const ev of ['hud', 'toast', 'openStall', 'openStore', 'openTailor', 'openPetshop', 'openFurnshop', 'openWardrobe', 'openMail', 'openCounter', 'openRecipes', 'openBoard', 'openSign', 'openLoveTree', 'cookResult', 'away', 'progress', 'guideEdge', 'postcard', 'coopInvite', 'notes', 'dialog', 'catch', 'openSeedMaker']) f.removeAllListeners(ev);
+    for (const ev of ['hud', 'toast', 'openStall', 'openStore', 'openTailor', 'openPetshop', 'openFurnshop', 'openWardrobe', 'openMail', 'openCounter', 'openRecipes', 'openBoard', 'openSign', 'openLoveTree', 'cookResult', 'away', 'progress', 'guideEdge', 'postcard', 'coopInvite', 'notes', 'dialog', 'catch', 'openSeedMaker', 'photo', 'gifts']) f.removeAllListeners(ev);
     f.on('hud', (d: HudData) => this.refresh(d));
     f.on('toast', (msg: string) => this.showToast(msg));
     f.on('openStall', () => this.openStall('seeds'));
@@ -303,6 +311,8 @@ export class HudScene extends Phaser.Scene {
     });
     f.on('openPetshop', () => this.openPetshop('pets'));
     f.on('openSeedMaker', () => this.openSeedMaker());
+    f.on('photo', (p: Photo) => this.showPhoto(p));
+    f.on('gifts', () => this.openGiftReveal());
     f.on('openWardrobe', () => {
       this.shopSel = null;
       this.page = 0;
@@ -321,7 +331,7 @@ export class HudScene extends Phaser.Scene {
     f.on('progress', (events: ProgressEvent[]) => this.onProgress(events));
     f.on('guideEdge', (angle: number | null) => this.setEdgeArrow(angle));
     f.on('postcard', (c: Postcard) => this.showPostcard(c));
-    f.on('coopInvite', (m: { from: PlayerId; recipe: RecipeId }) => this.openCoopInvite(m));
+    f.on('coopInvite', (m: { from: PlayerId; recipe: RecipeId; session: string }) => this.openCoopInvite(m));
     f.on('notes', () => this.refreshNotesBadge());
     f.once('shutdown', () => {
       this.setEdgeArrow(null);
@@ -515,7 +525,7 @@ export class HudScene extends Phaser.Scene {
     c.add(this.add.text(0, h / 2 - 9, `One gift a day   Hearts ${hearts}/5`, plain({ color: '#7a6a70' })).setOrigin(0.5));
   }
 
-  private bookTab: 'cards' | 'fish' | 'dishes' | 'friends' = 'cards';
+  private bookTab: 'cards' | 'photos' | 'fish' | 'dishes' | 'friends' = 'cards';
   private bookSel: string | null = null;
 
   /** The Book: postcards, fish, dishes and friends collected so far. */
@@ -524,12 +534,14 @@ export class HudScene extends Phaser.Scene {
     const wd = st.world;
     const tabs: [typeof this.bookTab, string][] = [
       ['cards', 'Cards'],
+      ['photos', 'Photos'],
       ['fish', 'Fish'],
       ['dishes', 'Dishes'],
       ['friends', 'Friends'],
     ];
     tabs.forEach(([id, label], i) => {
-      const b = button(this, -w / 2 + 8 + i * 71, top - 6, 66, 14, label, () => {
+      const tw = Math.floor((w - 16) / tabs.length);
+      const b = button(this, -w / 2 + 8 + i * tw, top - 6, tw - 4, 14, label, () => {
         this.bookTab = id;
         this.bookSel = null;
         this.page = 0;
@@ -545,6 +557,25 @@ export class HudScene extends Phaser.Scene {
       const card = cards[this.page % Math.max(1, cards.length)];
       if (card) this.drawPostcard(c, card, 0, y0 + 40);
       this.pager(c, w, h, this.page % Math.max(1, cards.length), Math.max(1, cards.length), (p) => {
+        this.page = p;
+        this.openJournal('album');
+      });
+      return;
+    }
+
+    if (this.bookTab === 'photos') {
+      const photos = [...(wd.photos ?? [])].reverse();
+      if (!photos.length) c.add(this.add.text(0, y0 + 40, 'Find the camera spots around the world.\nTogether, you both end up in the photo!', plain({ color: '#7a6a70', align: 'center' })).setOrigin(0.5));
+      const per = 2;
+      const pages = Math.max(1, Math.ceil(photos.length / per));
+      const page = this.page % pages;
+      photos.slice(page * per, page * per + per).forEach((p, i) => {
+        this.drawPhoto(c, p, (i === 0 ? -1 : 1) * 68, y0 + 48, 1);
+        const z = this.add.zone((i === 0 ? -1 : 1) * 68, y0 + 48, 112, 92).setInteractive({ useHandCursor: true });
+        z.on('pointerdown', () => this.showPhoto(p));
+        c.add(z);
+      });
+      this.pager(c, w, h, page, pages, (p) => {
         this.page = p;
         this.openJournal('album');
       });
@@ -731,7 +762,9 @@ export class HudScene extends Phaser.Scene {
       if (e.kind === 'task') this.bannerQueue.push({ title: `Done: ${e.title}`, sub: `+${e.reward} coins`, big: false });
       else if (e.kind === 'daily') this.bannerQueue.push({ title: `Daily: ${e.title}`, sub: `+${e.reward} coins`, big: false });
       else if (e.kind === 'dailyAll') this.bannerQueue.push({ title: 'All daily tasks done!', sub: `+${e.reward} coins, +1 reputation`, big: true });
-      else if (e.kind === 'friend') this.bannerQueue.push({ title: `${e.name}: ${'♥'.repeat(Math.max(1, e.hearts))}`, sub: e.text, big: e.text !== `${e.name} likes you more` });
+      else if (e.kind === 'bond') this.bannerQueue.push({ title: `Bond level ${e.level}!`, sub: e.text, big: true });
+      else if (e.kind === 'match') this.bannerQueue.push({ title: 'Matching outfits!', sub: `Twinning with ${e.partner}, +bond`, big: false });
+      else if (e.kind === 'friend') this.bannerQueue.push({ title: `${e.name}: ${e.hearts} heart${e.hearts === 1 ? '' : 's'}`, sub: e.text, big: e.text !== `${e.name} likes you more` });
       else {
         this.bannerQueue.push({ title: `Chapter ${e.number} complete!`, sub: e.rewardText, big: true });
         if (e.next) this.bannerQueue.push({ title: `Next chapter: ${e.next}`, sub: 'Tap the task bar to see it', big: false });
@@ -1114,7 +1147,7 @@ export class HudScene extends Phaser.Scene {
       kinds.findIndex(([k]) => k === kind),
     );
     const ids = clothingIds(kind);
-    const list = mode === 'buy' ? ids.filter((id) => !isFreeClothing(id)) : ids.filter((id) => st.owns(kind, id));
+    const list = mode === 'buy' ? ids.filter((id) => !isFreeClothing(id) && !clothingDef(kind, id).rewardOnly) : ids.filter((id) => st.owns(kind, id));
     const worn = st.outfit[kind] as string;
     const sel = this.shopSel && list.includes(this.shopSel) ? this.shopSel : list.includes(worn) ? worn : list[0];
     const look = LOOKS[this.world.playerId];
@@ -1235,7 +1268,7 @@ export class HudScene extends Phaser.Scene {
       }]),
       FURNITURE_CATS.findIndex((k) => k.id === cat),
     );
-    const list = FURNITURE_IDS.filter((id) => FURNITURE[id].cat === cat).sort((a, b) => FURNITURE[a].unlockRep - FURNITURE[b].unlockRep || FURNITURE[a].price - FURNITURE[b].price);
+    const list = FURNITURE_IDS.filter((id) => FURNITURE[id].cat === cat && !FURNITURE[id].rewardOnly).sort((a, b) => FURNITURE[a].unlockRep - FURNITURE[b].unlockRep || FURNITURE[a].price - FURNITURE[b].price);
     const sel = (this.shopSel && list.includes(this.shopSel as FurnitureId) ? this.shopSel : list[0]) as FurnitureId;
     const sale = st.furnitureSale;
     const top = -h / 2 + 38;
@@ -1291,6 +1324,209 @@ export class HudScene extends Phaser.Scene {
       c.add(z);
     });
     c.add(this.add.text(gx + 90, h / 2 - 12, `Sale: ${FURNITURE[sale].name} -30%`, plain({ color: '#d94a4a' })).setOrigin(0.5));
+  }
+
+  // ---------- us two: bond, photos, gifts ----------
+  private giftRetry = false;
+
+  /** Name and icon for a gift key (item id, dish:recipe:grade or furn:id). */
+  private giftInfo(key: string): { name: string; icon: string; tab: string; frame: string } {
+    if (key.startsWith('dish:')) {
+      const [, recipe, grade] = key.split(':');
+      return { name: `${RECIPES[recipe as RecipeId].name} ${GRADE_NAMES[Number(grade)]}`, icon: `dish-${recipe}`, tab: 'dishes', frame: '' };
+    }
+    if (key.startsWith('furn:')) {
+      const id = key.slice(5) as FurnitureId;
+      return { name: FURNITURE[id].name, icon: `furn-${id}`, tab: 'home', frame: id };
+    }
+    return { name: ITEMS[key as ItemId]?.name ?? key, icon: ITEMS[key as ItemId]?.icon ?? 'gift', tab: 'produce', frame: '' };
+  }
+
+  /** A polaroid: the spot, the two of you (or just you) in the outfits you wore that day. */
+  private drawPhoto(c: Phaser.GameObjects.Container, p: Photo, x: number, y: number, s = 1) {
+    const spot = PHOTO_SPOTS[p.spot];
+    const pw = 112 * s;
+    const ph = 92 * s;
+    const g = this.add.graphics();
+    panel(g, x - pw / 2, y - ph / 2, pw, ph, 0xffffff);
+    const ix = x - pw / 2 + 5 * s;
+    const iy = y - ph / 2 + 5 * s;
+    const iw = pw - 10 * s;
+    const ih = ph - 24 * s;
+    g.fillStyle(Phaser.Display.Color.HexStringToColor(spot.sky).color, 1).fillRect(ix, iy, iw, ih * 0.62);
+    g.fillStyle(Phaser.Display.Color.HexStringToColor(spot.ground).color, 1).fillRect(ix, iy + ih * 0.62, iw, ih * 0.38);
+    if (p.spot === 'pond') g.fillStyle(0x5fcbff, 1).fillEllipse(ix + iw * 0.75, iy + ih * 0.8, iw * 0.4, ih * 0.18);
+    c.add(g);
+    const groundY = iy + ih - 6 * s;
+    const bg: [string, string | number, number][] = [
+      ['props', 'fountain', 0.9],
+      ['furniture', 'lovetree6', 0.9],
+      ['trees', 0, 0.9],
+      ['buildings', 'house_qd', 0.45],
+      ['barn', 0, 0.45],
+    ];
+    const [key, frame, sc] = bg[['fountain', 'lovetree', 'pond', 'lane', 'ranch'].indexOf(p.spot)];
+    c.add(this.add.image(ix + iw * 0.24, iy + ih * 0.7, key, frame).setOrigin(0.5, 1).setScale(sc * s).setAlpha(0.95));
+    const who = (['xb', 'qd'] as PlayerId[]).filter((id) => p.outfits[id]);
+    who.forEach((id, i) => {
+      const cx = who.length === 2 ? ix + iw * 0.6 + (i === 0 ? -9 : 9) * s : ix + iw * 0.62;
+      c.add(this.add.image(cx, groundY, buildCharacterTexture(this, LOOKS[id], p.outfits[id]), 0).setOrigin(0.5, 1).setScale(s));
+    });
+    if (who.length === 2) c.add(this.add.image(ix + iw * 0.6, groundY - 30 * s, 'icons', 'heart').setScale(s));
+    c.add(this.add.text(x, y + ph / 2 - 13 * s, spot.name, plain({ color: P.outline })).setOrigin(0.5).setScale(Math.max(0.6, s)));
+    if (s >= 1) c.add(this.add.text(x, y + ph / 2 - 5, p.day, plain({ color: '#9a8a90' })).setOrigin(0.5));
+  }
+
+  private showPhoto(p: Photo) {
+    const c = this.openOverlay(160, 138, p.together ? 'A photo of us!' : 'Click!');
+    this.drawPhoto(c, p, 0, 4, 1);
+    c.add(this.add.text(0, 62, 'Saved in the Book', plain({ color: '#7a6a70' })).setOrigin(0.5));
+  }
+
+  /** Unwrap gifts from your partner, one at a time. */
+  private openGiftReveal() {
+    const st = this.world.state;
+    const g = st.giftsForMe[0];
+    if (!g || this.overlay?.getData('gift')) return;
+    if (this.overlay) {
+      // wait until the current panel closes; only one retry at a time
+      if (this.giftRetry) return;
+      this.giftRetry = true;
+      this.time.delayedCall(1500, () => {
+        this.giftRetry = false;
+        this.openGiftReveal();
+      });
+      return;
+    }
+    const c = this.openOverlay(220, 130, `A gift from ${g.from}!`);
+    c.setData('gift', true);
+    const box = this.add.image(0, -16, 'icons', 'gift').setScale(4);
+    c.add(box);
+    this.tweens.add({ targets: box, angle: 6, duration: 180, yoyo: true, repeat: -1 });
+    c.add(this.add.text(0, 22, 'Wrapped just for you', plain({ color: '#7a6a70' })).setOrigin(0.5));
+    const open = button(this, -40, 40, 80, 16, 'Open it', () => {
+      const got = st.openGift(g.id);
+      if (!got) return;
+      audio.play('great');
+      this.world.afterChange();
+      const info = this.giftInfo(got.key);
+      const cc = this.openOverlay(230, 130, `From ${got.from}, with love`);
+      cc.setData('gift', true);
+      const img = info.frame ? this.fitImage(this.add.image(0, -22, 'furniture', info.frame), 60, 40, 2) : this.add.image(0, -22, 'icons', info.icon).setScale(3);
+      cc.add(img);
+      for (let i = 0; i < 8; i++) {
+        const h = this.add.image(Phaser.Math.Between(-90, 90), Phaser.Math.Between(-40, 20), 'icons', 'heart').setScale(0.8);
+        cc.add(h);
+        this.tweens.add({ targets: h, y: h.y - 20, alpha: 0, duration: 1200, delay: i * 120, repeat: -1 });
+      }
+      cc.add(this.add.text(0, 6, info.name, plain()).setOrigin(0.5));
+      cc.add(this.add.text(0, 24, got.msg ? `"${got.msg}"` : '(no note, just love)', plain({ color: '#e05fa8', align: 'center', wordWrap: { width: 200 } })).setOrigin(0.5));
+      const ok = button(this, -30, 44, 60, 16, st.giftsForMe.length ? 'Next' : 'Aww', () => {
+        this.closeOverlay();
+        if (st.giftsForMe.length) this.openGiftReveal();
+      }, 0x7de8c8);
+      cc.add(ok.container);
+    }, 0xff8fcf);
+    c.add(open.container);
+  }
+
+  /** Mailbox Gift tab: wrap something from the bag with a short note. */
+  private giftTab(c: Phaser.GameObjects.Container, w: number, h: number, top: number) {
+    const st = this.world.state;
+    const other = otherPlayer(this.world.playerId);
+    const entries: { key: string; icon: string; frame?: string; count: number }[] = [];
+    for (const id of SELLABLE) if (st.count(id) > 0) entries.push({ key: id, icon: ITEMS[id].icon, count: st.count(id) });
+    const dishes = new Map<string, number>();
+    for (const d of st.world.dishes) dishes.set(`dish:${d.recipe}:${d.grade}`, (dishes.get(`dish:${d.recipe}:${d.grade}`) ?? 0) + 1);
+    for (const [k, n] of dishes) entries.push({ key: k, icon: `dish-${k.split(':')[1]}`, count: n });
+    for (const f of FURNITURE_IDS) if (st.furnitureOwned(f) > 0) entries.push({ key: `furn:${f}`, icon: '', frame: f, count: st.furnitureOwned(f) });
+    const waiting = st.giftsWaiting.length;
+    c.add(this.add.text(0, top + 2, waiting ? `${waiting} gift${waiting > 1 ? 's' : ''} waiting for ${other} to open` : `Pick something to wrap for ${other}`, plain({ color: '#e05fa8' })).setOrigin(0.5));
+    if (!entries.length) {
+      c.add(this.add.text(0, top + 40, 'Your bag is empty.\nHarvest, cook or buy something first.', plain({ color: '#7a6a70', align: 'center' })).setOrigin(0.5));
+      return;
+    }
+    const cols = 9;
+    const slot = 26;
+    const x0 = -(cols * slot) / 2;
+    entries.slice(0, 27).forEach((e, i) => {
+      const sx = x0 + (i % cols) * slot;
+      const sy = top + 12 + Math.floor(i / cols) * slot;
+      const g = this.add.graphics();
+      panel(g, sx, sy, 24, 24, 0xffffff);
+      c.add(g);
+      c.add(e.frame ? this.fitImage(this.add.image(sx + 12, sy + 12, 'furniture', e.frame), 20, 20, 1) : this.add.image(sx + 12, sy + 12, 'icons', e.icon).setScale(1.5));
+      if (e.count > 1) c.add(this.add.text(sx + 25, sy + 26, String(e.count), style()).setOrigin(1, 1));
+      const z = this.add.zone(sx + 12, sy + 12, 24, 24).setInteractive({ useHandCursor: true });
+      z.on('pointerdown', async () => {
+        const name = this.giftInfo(e.key).name;
+        const msg = await promptText({ title: `Wrap ${name} for ${other}`, placeholder: 'A little something for you <3', maxLength: 120, okLabel: 'Wrap it' });
+        if (msg === null) return;
+        if (!st.wrapGift(e.key, msg)) return audio.play('bad');
+        audio.play('great');
+        this.showToast(`Wrapped! ${other} finds it next time`);
+        this.world.afterChange();
+        void this.openMail('gift');
+      });
+      c.add(z);
+    });
+  }
+
+  /** Journal "Us" tab: the bond, the two of you, and little gestures. */
+  private usPage(c: Phaser.GameObjects.Container, w: number, h: number, top: number) {
+    const st = this.world.state;
+    const me = this.world.playerId;
+    const other = otherPlayer(me);
+    // left: the two of you as you look right now
+    const g = this.add.graphics();
+    panel(g, -w / 2 + 8, top - 4, 100, h / 2 - 8 - (top - 4), 0xffe8f4, 0xff8fcf);
+    c.add(g);
+    const lx = -w / 2 + 58;
+    const players = st.world.players;
+    c.add(this.add.image(lx - 17, top + 70, buildCharacterTexture(this, LOOKS.xb, players.xb.outfit), 0).setOrigin(0.5, 1).setScale(2));
+    c.add(this.add.image(lx + 17, top + 70, buildCharacterTexture(this, LOOKS.qd, players.qd.outfit), 0).setOrigin(0.5, 1).setScale(2));
+    const heart = this.add.image(lx, top + 18, 'icons', 'heart').setScale(1.5);
+    c.add(heart);
+    this.tweens.add({ targets: heart, scale: 1.9, duration: 600, yoyo: true, repeat: -1 });
+    c.add(this.add.text(lx, top + 80, st.matching ? 'Matching!' : 'Not matching', plain({ color: st.matching ? '#e05fa8' : '#9a8a90' })).setOrigin(0.5));
+    const started = Math.max(1, Math.floor((Date.now() - st.world.createdAt) / 86_400_000) + 1);
+    c.add(this.add.text(lx, top + 92, `Day ${started} of us`, plain({ color: '#7a6a70' })).setOrigin(0.5));
+
+    // right: bond level
+    const rx = -w / 2 + 116;
+    const lvl = st.bondLevel;
+    const prog = bondProgress(st.bondPoints);
+    c.add(this.add.text(rx, top + 2, `Bond level ${lvl}${lvl >= MAX_BOND ? ' (max)' : ''}`, style({ color: '#e05fa8' })).setOrigin(0, 0.5));
+    const bw = w / 2 - 8 - rx;
+    const bar = this.add.graphics();
+    panel(bar, rx, top + 10, bw, 9, 0xffffff);
+    bar.fillStyle(0xff8fcf, 1).fillRect(rx + 2, top + 12, Math.round((bw - 4) * (prog ? prog[0] / prog[1] : 1)), 5);
+    c.add(bar);
+    const next = BOND_REWARDS.find((r) => r.level > lvl);
+    c.add(this.add.text(rx, top + 27, next ? `Lv ${next.level}: ${next.text}` : 'Soulmates. Nothing left to unlock!', plain({ color: '#7a6a70', wordWrap: { width: bw } })).setOrigin(0, 0));
+    const lines = [
+      `Days together: ${st.daysTogether}`,
+      `Photos: ${st.world.photos?.length ?? 0}   Gifts: ${st.world.stats.giftsent ?? 0}`,
+      `Today: +${Object.values(st.world.bond?.got ?? {}).reduce((a, b) => a + b, 0)} bond`,
+    ];
+    lines.forEach((l, i) => c.add(this.add.text(rx, top + 52 + i * 11, l, plain()).setOrigin(0, 0.5)));
+    const heartBtn = button(this, rx, h / 2 - 26, 82, 16, 'Send love', async () => {
+      const body = `<3 ${me} is thinking of you`;
+      if (net.enabled && net.pairing) {
+        if (!(await net.sendNote(other, body))) return this.showToast('Could not send. Check your connection.');
+      } else {
+        this.localNotes = this.loadLocalNotes();
+        this.localNotes.unshift({ id: Date.now(), from_player: me, to_player: other, body, created_at: new Date().toISOString(), read: false });
+        this.saveLocalNotes();
+      }
+      st.sendHeart();
+      this.world.emote('heart');
+      this.showToast(`Sent a heart to ${other}`);
+      this.world.afterChange();
+      this.openJournal('us');
+    }, 0xff8fcf);
+    const giftBtn = button(this, rx + 88, h / 2 - 26, 82, 16, 'Wrap gift', () => void this.openMail('gift'), 0xffe066);
+    c.add([heartBtn.container, giftBtn.container]);
   }
 
   // ---------- seed maker ----------
@@ -1539,18 +1775,18 @@ export class HudScene extends Phaser.Scene {
     this.pager(c, w, h, page, pages, (p) => this.openRecipes(p));
   }
 
-  private openCoopInvite(m: { from: PlayerId; recipe: RecipeId }) {
+  private openCoopInvite(m: { from: PlayerId; recipe: RecipeId; session: string }) {
     const c = this.openOverlay(230, 90, 'Cook together?');
     c.add(this.add.image(-90, 6, 'icons', `dish-${m.recipe}`).setScale(2));
     c.add(this.add.text(-70, -4, `${m.from} wants to make`, plain()).setOrigin(0, 0.5));
     c.add(this.add.text(-70, 8, `${RECIPES[m.recipe].name} with you!`, plain({ color: '#b07a00' })).setOrigin(0, 0.5));
     const yes = button(this, -80, 26, 70, 16, 'Join!', () => {
       this.closeOverlay();
-      this.world.acceptCoop(m.recipe, m.from);
+      this.world.acceptCoop(m.recipe, m.from, m.session);
     }, 0x7de8c8);
     const no = button(this, 10, 26, 70, 16, 'Not now', () => {
       this.closeOverlay();
-      this.world.declineCoop();
+      this.world.declineCoop(m.session);
     }, 0xe8dcc8);
     c.add([yes.container, no.container]);
   }
@@ -1849,7 +2085,7 @@ export class HudScene extends Phaser.Scene {
   }
 
   // ---------- mail: letter + notes ----------
-  private async openMail(tab: 'letter' | 'notes' | 'question') {
+  private async openMail(tab: 'letter' | 'notes' | 'question' | 'gift') {
     const w = 260;
     const h = 168;
     const c = this.openOverlay(w, h, 'Mailbox');
@@ -1857,13 +2093,18 @@ export class HudScene extends Phaser.Scene {
       ['Letter', () => void this.openMail('letter')],
       ['Notes', () => void this.openMail('notes')],
       ['Question', () => void this.openMail('question')],
-    ], ['letter', 'notes', 'question'].indexOf(tab));
+      ['Gift', () => void this.openMail('gift')],
+    ], ['letter', 'notes', 'question', 'gift'].indexOf(tab));
     const top = -h / 2 + 44;
     if (tab === 'letter') {
       LETTER.forEach((line, i) => c.add(this.add.text(-w / 2 + 12, top + i * 11, line, plain()).setOrigin(0, 0)));
       const heart = this.add.image(w / 2 - 16, h / 2 - 12, 'icons', 'heart');
       c.add(heart);
       this.tweens.add({ targets: heart, scale: 1.3, duration: 500, yoyo: true, repeat: -1 });
+      return;
+    }
+    if (tab === 'gift') {
+      this.giftTab(c, w, h, top);
       return;
     }
     if (tab === 'notes') {
@@ -1899,6 +2140,7 @@ export class HudScene extends Phaser.Scene {
             audio.play('pop');
             this.showToast('Note left in the mailbox');
             this.world.state.stat('note');
+            this.world.state.bond('note');
             this.world.afterChange();
           } else this.showToast('Could not send. Check your connection.');
         } else {
@@ -1906,6 +2148,7 @@ export class HudScene extends Phaser.Scene {
           this.saveLocalNotes();
           audio.play('pop');
           this.world.state.stat('note');
+          this.world.state.bond('note');
           this.world.afterChange();
         }
         void this.openMail('notes');
@@ -1934,6 +2177,8 @@ export class HudScene extends Phaser.Scene {
       else this.saveLocalAnswer(day, me, a);
       if (!mine) {
         this.world.state.stat('answer');
+        this.world.state.bond('answer');
+        if (theirs) this.world.state.bond('both_answered');
         this.world.afterChange();
       }
       audio.play('pop');
@@ -2011,21 +2256,23 @@ export class HudScene extends Phaser.Scene {
   // ---------- journal ----------
   private journeyView: number | null = null;
 
-  private openJournal(tab: 'journey' | 'today' | 'album' | 'stats' | 'settings') {
+  private openJournal(tab: 'journey' | 'today' | 'us' | 'album' | 'stats' | 'settings') {
     const w = 300;
     const h = 174;
     const c = this.openOverlay(w, h, 'Journal');
     this.tabs(c, w, h, [
       ['Story', () => { this.journeyView = null; this.openJournal('journey'); }],
       ['Today', () => this.openJournal('today')],
+      ['Us', () => this.openJournal('us')],
       ['Book', () => this.openJournal('album')],
       ['Stats', () => this.openJournal('stats')],
       ['Setup', () => this.openJournal('settings')],
-    ], ['journey', 'today', 'album', 'stats', 'settings'].indexOf(tab));
+    ], ['journey', 'today', 'us', 'album', 'stats', 'settings'].indexOf(tab));
     const st = this.world.state;
     const top = -h / 2 + 40;
     if (tab === 'journey') this.journeyPage(c, w, h, top);
     else if (tab === 'today') this.todayPage(c, w, h, top);
+    else if (tab === 'us') this.usPage(c, w, h, top);
     else if (tab === 'album') {
       this.bookPage(c, w, h, top);
     } else if (tab === 'stats') {
@@ -2180,6 +2427,7 @@ export class HudScene extends Phaser.Scene {
       }, 0xff8fcf);
       mk(8, 'Back to title', () => {
         st.save();
+        void net.disconnect();
         this.closeOverlay();
         this.scene.stop('World');
         this.scene.start('Title');
@@ -2188,6 +2436,7 @@ export class HudScene extends Phaser.Scene {
     } else {
       mk(4, 'Back to title', () => {
         st.save();
+        void net.disconnect();
         this.closeOverlay();
         this.scene.stop('World');
         this.scene.start('Title');
@@ -2249,13 +2498,31 @@ export class HudScene extends Phaser.Scene {
     if (ripe) lines.push(['star', `${ripe} crops ready to harvest`]);
     if (produce) lines.push(['egg', `${produce} eggs, milk, wool or honey`]);
     if (rain) lines.push(['rain', 'It rained. The field got watered.']);
+    // what your love did while you were away
+    const say: Record<string, [string, string]> = {
+      harvest: ['crop-tomato', 'harvested %n crops'],
+      plant: ['seed-tomato', 'planted %n seeds'],
+      water: ['drop', 'watered %n plants'],
+      cook: ['dish-tomato_soup', 'cooked %n dishes'],
+      served: ['plate', 'served %n diners'],
+      fish: ['fish', 'caught %n fish'],
+      forage: ['mushroom', 'foraged %n things'],
+      gifts: ['gift', 'gave villagers %n gifts'],
+      photos: ['camera', 'took %n photos'],
+      note: ['heart', 'wrote you %n notes'],
+    };
+    if (a.partner) for (const { key, n } of a.partner.news.slice(0, 5)) if (say[key]) {
+      const t = say[key][1].replace('%n', String(n));
+      // one crop, one dish, one note
+      lines.push([say[key][0], `${a.partner.id} ${n === 1 ? t.replace(/(dishes|crops|seeds|plants|diners|things|gifts|photos|notes)/, (m) => (m === 'dishes' ? 'dish' : m.slice(0, -1))) : t}`]);
+    }
     if (!lines.length) {
       this.showToast(`Welcome back! You were away ${when}.`);
       return;
     }
     const w = 270;
     const h = 60 + lines.length * 16;
-    const c = this.openOverlay(w, h, `Welcome back! (away ${when})`);
+    const c = this.openOverlay(w, h, mins >= 1 ? `Welcome back! (away ${when})` : 'Welcome back!');
     lines.forEach(([icon, text], i) => {
       const y = -h / 2 + 30 + i * 16;
       c.add(this.add.image(-w / 2 + 16, y, 'icons', icon));

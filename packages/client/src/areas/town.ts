@@ -1,6 +1,6 @@
 import { mulberry32 } from '../art/pixel';
 import { T } from '../art/tiles';
-import { blockRect, boolGrid, fillRect, grid, type AreaDef, type AreaObject, type NpcDef } from './types';
+import { blockRect, boolGrid, fillRect, grid, type AreaDef, type AreaObject, type NpcDef, photoSpot } from './types';
 
 /** Maple Town: plaza with a fountain, three shops, the orders board and villagers. */
 export function buildTown(): AreaDef {
@@ -113,6 +113,8 @@ export function buildTown(): AreaDef {
     { id: 'pip', lookId: 'c2', tx: 20, ty: 19, wander: 5, lines: ['Have you tried Honey Toast? You need a book for it!', 'Finn at the pet shop has puppies!', 'Blueberries take forever but sell for a lot.', 'I once got a gift from a dog. He dug it up!'] },
     { id: 'hana', lookId: 'c5', tx: 12, ty: 17, wander: 3, lines: ['Special days get fireworks on your farm.', 'Ask each other the daily question. It is fun.', 'The bunny ears at Rosa\'s are adorable.', 'Bring me a berry pie some day!'] },
   ];
+
+  photoSpot(objects, blocked, 24, 13, 'fountain');
 
   return {
     id: 'town',

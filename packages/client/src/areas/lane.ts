@@ -1,7 +1,7 @@
 import { mulberry32 } from '../art/pixel';
 import { T } from '../art/tiles';
 import { FAMILIES } from '../config/family';
-import { blockRect, boolGrid, fillRect, grid, type AreaDef, type AreaObject } from './types';
+import { blockRect, boolGrid, fillRect, grid, type AreaDef, type AreaObject, photoSpot } from './types';
 
 /** Family Lane, east of Maple Town: a quiet street with qd's and xb's family homes. */
 export function buildLane(): AreaDef {
@@ -91,6 +91,8 @@ export function buildLane(): AreaDef {
   }
   objects.push({ key: 'props', frame: 'sign', tx: 2, ty: roadY - 2, w: 1, h: 1, blocked: true, interact: 'sign', label: 'Read', text: 'Family Lane\nWest: Maple Town' });
   blockRect(blocked, 2, roadY - 2, 1, 1);
+
+  photoSpot(objects, blocked, 14, 8, 'lane');
 
   return {
     id: 'lane',

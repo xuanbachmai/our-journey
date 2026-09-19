@@ -1,8 +1,8 @@
 import { dayIndex, roll01 } from './prices';
 
-export type TopId = 'overalls' | 'dress' | 'hoodie' | 'tee';
-export type HatId = 'none' | 'straw' | 'cap' | 'beanie' | 'flowercrown' | 'chef' | 'crown' | 'bow_big' | 'ears' | 'beret' | 'sunhat' | 'catears' | 'party' | 'tiara' | 'frog';
-export type AccessoryId = 'none' | 'glasses' | 'scarf' | 'bag' | 'necklace' | 'bowtie' | 'apron' | 'flower';
+export type TopId = 'overalls' | 'dress' | 'hoodie' | 'tee' | 'coupletee';
+export type HatId = 'none' | 'straw' | 'cap' | 'beanie' | 'flowercrown' | 'chef' | 'crown' | 'bow_big' | 'ears' | 'beret' | 'sunhat' | 'catears' | 'party' | 'tiara' | 'frog' | 'heartband';
+export type AccessoryId = 'none' | 'glasses' | 'scarf' | 'bag' | 'necklace' | 'bowtie' | 'apron' | 'flower' | 'rings';
 export type DyeId = 'default' | 'red' | 'blue' | 'green' | 'yellow' | 'purple' | 'pink' | 'orange' | 'mint' | 'white' | 'black';
 export type HairId = 'default' | 'blonde' | 'brown' | 'black' | 'pink' | 'blue' | 'purple' | 'red' | 'silver' | 'green';
 
@@ -21,6 +21,8 @@ export interface ClothingDef {
   name: string;
   price: number;
   unlockRep: number;
+  /** Not sold: earned from the couple bond. */
+  rewardOnly?: boolean;
 }
 
 export const TOPS: Record<TopId, ClothingDef> = {
@@ -28,6 +30,7 @@ export const TOPS: Record<TopId, ClothingDef> = {
   tee: { id: 'tee', name: 'Tee & shorts', price: 180, unlockRep: 0 },
   hoodie: { id: 'hoodie', name: 'Cosy hoodie', price: 260, unlockRep: 3 },
   dress: { id: 'dress', name: 'Sundress', price: 280, unlockRep: 3 },
+  coupletee: { id: 'coupletee', name: 'Couple tee', price: 0, unlockRep: 0, rewardOnly: true },
 };
 
 export const HATS: Record<HatId, ClothingDef> = {
@@ -46,6 +49,7 @@ export const HATS: Record<HatId, ClothingDef> = {
   party: { id: 'party', name: 'Party hat', price: 150, unlockRep: 5 },
   frog: { id: 'frog', name: 'Frog hat', price: 320, unlockRep: 12 },
   tiara: { id: 'tiara', name: 'Tiara', price: 600, unlockRep: 25 },
+  heartband: { id: 'heartband', name: 'Heart headband', price: 0, unlockRep: 0, rewardOnly: true },
 };
 
 export const ACCESSORIES: Record<AccessoryId, ClothingDef> = {
@@ -57,6 +61,7 @@ export const ACCESSORIES: Record<AccessoryId, ClothingDef> = {
   bowtie: { id: 'bowtie', name: 'Bow tie', price: 120, unlockRep: 0 },
   apron: { id: 'apron', name: 'Chef apron', price: 180, unlockRep: 3 },
   necklace: { id: 'necklace', name: 'Heart necklace', price: 350, unlockRep: 8 },
+  rings: { id: 'rings', name: 'Golden rings', price: 0, unlockRep: 0, rewardOnly: true },
 };
 
 export const DYES: Record<DyeId, ClothingDef & { color: string; dark: string }> = {
@@ -118,7 +123,7 @@ export const SALE_OFF = 0.3;
 
 /** One clothing item per day is 30% off at the tailor. Same for both players. */
 export function clothingSaleToday(seed: number, now: number): { kind: ClothingKind; id: string } {
-  const all = CLOTHING_KINDS.flatMap((kind) => clothingIds(kind).filter((id) => !isFreeClothing(id)).map((id) => ({ kind, id })));
+  const all = CLOTHING_KINDS.flatMap((kind) => clothingIds(kind).filter((id) => !isFreeClothing(id) && !clothingDef(kind, id).rewardOnly).map((id) => ({ kind, id })));
   return all[Math.floor(roll01(`${seed}:${dayIndex(now)}:tailor`) * all.length)];
 }
 

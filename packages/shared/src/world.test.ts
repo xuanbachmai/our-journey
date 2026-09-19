@@ -76,6 +76,20 @@ describe('simulateWorld', () => {
     expect(world.plots['2,2'].stage).toBeGreaterThanOrEqual(1);
   });
 
+  it('waters crops planted after rain already started', () => {
+    let seed = 1;
+    while (weatherFor(seed, T0) !== 'rain') seed++;
+    const start = dayStart(T0) + 60_000;
+    let world = newWorld(start, seed);
+    world = simulateWorld(world, start + 60_000).world;
+    world.plots['3,3'] = { tilled: true, crop: 'wheat', stage: 0, progress: 0, wateredUntil: 0 };
+
+    const after = simulateWorld(world, start + 120_000).world;
+
+    expect(after.plots['3,3'].wateredUntil).toBe(dayStart(start) + DAY_MS);
+    expect(after.plots['3,3'].progress).toBeGreaterThan(0);
+  });
+
   it('keeps two orders and refreshes them daily', () => {
     const w = newWorld(T0, 3);
     expect(w.orders.length).toBe(2);

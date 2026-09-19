@@ -5,6 +5,16 @@ import {
   animalMax,
   BOOKS,
   bump,
+  addBond,
+  BOND_REWARDS,
+  bondLevel,
+  MAX_PHOTOS,
+  otherPlayer,
+  outfitsMatch,
+  type BondSource,
+  type PartnerGift,
+  type Photo,
+  type PhotoSpot,
   clothingDef,
   clothingKey,
   clothingSaleToday,
@@ -106,12 +116,19 @@ export type ProgressEvent =
   | { kind: 'chapter'; number: number; title: string; rewardText: string; next: string | null }
   | { kind: 'daily'; title: string; reward: number }
   | { kind: 'dailyAll'; reward: number }
-  | { kind: 'friend'; name: string; hearts: number; text: string };
+  | { kind: 'friend'; name: string; hearts: number; text: string }
+  | { kind: 'bond'; level: number; text: string }
+  | { kind: 'match'; partner: PlayerId };
 
 export interface AwaySummary {
   awayMs: number;
   events: WorldEvent[];
+  /** What your partner did since you last looked. */
+  partner?: { id: PlayerId; news: { key: string; n: number }[] };
 }
+
+/** Actions counted per player, so each of you can see what the other did. */
+export const TRACKED_STATS = ['harvest', 'plant', 'water', 'cook', 'served', 'fish', 'forage', 'gifts', 'photos', 'note'];
 
 /**
  * The world plus local preferences. Every player-caused change goes through
@@ -128,7 +145,9 @@ export class GameState {
   constructor(initialWorld?: WorldState) {
     const now = Date.now();
     this.data = this.load(now);
-    if (initialWorld) this.data.world = initialWorld;
+    // Hosted farms may have been created by an older client. Apply the same
+    // migration path used for local saves before the simulator touches them.
+    if (initialWorld) this.data.world = migrateWorld(initialWorld, now);
     const awayMs = now - this.data.world.lastSimulatedAt;
     const { world, events } = simulateWorld(this.data.world, now);
     this.data.world = world;
@@ -275,7 +294,24 @@ export class GameState {
 
   stat(key: string, n = 1) {
     bump(this.world, key, n);
+    if (TRACKED_STATS.includes(key)) bump(this.world, `by:${this.me}:${key}`, n);
     this.touch();
+  }
+
+  /** Your partner's activity since you last looked; marks it seen. */
+  partnerNews(): { key: string; n: number }[] {
+    const w = this.world;
+    const other = otherPlayer(this.me);
+    const out: { key: string; n: number }[] = [];
+    for (const key of TRACKED_STATS) {
+      const cur = w.stats[`by:${other}:${key}`] ?? 0;
+      const seenKey = `seen:${this.me}:${key}`;
+      const seen = w.stats[seenKey] ?? 0;
+      if (cur > seen) out.push({ key, n: cur - seen });
+      w.stats[seenKey] = cur;
+    }
+    if (out.length) this.touch();
+    return out;
   }
 
   get selectedSeed(): CropId {
@@ -325,6 +361,7 @@ export class GameState {
   }
 
   buySeed(id: CropId, qty = 1): boolean {
+    if (!Number.isInteger(qty) || qty <= 0) return false;
     const price = CROPS[id].seedPrice * qty;
     if (this.world.coins < price || !this.seedUnlocked(id)) return false;
     this.world.coins -= price;
@@ -392,6 +429,7 @@ export class GameState {
   }
 
   removeDish(index: number): Dish | null {
+    if (!Number.isInteger(index) || index < 0 || index >= this.world.dishes.length) return null;
     const d = this.world.dishes.splice(index, 1)[0] ?? null;
     if (d) this.touch();
     return d;
@@ -518,6 +556,7 @@ export class GameState {
     this.world.forageTaken[key] = Date.now();
     this.world.inventory[item] = this.count(item) + n;
     bump(this.world, 'forage', n);
+    bump(this.world, `by:${this.me}:forage`, n);
     this.touch();
     return n;
   }
@@ -592,6 +631,7 @@ export class GameState {
   }
 
   pickUpFurniture(index: number): PlacedFurniture | null {
+    if (!Number.isInteger(index) || index < 0 || index >= this.world.furniturePlaced.length) return null;
     const p = this.world.furniturePlaced.splice(index, 1)[0] ?? null;
     if (p) {
       this.world.furnitureOwned[p.id] = this.furnitureOwned(p.id) + 1;
@@ -741,6 +781,7 @@ export class GameState {
       const next = currentChapter(w);
       out.push({ kind: 'chapter', number: CHAPTERS.indexOf(ch) + 1, title: ch.title, rewardText: r.text, next: next?.title ?? null });
     }
+    this.checkBond(out);
     refreshDaily(w, Date.now());
     const d = w.daily;
     if (d) {
@@ -761,6 +802,135 @@ export class GameState {
     return out;
   }
 
+  // ----- couple bond -----
+  /** Adds bond points from a source (daily caps apply). Returns points added. */
+  bond(source: BondSource, times = 1): number {
+    const n = addBond(this.world, source, Date.now(), times);
+    if (n) this.touch();
+    return n;
+  }
+
+  get bondPoints() {
+    return this.world.bond?.points ?? 0;
+  }
+
+  get bondLevel() {
+    return bondLevel(this.bondPoints);
+  }
+
+  get partnerOutfit() {
+    return this.world.players[otherPlayer(this.me)].outfit;
+  }
+
+  get matching() {
+    return outfitsMatch(this.outfit, this.partnerOutfit);
+  }
+
+  /** Both played today, matching outfits, and bond level rewards. */
+  private checkBond(out: ProgressEvent[]) {
+    const w = this.world;
+    const now = Date.now();
+    const days = this.daysTogether;
+    if (days > (w.stats['bond:days'] ?? 0)) {
+      w.stats['bond:days'] = days;
+      addBond(w, 'together_day', now);
+    }
+    const today = dayIndex(now);
+    if (this.matching && w.stats[`match:${this.me}`] !== today) {
+      w.stats[`match:${this.me}`] = today;
+      bump(w, 'matchday');
+      addBond(w, 'matching', now);
+      out.push({ kind: 'match', partner: otherPlayer(this.me) });
+    }
+    const lvl = bondLevel(w.bond?.points ?? 0);
+    for (const r of BOND_REWARDS) {
+      const key = `bond:${r.level}`;
+      if (r.level > lvl || w.questsClaimed.includes(key)) continue;
+      w.questsClaimed.push(key);
+      if (r.coins) w.coins += r.coins;
+      for (const [id, n] of Object.entries(r.furniture ?? {})) w.furnitureOwned[id as FurnitureId] = this.furnitureOwned(id as FurnitureId) + (n ?? 0);
+      for (const c of r.clothing ?? []) if (!w.clothingOwned.includes(c)) w.clothingOwned.push(c);
+      out.push({ kind: 'bond', level: r.level, text: r.text });
+    }
+  }
+
+  // ----- gifts for each other -----
+  /** Takes the item out of the bag and wraps it for the partner. */
+  wrapGift(key: string, msg: string): boolean {
+    const w = this.world;
+    if (key.startsWith('dish:')) {
+      const [, recipe, grade] = key.split(':');
+      const i = w.dishes.findIndex((d) => d.recipe === recipe && d.grade === Number(grade));
+      if (i < 0) return false;
+      w.dishes.splice(i, 1);
+    } else if (key.startsWith('furn:')) {
+      const id = key.slice(5) as FurnitureId;
+      if (this.furnitureOwned(id) <= 0) return false;
+      w.furnitureOwned[id] = this.furnitureOwned(id) - 1;
+    } else {
+      if (this.count(key as ItemId) <= 0) return false;
+      this.add(key as ItemId, -1);
+    }
+    const g: PartnerGift = { id: `${Date.now().toString(36)}${Math.floor(Math.random() * 1e4)}`, from: this.me, to: otherPlayer(this.me), key, count: 1, msg, at: Date.now() };
+    w.giftBox = [...(w.giftBox ?? []), g];
+    bump(w, 'giftsent');
+    addBond(w, 'gift', Date.now());
+    this.touch();
+    return true;
+  }
+
+  get giftsForMe(): PartnerGift[] {
+    return (this.world.giftBox ?? []).filter((g) => g.to === this.me);
+  }
+
+  get giftsWaiting(): PartnerGift[] {
+    return (this.world.giftBox ?? []).filter((g) => g.from === this.me);
+  }
+
+  openGift(id: string): PartnerGift | null {
+    const w = this.world;
+    const g = (w.giftBox ?? []).find((x) => x.id === id && x.to === this.me);
+    if (!g) return null;
+    w.giftBox = (w.giftBox ?? []).filter((x) => x.id !== id);
+    if (g.key.startsWith('dish:')) {
+      const [, recipe, grade] = g.key.split(':');
+      w.dishes.push({ recipe: recipe as RecipeId, grade: Number(grade) as Dish['grade'] });
+    } else if (g.key.startsWith('furn:')) {
+      const f = g.key.slice(5) as FurnitureId;
+      w.furnitureOwned[f] = this.furnitureOwned(f) + g.count;
+    } else this.add(g.key as ItemId, g.count);
+    bump(w, 'giftopened');
+    addBond(w, 'opened', Date.now());
+    this.touch();
+    return g;
+  }
+
+  // ----- photos -----
+  takePhoto(spot: PhotoSpot, together: boolean): Photo {
+    const w = this.world;
+    const other = otherPlayer(this.me);
+    const p: Photo = {
+      id: `${Date.now().toString(36)}`,
+      spot,
+      day: dayKey(Date.now()),
+      by: this.me,
+      together,
+      outfits: together ? { [this.me]: { ...this.outfit }, [other]: { ...this.partnerOutfit } } : { [this.me]: { ...this.outfit } },
+    };
+    w.photos = [...(w.photos ?? []), p].slice(-MAX_PHOTOS);
+    bump(w, together ? 'photos_together' : 'photos');
+    bump(w, `by:${this.me}:photos`);
+    addBond(w, together ? 'photo' : 'selfie', Date.now());
+    this.touch();
+    return p;
+  }
+
+  /** "Thinking of you": a tiny note and a little bond. */
+  sendHeart() {
+    bump(this.world, 'heartsent');
+    this.bond('heart');
+  }
+
   // ----- collection book -----
 
   /** Adds a caught fish to the bag and the book. */
@@ -770,6 +940,7 @@ export class GameState {
     const best = w.stats[`fishbest:${fish.id}`] ?? 0;
     bump(w, `fish:${fish.id}`);
     bump(w, 'fish');
+    bump(w, `by:${this.me}:fish`);
     if (size > best) w.stats[`fishbest:${fish.id}`] = size;
     w.inventory.fish = this.count('fish') + fish.units;
     const bonus = isNew ? fish.firstBonus : 0;
@@ -859,6 +1030,7 @@ export class GameState {
     this.addFriendPoints(id, GIFT_POINTS[reaction]);
     w.stats[`giftday:${id}`] = dayIndex(Date.now());
     bump(w, 'gifts');
+    bump(w, `by:${this.me}:gifts`);
     if (reaction === 'love') w.stats[`loveknown:${id}:${key}`] = 1;
     const hearts = this.friendHearts(id);
     const rewards = this.claimFriendRewards(v);

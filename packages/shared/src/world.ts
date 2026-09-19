@@ -2,6 +2,7 @@ import { ANIMALS, ANIMAL_IDS, MAX_WAITING_PER_TYPE, type AnimalId, type Producer
 import type { AreaId, PlayerPlace } from './areas';
 import { DEFAULT_OUTFIT, type Outfit } from './clothing';
 import { type PlayerId, type Postcard, type SpecialDay } from './couple';
+import { bondPriceBonus, type BondState, type PartnerGift, type Photo } from './bond';
 import { cozyBonus, type FurnitureId, type PlacedFurniture } from './furniture';
 import { emptyPlot, isRipe, MAX_CATCHUP_MS, simulatePlot, type PlotState } from './growth';
 import type { ItemId } from './items';
@@ -55,6 +56,11 @@ export interface WorldState {
   questsClaimed: string[];
   /** Today's three small tasks; created by refreshDaily. */
   daily?: DailyState;
+  /** The couple bond: shared level and daily caps. */
+  bond?: BondState;
+  /** Wrapped gifts waiting for the other player. */
+  giftBox?: PartnerGift[];
+  photos?: Photo[];
   lastSimulatedAt: number;
   lastRainDay: number;
   /** Bumped on every player-caused change; used to pick the freshest copy when syncing. */
@@ -140,8 +146,9 @@ export function animalCount(w: WorldState, id: AnimalId): number {
   return w.producers[id]?.count ?? 0;
 }
 
+/** Extra dish price from coziness and the couple bond. */
 export function cozy(w: WorldState): number {
-  return cozyBonus(w.furniturePlaced);
+  return cozyBonus(w.furniturePlaced) + bondPriceBonus(w.bond?.points ?? 0);
 }
 
 export function bump(w: WorldState, key: string, n = 1) {
@@ -201,11 +208,20 @@ export function simulateWorld(input: WorldState, now: number): { world: WorldSta
   while (t < now) {
     const day = dayIndex(t);
     const dayEnd = dayStart(t) + DAY_MS;
+    const raining = weatherFor(w.seed, t) === 'rain';
     if (day > w.lastRainDay) {
       w.lastRainDay = day;
-      if (weatherFor(w.seed, t) === 'rain') {
-        for (const k in w.plots) if (w.plots[k].crop) w.plots[k] = { ...w.plots[k], wateredUntil: Math.max(w.plots[k].wateredUntil, dayEnd) };
-        events.push({ type: 'rain', at: t });
+      if (raining) events.push({ type: 'rain', at: t });
+    }
+    // Reapply this for every tick so crops planted after the day's first rain
+    // simulation are watered too.
+    if (raining) {
+      for (const k in w.plots) {
+        const p = w.plots[k];
+        if (!p.crop) continue;
+        // rain counts as watering, so watering tasks still finish on rainy days
+        if (p.wateredUntil <= t && !isRipe(p)) bump(w, 'water');
+        w.plots[k] = { ...p, wateredUntil: Math.max(p.wateredUntil, dayEnd) };
       }
     }
     const next = Math.min(now, dayEnd);
@@ -297,7 +313,7 @@ export function migrateWorld(raw: unknown, now: number): WorldState {
   const copy = <K extends keyof WorldState>(k: K) => {
     if (r[k] !== undefined) (w as WorldState)[k] = r[k] as WorldState[K];
   };
-  (['coins', 'reputation', 'inventory', 'dishes', 'plots', 'counter', 'books', 'clothingOwned', 'furnitureOwned', 'furniturePlaced', 'forageTaken', 'discovered', 'specialDays', 'postcards', 'stats', 'questsClaimed', 'daily', 'lastSimulatedAt', 'changeCounter', 'orders', 'orderCounter', 'orderDay', 'lastRainDay', 'createdAt'] as (keyof WorldState)[]).forEach(copy);
+  (['coins', 'reputation', 'inventory', 'dishes', 'plots', 'counter', 'books', 'clothingOwned', 'furnitureOwned', 'furniturePlaced', 'forageTaken', 'discovered', 'specialDays', 'postcards', 'stats', 'questsClaimed', 'daily', 'bond', 'giftBox', 'photos', 'lastSimulatedAt', 'changeCounter', 'orders', 'orderCounter', 'orderDay', 'lastRainDay', 'createdAt'] as (keyof WorldState)[]).forEach(copy);
   if (r.upgrades) {
     w.upgrades = { ...r.upgrades } as WorldState['upgrades'];
     // v2 kept chickens as an upgrade level

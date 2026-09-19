@@ -41,6 +41,7 @@ import {
   type WorldState,
   toolTiles,
   type ToolId,
+  type PhotoSpot,
 } from '@hh/shared';
 import { getArea } from '../areas';
 import type { AreaDef, AreaObject, InteractId } from '../areas/types';
@@ -113,11 +114,22 @@ interface CropView {
 }
 
 interface CoopSession {
+  id: string;
   recipe: RecipeId;
   initiator: PlayerId;
   waiters: Map<number, (score: number | null) => void>;
   received: Map<number, number>;
   accepted: boolean;
+  ingredientsSpent: boolean;
+}
+
+interface CoopMessage {
+  kind: string;
+  session: string;
+  from: PlayerId;
+  recipe?: RecipeId;
+  index?: number;
+  score?: number;
 }
 
 const POS_INTERVAL = 120;
@@ -154,6 +166,24 @@ export class WorldScene extends Phaser.Scene {
   private lastCustomerSpawn = 0;
   private critters: Critter[] = [];
   private horse?: Phaser.GameObjects.Sprite;
+  private togetherMs = 0;
+
+  /** Snap! Together when your partner is close by and online. */
+  private takePhoto(spot: PhotoSpot) {
+    const near = !!this.remote && this.partnerOnline && Math.hypot(this.remote.x - this.player.x, this.remote.y - this.player.y) < 6 * TILE;
+    const photo = this.state.takePhoto(spot, near);
+    audio.play('great');
+    const cam = this.cameras.main;
+    cam.flash(250, 255, 255, 255);
+    if (near) this.heartBurst((this.player.x + (this.remote?.x ?? this.player.x)) / 2, this.player.y - 24);
+    this.time.delayedCall(300, () => this.events.emit('photo', photo));
+    this.afterChange();
+  }
+
+  /** Wrapped gifts from your partner pop up when you arrive. */
+  checkGifts() {
+    if (this.state.giftsForMe.length) this.events.emit('gifts');
+  }
 
   /** A quick tool swing over the player's head. */
   private toolSwing(ch: Character, tool: ToolId) {
@@ -195,6 +225,7 @@ export class WorldScene extends Phaser.Scene {
   private furnitureSprites: Phaser.GameObjects.Image[] = [];
   private counterDishes: Phaser.GameObjects.Image[] = [];
   private objectSprites: { obj: AreaObject; img: Phaser.GameObjects.Image }[] = [];
+  private upgradeDecorSprites: Phaser.GameObjects.Image[] = [];
   private night!: Phaser.GameObjects.Rectangle;
   private cloud!: Phaser.GameObjects.Rectangle;
   private fireflies: Phaser.GameObjects.Image[] = [];
@@ -204,11 +235,13 @@ export class WorldScene extends Phaser.Scene {
   private transitioning = false;
   private decorate: { item: FurnitureId | null; mode: 'place' | 'pickup' | null; tx: number; ty: number; ghost?: Phaser.GameObjects.Image } = { item: null, mode: null, tx: 0, ty: 0 };
   private coop: CoopSession | null = null;
+  private pendingCoopInvite: { id: string; recipe: RecipeId; from: PlayerId } | null = null;
   private stateBroadcastTimer: number | null = null;
   private heartTimer = 0;
   private specialLabel: string | null = null;
   private lastSprinkle = 0;
   private netHandlers: [string, (p: unknown) => void][] = [];
+  private presenceHandler: ((online: Set<PlayerId>) => void) | null = null;
   private fresh = false;
   private eggBang?: Phaser.GameObjects.Text;
 
@@ -243,6 +276,7 @@ export class WorldScene extends Phaser.Scene {
     this.furnitureSprites = [];
     this.counterDishes = [];
     this.objectSprites = [];
+    this.upgradeDecorSprites = [];
     this.fireflies = [];
     this.rain = [];
     this.weather = 'sunny';
@@ -250,10 +284,12 @@ export class WorldScene extends Phaser.Scene {
     this.transitioning = false;
     this.decorate = { item: null, mode: null, tx: 0, ty: 0 };
     this.coop = null;
+    this.pendingCoopInvite = null;
     this.heartTimer = 0;
     this.specialLabel = null;
     this.lastSprinkle = 0;
     this.eggBang = undefined;
+    this.presenceHandler = null;
     this.companionTarget = null;
     this.companionNext = 0;
     this.lastMoving = false;
@@ -327,6 +363,7 @@ export class WorldScene extends Phaser.Scene {
     }
 
     this.applyRiding();
+    this.time.delayedCall(1200, () => this.checkGifts());
 
     // ---- partner ----
     this.setupPartner(collision);
@@ -381,8 +418,9 @@ export class WorldScene extends Phaser.Scene {
     // ---- first entry ----
     if (this.fresh) {
       this.state.markPlayedToday();
-      if (this.state.away) {
-        const away = this.state.away;
+      const news = this.state.partnerNews();
+      if (this.state.away || news.length) {
+        const away = { ...(this.state.away ?? { awayMs: 0, events: [] }), partner: news.length ? { id: otherPlayer(this.playerId), news } : undefined };
         this.time.delayedCall(700, () => this.events.emit('away', away));
       }
       this.time.delayedCall(1200, () => {
@@ -412,6 +450,8 @@ export class WorldScene extends Phaser.Scene {
       this.scale.off('resize', this.layoutOverlays, this);
       for (const [ev, h] of this.netHandlers) net.off(ev, h);
       this.netHandlers = [];
+      if (net.onPresence === this.presenceHandler) net.onPresence = null;
+      this.presenceHandler = null;
       this.state.onChange = null;
       if (this.stateBroadcastTimer) clearTimeout(this.stateBroadcastTimer);
       audio.setRain(false);
@@ -437,6 +477,8 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private applyUpgradeBlocks() {
+    for (const sprite of this.upgradeDecorSprites) sprite.destroy();
+    this.upgradeDecorSprites = [];
     for (const ub of this.area.upgradeBlocks ?? []) {
       if (!this.upgradeOwned(ub.upgrade || undefined)) continue;
       for (const t of ub.tiles) if (this.blocked[t.ty]?.[t.tx] !== undefined) this.blocked[t.ty][t.tx] = true;
@@ -446,8 +488,10 @@ export class WorldScene extends Phaser.Scene {
       if (pen) for (let x = pen.x; x < pen.x + pen.w; x++) for (let y = pen.y; y < pen.y + pen.h; y++) this.ground.putTileAt(T.PATH, x, y);
     }
     if (this.areaId === 'farm') {
-      if (this.state.upgradeLevel('sprinkler') > 0) for (const s of this.area.sprinklers ?? []) this.add.image(s.tx * TILE, (s.ty + 1) * TILE - 2, 'props', 'sprinkler').setOrigin(0, 1).setDepth((s.ty + 1) * TILE + 1);
-      if (this.state.upgradeLevel('flowers') > 0) for (const f of this.area.flowerBeds ?? []) this.add.image(f.tx * TILE, (f.ty + 1) * TILE, 'props', 'flowerbed').setOrigin(0, 1).setDepth((f.ty + 1) * TILE - 3);
+      if (this.state.upgradeLevel('sprinkler') > 0)
+        for (const s of this.area.sprinklers ?? []) this.upgradeDecorSprites.push(this.add.image(s.tx * TILE, (s.ty + 1) * TILE - 2, 'props', 'sprinkler').setOrigin(0, 1).setDepth((s.ty + 1) * TILE + 1));
+      if (this.state.upgradeLevel('flowers') > 0)
+        for (const f of this.area.flowerBeds ?? []) this.upgradeDecorSprites.push(this.add.image(f.tx * TILE, (f.ty + 1) * TILE, 'props', 'flowerbed').setOrigin(0, 1).setDepth((f.ty + 1) * TILE - 3));
     }
   }
 
@@ -566,7 +610,7 @@ export class WorldScene extends Phaser.Scene {
       this.remote.showBubble(m.icon);
       if (m.icon === 'heart' || m.icon === 'hug') this.heartBurst(this.remote.x, this.remote.y - 20);
     });
-    on('coop', (p) => this.onCoopMessage(p as { kind: string; from: PlayerId; recipe?: RecipeId; index?: number; score?: number }));
+    on('coop', (p) => this.onCoopMessage(p as CoopMessage));
     on('note', () => {
       audio.play('pop');
       this.events.emit('toast', `A new note from ${otherPlayer(this.playerId)} is in the mailbox!`);
@@ -576,11 +620,16 @@ export class WorldScene extends Phaser.Scene {
       const m = p as { kind: string };
       if (m.kind === 'answer') this.events.emit('toast', `${otherPlayer(this.playerId)} answered today's question`);
     });
-    net.onPresence = (online) => {
+    this.presenceHandler = (online) => {
       const other = otherPlayer(this.playerId);
-      if (!online.has(other) && this.remote) this.removeRemote();
+      if (!online.has(other)) {
+        if (this.remote) this.removeRemote();
+        if (this.coop) this.cancelCoop('Cooking together was cancelled because your partner went offline.');
+        this.pendingCoopInvite = null;
+      }
       this.pushHud(true);
     };
+    net.onPresence = this.presenceHandler;
     this.state.onChange = (w) => {
       if (this.stateBroadcastTimer) clearTimeout(this.stateBroadcastTimer);
       this.stateBroadcastTimer = window.setTimeout(() => {
@@ -589,7 +638,9 @@ export class WorldScene extends Phaser.Scene {
       }, 250);
       net.scheduleSave(w);
     };
-    void net.connect(this.playerId).then(() => this.broadcastPos(true));
+    void net.connect(this.playerId).then((connected) => {
+      if (connected && this.scene.isActive()) this.broadcastPos(true);
+    });
   }
 
   private broadcastPos(force = false) {
@@ -618,6 +669,7 @@ export class WorldScene extends Phaser.Scene {
     this.syncForage();
     this.refreshUpgradeObjects();
     this.updateLoveTree();
+    this.checkGifts();
     const tex = buildCharacterTexture(this, LOOKS[this.playerId], this.state.outfit);
     if (this.player.texKey !== tex) this.player.setTexture(tex);
     this.pushHud(true);
@@ -629,6 +681,7 @@ export class WorldScene extends Phaser.Scene {
 
   emote(icon: string) {
     this.player.showBubble(icon);
+    if (icon === 'hug' && this.remote && this.partnerOnline && Math.hypot(this.remote.x - this.player.x, this.remote.y - this.player.y) < 3 * TILE && this.state.bond('hug')) this.afterChange();
     if (icon === 'heart' || icon === 'hug') this.heartBurst(this.player.x, this.player.y - 20);
     audio.play('pop');
     net.send('emote', { from: this.playerId, icon });
@@ -643,30 +696,51 @@ export class WorldScene extends Phaser.Scene {
 
   // ------------------------------------------------------------ co-op cooking
 
-  private onCoopMessage(m: { kind: string; from: PlayerId; recipe?: RecipeId; index?: number; score?: number }) {
+  private onCoopMessage(m: CoopMessage) {
     if (m.from === this.playerId) return;
+    if (!m.session) return;
     if (m.kind === 'invite' && m.recipe) {
-      this.events.emit('coopInvite', { from: m.from, recipe: m.recipe });
-    } else if (m.kind === 'accept' && this.coop && this.coop.initiator === this.playerId) {
+      // Simultaneous or duplicate invitations must not replace an active session;
+      // otherwise both players can become the non-initiator and wait forever.
+      if (this.coop || this.pendingCoopInvite) {
+        net.send('coop', { kind: 'decline', from: this.playerId, session: m.session });
+        return;
+      }
+      this.pendingCoopInvite = { id: m.session, recipe: m.recipe, from: m.from };
+      this.events.emit('coopInvite', { from: m.from, recipe: m.recipe, session: m.session });
+    } else if (m.kind === 'accept' && this.coop?.id === m.session && this.coop.initiator === this.playerId) {
       this.coop.accepted = true;
       this.launchCoop();
-    } else if (m.kind === 'decline') {
-      if (this.coop) {
-        this.coop = null;
-        this.setUiOpen(false);
-        this.events.emit('toast', `${m.from} is busy right now`);
-      }
-    } else if (m.kind === 'step' && this.coop && m.index !== undefined && m.score !== undefined) {
+    } else if (m.kind === 'decline' && this.coop?.id === m.session) {
+      this.cancelCoop(`${m.from} is busy right now`);
+    } else if (m.kind === 'step' && this.coop?.id === m.session && m.index !== undefined && m.score !== undefined) {
       this.coop.received.set(m.index, m.score);
       const w = this.coop.waiters.get(m.index);
       if (w) {
         w(m.score);
         this.coop.waiters.delete(m.index);
       }
-    } else if (m.kind === 'cancel' && this.coop) {
-      for (const w of this.coop.waiters.values()) w(null);
-      this.coop = null;
+    } else if (m.kind === 'cancel') {
+      if (this.pendingCoopInvite?.id === m.session) this.pendingCoopInvite = null;
+      if (this.coop?.id === m.session) this.cancelCoop('Cooking together was cancelled');
     }
+  }
+
+  private cancelCoop(message: string, notifyPartner = false) {
+    const c = this.coop;
+    if (!c) return;
+    const wasWaiting = c.waiters.size > 0;
+    if (notifyPartner) net.send('coop', { kind: 'cancel', from: this.playerId, session: c.id });
+    if (c.ingredientsSpent && c.initiator === this.playerId) {
+      const recipe = RECIPES[c.recipe];
+      for (const key in recipe.ingredients) this.state.add(key as ItemId, recipe.ingredients[key as ItemId] ?? 0);
+    }
+    for (const waiter of c.waiters.values()) waiter(null);
+    c.waiters.clear();
+    this.coop = null;
+    this.setUiOpen(false);
+    if (!wasWaiting && this.scene.isActive('MiniGame')) this.scene.stop('MiniGame');
+    this.events.emit('toast', message);
   }
 
   /** Invite the partner to cook this recipe together. */
@@ -674,28 +748,35 @@ export class WorldScene extends Phaser.Scene {
     if (!this.partnerOnline) return false;
     const r = RECIPES[recipe];
     for (const k in r.ingredients) if (this.state.count(k as ItemId) < (r.ingredients[k as ItemId] ?? 0)) return false;
-    this.coop = { recipe, initiator: this.playerId, waiters: new Map(), received: new Map(), accepted: false };
-    net.send('coop', { kind: 'invite', from: this.playerId, recipe });
+    const session = `${this.playerId}:${Date.now()}:${Math.random().toString(36).slice(2)}`;
+    this.coop = { id: session, recipe, initiator: this.playerId, waiters: new Map(), received: new Map(), accepted: false, ingredientsSpent: false };
+    net.send('coop', { kind: 'invite', from: this.playerId, recipe, session });
     this.setUiOpen(true);
     this.events.emit('toast', `Waiting for ${otherPlayer(this.playerId)} to join...`);
     this.time.delayedCall(20000, () => {
       if (this.coop && !this.coop.accepted && this.coop.initiator === this.playerId) {
-        this.coop = null;
-        this.setUiOpen(false);
-        this.events.emit('toast', 'No answer. Cook alone or try later.');
+        this.cancelCoop('No answer. Cook alone or try later.', true);
       }
     });
     return true;
   }
 
-  acceptCoop(recipe: RecipeId, from: PlayerId) {
-    this.coop = { recipe, initiator: from, waiters: new Map(), received: new Map(), accepted: true };
-    net.send('coop', { kind: 'accept', from: this.playerId });
+  acceptCoop(recipe: RecipeId, from: PlayerId, session: string): boolean {
+    const invite = this.pendingCoopInvite;
+    if (!invite || invite.id !== session || invite.recipe !== recipe || invite.from !== from || !this.partnerOnline) {
+      this.events.emit('toast', 'That cooking invite has expired.');
+      return false;
+    }
+    this.pendingCoopInvite = null;
+    this.coop = { id: session, recipe, initiator: from, waiters: new Map(), received: new Map(), accepted: true, ingredientsSpent: false };
+    net.send('coop', { kind: 'accept', from: this.playerId, session });
     this.launchCoop();
+    return true;
   }
 
-  declineCoop() {
-    net.send('coop', { kind: 'decline', from: this.playerId });
+  declineCoop(session: string) {
+    if (this.pendingCoopInvite?.id === session) this.pendingCoopInvite = null;
+    net.send('coop', { kind: 'decline', from: this.playerId, session });
   }
 
   private launchCoop() {
@@ -703,7 +784,16 @@ export class WorldScene extends Phaser.Scene {
     if (!c) return;
     const r = RECIPES[c.recipe];
     const initiator = c.initiator === this.playerId;
-    if (initiator) for (const k in r.ingredients) this.state.add(k as ItemId, -(r.ingredients[k as ItemId] ?? 0));
+    if (initiator) {
+      for (const key in r.ingredients) {
+        if (this.state.count(key as ItemId) < (r.ingredients[key as ItemId] ?? 0)) {
+          this.cancelCoop('The ingredients are no longer available.', true);
+          return;
+        }
+      }
+      for (const key in r.ingredients) this.state.add(key as ItemId, -(r.ingredients[key as ItemId] ?? 0));
+      c.ingredientsSpent = true;
+    }
     const mine = r.steps.map((_, i) => i).filter((i) => (i % 2 === 0) === initiator);
     this.setUiOpen(true);
     const data: MiniGameData = {
@@ -713,17 +803,20 @@ export class WorldScene extends Phaser.Scene {
       ingredientIcons: this.ingredientIcons(c.recipe),
       mine,
       partnerName: otherPlayer(this.playerId),
-      onStep: (index, score) => net.send('coop', { kind: 'step', from: this.playerId, index, score }),
+      onStep: (index, score) => net.send('coop', { kind: 'step', from: this.playerId, session: c.id, index, score }),
       waitFor: (index) =>
         new Promise<number | null>((resolve) => {
+          if (this.coop !== c || !this.partnerOnline) {
+            resolve(null);
+            return;
+          }
           const got = c.received.get(index);
           if (got !== undefined) resolve(got);
           else c.waiters.set(index, resolve);
         }),
       onCancel: () => {
-        this.coop = null;
         this.setUiOpen(false);
-        this.events.emit('toast', 'Cooking together was cancelled');
+        if (this.coop === c) this.cancelCoop('Cooking together was cancelled', true);
       },
       onDone: (scores) => {
         this.coop = null;
@@ -737,6 +830,7 @@ export class WorldScene extends Phaser.Scene {
           this.state.stat(`cook:${GRADE_NAMES[grade]}`);
           this.state.stat(`cook:r:${c.recipe}`);
           this.state.recordDishGrade(c.recipe, grade);
+          this.state.bond('coop');
         }
         audio.play(grade >= 2 ? 'great' : 'good');
         this.heartBurst(this.player.x, this.player.y - 20);
@@ -834,7 +928,11 @@ export class WorldScene extends Phaser.Scene {
     // npcs
     for (let i = 0; i < this.npcs.length; i++) {
       const n = this.npcs[i];
-      if (Math.abs(n.ch.x - ch.x) < 22 && Math.abs(n.ch.y - ch.y) < 24) {
+      const ndx = n.ch.x - ch.x;
+      const ndy = n.ch.y - ch.y;
+      const dir = ch.dir();
+      // you talk to the villager you face, so a passer-by never hides a sign or a camera
+      if (Math.abs(ndx) < 22 && Math.abs(ndy) < 24 && (Math.hypot(ndx, ndy) < 9 || ndx * dir.x + ndy * dir.y > 0)) {
         return { type: 'talk', label: n.def.opens ? 'Shop' : 'Talk', enabled: true, ref: i };
       }
     }
@@ -998,6 +1096,9 @@ export class WorldScene extends Phaser.Scene {
         audio.play('open');
         this.events.emit('openSeedMaker');
         return;
+      case 'photo':
+        this.takePhoto(a.text as PhotoSpot);
+        break;
       case 'coop':
       case 'hives':
       case 'barn': {
@@ -1727,6 +1828,14 @@ export class WorldScene extends Phaser.Scene {
     if (this.uiOpen) dx = dy = 0;
     const moved = this.player.move(dx, dy, dt);
     this.player.update();
+    if (this.remote && this.partnerOnline && Math.hypot(this.remote.x - this.player.x, this.remote.y - this.player.y) < 4 * TILE) {
+      this.togetherMs += dt;
+      if (this.togetherMs >= 60_000) {
+        this.togetherMs = 0;
+        if (this.state.bond('together_min')) this.heartBurst((this.player.x + this.remote.x) / 2, Math.min(this.player.y, this.remote.y) - 22);
+        this.afterChange();
+      }
+    }
     if (this.horse) {
       this.horse.setPosition(this.player.x + (this.player.facing === 'left' ? -6 : 6), this.player.y + 6).setDepth(this.player.sprite.depth + 1).setFlipX(this.player.facing === 'left');
       this.horse.setFrame(this.player.moving ? `horse${Math.floor(time / 140) % 2}` : 'horse0');

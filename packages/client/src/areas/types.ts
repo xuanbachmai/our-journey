@@ -18,6 +18,7 @@ export type InteractId =
   | 'furnshop'
   | 'stable'
   | 'seedmaker'
+  | 'photo'
   | 'wardrobe'
   | 'lovetree'
   | 'sign'
@@ -146,4 +147,10 @@ export function fillRect(tiles: number[][], x: number, y: number, w: number, h: 
 
 export function boolGrid(w: number, h: number, v: boolean): boolean[][] {
   return Array.from({ length: h }, () => Array.from({ length: w }, () => v));
+}
+
+/** A camera on a tripod: take a photo here (together if your partner is close). */
+export function photoSpot(objects: AreaObject[], blocked: boolean[][], tx: number, ty: number, spot: string) {
+  objects.push({ key: 'photospot', tx, ty, w: 1, h: 1, dy: 0, blocked: true, interact: 'photo', label: 'Photo', text: spot });
+  blocked[ty][tx] = true;
 }

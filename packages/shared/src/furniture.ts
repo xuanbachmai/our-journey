@@ -24,7 +24,9 @@ export type FurnitureId =
   | 'petbed'
   | 'heartrug'
   | 'dresser'
-  | 'loveseat';
+  | 'loveseat'
+  | 'picnic'
+  | 'lovebench';
 
 export type FurnitureCat = 'living' | 'bedroom' | 'deco' | 'wall';
 
@@ -42,6 +44,8 @@ export interface FurnitureDef {
   /** Flat on the floor: drawn under everything and can be walked over. */
   floor?: boolean;
   cat: FurnitureCat;
+  /** Not sold: earned from the couple bond. */
+  rewardOnly?: boolean;
   unlockRep: number;
 }
 
@@ -71,6 +75,8 @@ export const FURNITURE: Record<FurnitureId, FurnitureDef> = {
   records: { id: 'records', name: 'Record player', price: 360, w: 1, h: 1, cozy: 50, cat: 'living', unlockRep: 12 },
   tv: { id: 'tv', name: 'Retro TV', price: 420, w: 2, h: 1, cozy: 55, cat: 'living', unlockRep: 15 },
   loveseat: { id: 'loveseat', name: 'Love seat', price: 520, w: 2, h: 1, cozy: 80, cat: 'living', unlockRep: 20 },
+  picnic: { id: 'picnic', name: 'Picnic blanket', price: 0, w: 2, h: 2, cozy: 40, floor: true, cat: 'deco', unlockRep: 0, rewardOnly: true },
+  lovebench: { id: 'lovebench', name: 'Couple bench', price: 0, w: 2, h: 1, cozy: 90, cat: 'living', unlockRep: 0, rewardOnly: true },
   piano: { id: 'piano', name: 'Piano', price: 700, w: 2, h: 1, cozy: 90, cat: 'living', unlockRep: 30 },
 };
 
@@ -106,5 +112,6 @@ export function furnitureSaleToday(seed: number, dayIdx: number): FurnitureId {
     h ^= s.charCodeAt(i);
     h = Math.imul(h, 16777619);
   }
-  return FURNITURE_IDS[(h >>> 0) % FURNITURE_IDS.length];
+  const sold = FURNITURE_IDS.filter((id) => !FURNITURE[id].rewardOnly);
+  return sold[(h >>> 0) % sold.length];
 }

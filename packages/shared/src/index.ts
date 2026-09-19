@@ -18,3 +18,4 @@ export * from './quests';
 export * from './fish';
 export * from './friends';
 export * from './tools';
+export * from './bond';

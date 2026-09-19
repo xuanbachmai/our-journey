@@ -11,6 +11,7 @@ const BASE_H = 180;
 let game: Phaser.Game | null = null;
 let fellBack = false;
 let useTimer = false;
+const fitAfterOrientation = () => window.setTimeout(fit, 100);
 
 function createGame(type: number) {
   const g = new Phaser.Game({
@@ -31,7 +32,7 @@ function createGame(type: number) {
     if (game !== g) return;
     fit();
     window.addEventListener('resize', fit);
-    window.addEventListener('orientationchange', () => setTimeout(fit, 100));
+    window.addEventListener('orientationchange', fitAfterOrientation);
   });
   return g;
 }
@@ -63,6 +64,7 @@ window.addEventListener('error', (e) => {
   fellBack = true;
   console.warn('WebGL renderer failed to boot, falling back to Canvas:', msg);
   window.removeEventListener('resize', fit);
+  window.removeEventListener('orientationchange', fitAfterOrientation);
   const old = game;
   game = null;
   try {
@@ -95,3 +97,10 @@ void probeAnimationFrame().then((ok) => {
   if (useTimer) console.warn('requestAnimationFrame is not firing; using a timer-driven game loop');
   game = createGame(Phaser.AUTO);
 });
+
+// dev-only hooks for automated play tests
+if (import.meta.env.DEV) {
+  void Promise.all([import('./areas'), import('@hh/shared')]).then(([areas, shared]) => {
+    Object.assign(window, { __getArea: areas.getArea, __shared: shared });
+  });
+}

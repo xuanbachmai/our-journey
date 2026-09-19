@@ -219,6 +219,12 @@ const HATS_ART: Record<string, Hat> = {
     down: ['...oo......oo...', '..owwo....owwo..', '..oowo....owoo..', '..oppoooooooppo.', '..oppppppppppo..', '..oqqqqqqqqqqo..'].map((r) => r.slice(0, 16).padEnd(16, '.')),
     side: ['...oo......oo...', '..owwo....owwo..', '..oowo....owoo..', '..oppoooooooppo.', '..oppppppppppo..', '..oqqqqqqqqqqo..'].map((r) => r.slice(0, 16).padEnd(16, '.')),
   },
+  heartband: {
+    p: '#ff5c8a',
+    q: '#d93a6a',
+    down: ['................', '.......o.o......', '......opopo.....', '.......opo......', '...oooooooooo...', '..oqqqqqqqqqqo..'],
+    side: ['................', '.......o.o......', '......opopo.....', '.......opo......', '...oooooooooo...', '..oqqqqqqqqqqo..'],
+  },
   tiara: {
     p: '#e6e6f2',
     q: '#ff5c8a',
@@ -232,6 +238,12 @@ const HATS_ART: Record<string, Hat> = {
 type Top = { down: string[]; side: string[]; up: string[]; legs?: string };
 const JEANS = '#5a6fa8';
 const TOPS_ART: Record<string, Top> = {
+  coupletee: {
+    down: ['....obbbbbbo....', '..obobbrbrbobo..', '..osobbrrrboso..', '..osoBbbrbBoso..', '....onnnnnno....', '....oonnnnoo....'],
+    side: ['....obbbbbbo....', '....obbbbrbo....', '....obbsbbbo....', '....obbsbbBo....', '....onnnnnno....', '....oonnnnoo....'],
+    up: ['....obbbbbbo....', '..obobbbbbbobo..', '..osobbbbbboso..', '..osobbbbbboso..', '....onnnnnno....', '....oonnnnoo....'],
+    legs: P.skin,
+  },
   dress: {
     down: ['....obbwwbbo....', '..osobbbbbboso..', '..osoBbbbbBoso..', '...oobbbbbboo...', '...obbbbbbbbo...', '...owwwwwwwwo...'],
     side: ['....obbwbbbo....', '....obbsbbbo....', '....obbsbbBo....', '...oobbbbbboo...', '...obbbbbbbbo...', '...owwwwwwwwo...'],
@@ -282,6 +294,7 @@ export function buildCharacterTexture(scene: Phaser.Scene, look: CharacterLook, 
     B: dye.dark || look.outfitDark,
     k: look.shoes,
     n: JEANS,
+    r: P.red,
     N: '#3f4f80',
   };
   const pc = new PixelCanvas(scene, key, CHAR_W * FRAMES.length, CHAR_H);
@@ -332,6 +345,12 @@ export function buildCharacterTexture(scene: Phaser.Scene, look: CharacterLook, 
     if (outfit.accessory === 'necklace') {
       if (facing === 'down') pc.rows(x0 + 6, HAT_ROOM + 13, ['y..y', '.rr.'], { y: P.coin, r: P.red });
       else if (facing === 'side') pc.px(x0 + 10, HAT_ROOM + 14, P.red);
+    }
+    if (outfit.accessory === 'rings') {
+      if (facing === 'down') {
+        pc.px(x0 + 3, HAT_ROOM + 16, P.coin);
+        pc.px(x0 + 12, HAT_ROOM + 16, P.coin);
+      } else if (facing === 'side') pc.px(x0 + 7, HAT_ROOM + 16, P.coin);
     }
     if (outfit.accessory === 'flower') {
       const fx = facing === 'side' ? x0 + 3 : x0 + 2;

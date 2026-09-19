@@ -9,7 +9,7 @@
     "dev": "npm run dev -w @hh/client",
     "build": "npm run build -w @hh/client",
     "preview": "npm run preview -w @hh/client",
-    "test": "npm run test -w @hh/shared",
+    "test": "npm run test --workspaces --if-present",
     "typecheck": "npm run typecheck -w @hh/client"
   }
 }

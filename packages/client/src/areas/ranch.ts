@@ -1,6 +1,6 @@
 import { mulberry32 } from '../art/pixel';
 import { T } from '../art/tiles';
-import { blockRect, boolGrid, fillRect, grid, type AreaDef, type AreaObject } from './types';
+import { blockRect, boolGrid, fillRect, grid, type AreaDef, type AreaObject, photoSpot } from './types';
 
 /** Sunny Ranch: a big red barn, a fenced pasture for cows and sheep, hay bales. */
 export function buildRanch(): AreaDef {
@@ -106,6 +106,8 @@ export function buildRanch(): AreaDef {
 
   objects.push({ key: 'props', frame: 'sign', tx: 31, ty: 11, w: 1, h: 1, blocked: true, interact: 'sign', label: 'Read', text: 'Sunny Ranch\nCows: milk. Sheep: wool.\nPigs, goats and horses too:\nbuild pens at the pet shop.' });
   blockRect(blocked, 31, 11, 1, 1);
+
+  photoSpot(objects, blocked, 12, 6, 'ranch');
 
   return {
     id: 'ranch',

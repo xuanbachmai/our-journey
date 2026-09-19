@@ -477,6 +477,27 @@ function furnitureSheet(pc: PixelCanvas) {
     });
   }
 
+  // ---- bond rewards ----
+  frame('picnic', 32, 32, (x0) => {
+    pc.rect(x0 + 1, 4, 30, 26, P.outline);
+    for (let y = 0; y < 24; y++) for (let x = 0; x < 28; x++) pc.px(x0 + 2 + x, 5 + y, (Math.floor(x / 4) + Math.floor(y / 4)) % 2 ? '#ff6b6b' : P.white);
+    pc.rect(x0 + 18, 8, 10, 7, P.outline);
+    pc.rect(x0 + 19, 9, 8, 5, P.woodLight);
+    pc.rect(x0 + 21, 6, 4, 3, P.woodDark);
+    pc.disc(x0 + 9, 20, 3, P.outline);
+    pc.disc(x0 + 9, 20, 2, P.white);
+    pc.px(x0 + 9, 20, P.pink);
+  });
+  frame('lovebench', 32, 22, (x0) => {
+    pc.rows(x0 + 10, 0, ['.ooo..ooo.', 'orrro orrro'.replace(' ', ''), 'orrrrrrrro', '.orrrrrro.', '..orrrro..', '...orro...', '....oo....'], { o: P.outline, r: P.red });
+    pc.rect(x0, 7, 32, 4, P.outline);
+    pc.rect(x0 + 1, 8, 30, 2, P.wood);
+    pc.rect(x0, 12, 32, 5, P.outline);
+    pc.rect(x0 + 1, 13, 30, 3, P.woodLight);
+    pc.rect(x0 + 2, 17, 2, 5, P.outline);
+    pc.rect(x0 + 28, 17, 2, 5, P.outline);
+  });
+
   // ---- Cozy Corner pieces ----
   frame('armchair', 16, 18, (x0) => {
     pc.rect(x0 + 1, 1, 14, 15, P.outline);
@@ -1050,6 +1071,23 @@ export function buildObjectTextures(scene: Phaser.Scene) {
   sm.px(8, 15, P.leaf);
   sm.rect(2, 23, 12, 3, P.woodDark);
   sm.done();
+
+  // photo spot: a little camera on a tripod with a heart flag
+  const ps = new PixelCanvas(scene, 'photospot', 16, 26);
+  ps.rect(2, 3, 12, 9, P.outline);
+  ps.rect(3, 4, 10, 7, '#5a5a6a');
+  ps.rect(3, 4, 10, 2, '#8d8fa3');
+  ps.disc(8, 8, 3, P.outline);
+  ps.disc(8, 8, 2, '#7ecbff');
+  ps.px(7, 7, P.white);
+  ps.rect(10, 1, 3, 2, P.outline);
+  ps.rect(7, 12, 2, 12, P.woodDark);
+  ps.px(5, 22, P.woodDark);
+  ps.px(4, 23, P.woodDark);
+  ps.px(10, 22, P.woodDark);
+  ps.px(11, 23, P.woodDark);
+  ps.rows(12, 13, ['o.o', 'rrr', '.r.'], { o: P.red, r: P.red });
+  ps.done();
 
   const sb = new PixelCanvas(scene, 'stable', 64, 56);
   facade(sb, 0, 0, 64, 56, '#c98b4e', '#a86a3c', '#8a5a33', '#6e4426', { windows: 2 });

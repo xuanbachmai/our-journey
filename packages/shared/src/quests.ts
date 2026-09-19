@@ -1,5 +1,6 @@
 import type { AreaId } from './areas';
 import { daysTogether } from './couple';
+import { bondLevel } from './bond';
 import { cozyPoints, type FurnitureId } from './furniture';
 import type { ItemId } from './items';
 import { friendPoints, HEART_POINTS, VILLAGERS } from './friends';
@@ -65,7 +66,7 @@ export const CHAPTERS: Chapter[] = [
       { id: 'c1_mail', title: 'Read the letter', hint: 'The red mailbox beside the house', target: 1, reward: 20, progress: stat('mail'), guide: MAILBOX },
       { id: 'c1_till', title: 'Till 3 plots', hint: 'Face the brown field, press act', target: 3, reward: 15, progress: stat('till'), guide: FIELD },
       { id: 'c1_plant', title: 'Plant 3 seeds', hint: 'Pick a seed, face tilled soil', target: 3, reward: 15, progress: stat('plant'), guide: FIELD },
-      { id: 'c1_water', title: 'Water 3 plots', hint: 'Face a planted plot, press act', target: 3, reward: 15, progress: stat('water'), guide: FIELD },
+      { id: 'c1_water', title: 'Water 3 plots', hint: 'Face a planted plot. Rain counts too', target: 3, reward: 15, progress: stat('water'), guide: FIELD },
       { id: 'c1_harvest', title: 'Harvest 3 crops', hint: 'Ripe crops sparkle. Wheat: 2 min', target: 3, reward: 30, progress: stat('harvest'), guide: FIELD },
     ],
     reward: { coins: 60, items: { 'seed:strawberry': 2 }, text: '+60 coins, 2 strawberry seeds' },
@@ -168,6 +169,19 @@ export const CHAPTERS: Chapter[] = [
     reward: { coins: 300, furniture: { photo: 1 }, text: '+300 coins, our photo' },
   },
   {
+    id: 'ch_us',
+    title: 'Just us two',
+    blurb: 'Little gestures, just for each other.',
+    tasks: [
+      { id: 'us_heart', title: 'Send a heart', hint: 'Journal, Us tab', target: 1, reward: 20, progress: stat('heartsent') },
+      { id: 'us_gift', title: 'Wrap a gift for your love', hint: 'Mailbox, Gift tab', target: 1, reward: 40, progress: stat('giftsent'), guide: MAILBOX },
+      { id: 'us_photo', title: 'Take 3 photos', hint: 'Find the camera spots', target: 3, reward: 50, progress: (w) => w.photos?.length ?? 0, guide: g('town', 24, 13) },
+      { id: 'us_match', title: 'Wear matching outfits', hint: 'Same outfit and dye, or same hat', target: 1, reward: 40, progress: stat('matchday') },
+      { id: 'us_bond', title: 'Reach bond level 3', hint: 'Play together, notes, gifts', target: 3, reward: 80, progress: (w) => bondLevel(w.bond?.points ?? 0) },
+    ],
+    reward: { coins: 300, furniture: { loveseat: 1 }, text: '+300 coins, a love seat' },
+  },
+  {
     id: 'ch_friends',
     title: 'Good neighbours',
     blurb: 'Make friends around town and fill your book.',
@@ -253,7 +267,7 @@ export interface DailyDef {
 
 export const DAILY_POOL: DailyDef[] = [
   { id: 'd_harvest', title: 'Harvest 8 crops', stat: 'harvest', target: 8, reward: 60 },
-  { id: 'd_water', title: 'Water 6 plots', stat: 'water', target: 6, reward: 40 },
+  { id: 'd_water', title: 'Water 6 plots', stat: 'water', target: 6, reward: 40, needs: (w) => !(w.upgrades.sprinkler ?? 0) },
   { id: 'd_cook', title: 'Cook 2 dishes', stat: 'cook', target: 2, reward: 60 },
   { id: 'd_serve', title: 'Serve 3 diners', stat: 'served', target: 3, reward: 80, needs: (w) => w.discovered.includes('restaurant') },
   { id: 'd_sale', title: 'Sell 2 counter dishes', stat: 'sale', target: 2, reward: 60 },
