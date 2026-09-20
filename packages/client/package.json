@@ -5,10 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host",
-    "build": "vite build",
+    "build": "node scripts/make-icons.cjs && vite build",
     "preview": "vite preview --host",
     "test": "vitest run --configLoader runner",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "icons": "node scripts/make-icons.cjs"
   },
   "dependencies": {
     "@hh/shared": "*",

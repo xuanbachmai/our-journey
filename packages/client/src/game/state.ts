@@ -105,6 +105,17 @@ export interface SaveData {
 }
 
 const KEY = 'our-journey-save-v3';
+
+/** Wipes everything this game stored on this device (save, notes, answers). */
+export function eraseLocalData() {
+  for (const k of [KEY, OLD_KEY, 'hearth-harvest-save-v1', 'oj-notes-local', 'oj-answers-local']) {
+    try {
+      localStorage.removeItem(k);
+    } catch {
+      /* private mode */
+    }
+  }
+}
 const OLD_KEY = 'hearth-harvest-save-v1';
 
 export function plotKey(tx: number, ty: number) {
@@ -128,6 +139,9 @@ export interface AwaySummary {
 }
 
 /** Actions counted per player, so each of you can see what the other did. */
+/** Unopened gifts one player can leave for the other. */
+export const MAX_PENDING_GIFTS = 10;
+
 export const TRACKED_STATS = ['harvest', 'plant', 'water', 'cook', 'served', 'fish', 'forage', 'gifts', 'photos', 'note', 'hugs'];
 
 /**
@@ -859,6 +873,8 @@ export class GameState {
   /** Takes the item out of the bag and wraps it for the partner. */
   wrapGift(key: string, msg: string): boolean {
     const w = this.world;
+    // a few unopened gifts are sweet; a hundred would bloat the save
+    if (this.giftsWaiting.length >= MAX_PENDING_GIFTS) return false;
     if (key.startsWith('dish:')) {
       const [, recipe, grade] = key.split(':');
       const i = w.dishes.findIndex((d) => d.recipe === recipe && d.grade === Number(grade));

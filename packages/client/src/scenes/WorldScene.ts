@@ -48,7 +48,7 @@ import type { AreaDef, AreaObject, InteractId } from '../areas/types';
 import { buildCharacterTexture, CUSTOMER_LOOKS, FAMILY_LOOKS, LOOKS, SHOPKEEPER_LOOKS, type CharacterLook } from '../art/characters';
 import { P } from '../art/palette';
 import { T, TILE, TILESET_KEY } from '../art/tiles';
-import { Character, type Facing } from '../entities/Character';
+import { RIDE_MULT, SPEED, Character, type Facing } from '../entities/Character';
 import { Critter } from '../entities/Critter';
 import { Customer } from '../entities/Customer';
 import { Diner } from '../entities/Diner';
@@ -209,7 +209,7 @@ export class WorldScene extends Phaser.Scene {
   /** Outdoors a ridden horse carries you (faster, drawn under you); indoors it waits outside. */
   private applyRiding() {
     const on = this.riding && AREAS[this.areaId].outdoor;
-    this.player.speed = on ? 62 * 1.7 : 62;
+    this.player.speed = on ? SPEED * RIDE_MULT : SPEED;
     this.player.sprite.setOrigin(0.5, on ? 1 + 10 / 28 : 1);
     if (on && !this.horse) this.horse = this.add.sprite(this.player.x, this.player.y, 'critters', 'horse0').setOrigin(0.5, 1).setScale(2);
     if (!on && this.horse) {

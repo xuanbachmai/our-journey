@@ -82,7 +82,7 @@ import { P } from '../art/palette';
 import { LETTER } from '../config/letter';
 import { audio } from '../game/audio';
 import { net, type NoteRow } from '../game/net';
-import type { AwaySummary, ProgressEvent } from '../game/state';
+import { eraseLocalData, MAX_PENDING_GIFTS, type AwaySummary, type ProgressEvent } from '../game/state';
 import { confirmBox, copyToClipboard, promptText } from '../ui/dom';
 import { button, panel, plain, style } from '../ui/text';
 import { TitleScene } from './TitleScene';
@@ -1328,6 +1328,7 @@ export class HudScene extends Phaser.Scene {
 
   // ---------- us two: bond, photos, gifts ----------
   private giftRetry = false;
+  private shownGifts = new Set<string>();
 
   /** Name and icon for a gift key (item id, dish:recipe:grade or furn:id). */
   private giftInfo(key: string): { name: string; icon: string; tab: string; frame: string } {
@@ -1386,7 +1387,7 @@ export class HudScene extends Phaser.Scene {
   /** Unwrap gifts from your partner, one at a time. */
   private openGiftReveal() {
     const st = this.world.state;
-    const g = st.giftsForMe[0];
+    const g = st.giftsForMe.find((x) => !this.shownGifts.has(x.id));
     if (!g || this.overlay?.getData('gift')) return;
     if (this.overlay) {
       // wait until the current panel closes; only one retry at a time
@@ -1400,6 +1401,7 @@ export class HudScene extends Phaser.Scene {
     }
     const c = this.openOverlay(220, 130, `A gift from ${g.from}!`);
     c.setData('gift', true);
+    this.shownGifts.add(g.id);
     const box = this.add.image(0, -16, 'icons', 'gift').setScale(4);
     c.add(box);
     this.tweens.add({ targets: box, angle: 6, duration: 180, yoyo: true, repeat: -1 });
@@ -1462,7 +1464,11 @@ export class HudScene extends Phaser.Scene {
         const name = this.giftInfo(e.key).name;
         const msg = await promptText({ title: `Wrap ${name} for ${other}`, placeholder: 'A little something for you <3', maxLength: 120, okLabel: 'Wrap it' });
         if (msg === null) return;
-        if (!st.wrapGift(e.key, msg)) return audio.play('bad');
+        if (!st.wrapGift(e.key, msg)) {
+          audio.play('bad');
+          this.showToast(st.giftsWaiting.length >= MAX_PENDING_GIFTS ? `${other} has gifts to open first!` : 'Could not wrap that');
+          return;
+        }
         audio.play('great');
         this.showToast(`Wrapped! ${other} finds it next time`);
         this.world.afterChange();
@@ -2453,8 +2459,15 @@ export class HudScene extends Phaser.Scene {
         this.scene.start('Title');
         this.scene.stop();
       });
-      c.add(this.add.text(-w / 2 + 12, rowY(6) + 8, net.enabled ? 'Solo mode. Pair up from the title.' : 'Solo mode: no backend configured.', plain({ color: '#7a6a70' })).setOrigin(0, 0.5));
+      c.add(this.add.text(-w / 2 + 12, rowY(7) + 8, net.enabled ? 'Solo mode. Pair up from the title.' : 'Solo mode: no backend configured.', plain({ color: '#7a6a70' })).setOrigin(0, 0.5));
     }
+    // app stores ask for a way to erase your data; it is handy on a shared phone too
+    mk(net.enabled && net.pairing ? 9 : 5, 'Erase this phone', async () => {
+      if (!(await confirmBox('Erase the save, notes and pairing stored on this phone? The farm itself stays online.', 'Erase', 'Keep'))) return;
+      eraseLocalData();
+      net.forgetDevice();
+      window.location.reload();
+    }, 0xff6b6b);
     c.add(this.add.text(0, h / 2 - 9, 'Our Journey 1.0', plain({ color: '#7a6a70' })).setOrigin(0.5));
   }
 

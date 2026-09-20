@@ -9,7 +9,9 @@ export interface CollisionWorld {
   isBlocked(tx: number, ty: number): boolean;
 }
 
-const SPEED = 62;
+export const SPEED = 62;
+/** Riding a horse outdoors. */
+export const RIDE_MULT = 1.7;
 const FOOT_W = 8;
 const FOOT_H = 5;
 

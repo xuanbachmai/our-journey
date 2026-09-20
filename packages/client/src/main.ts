@@ -40,8 +40,11 @@ function createGame(type: number) {
 /** Integer zoom, and the internal resolution grows to fill the screen so there is no letterbox. */
 function fit() {
   if (!game) return;
-  const w = window.innerWidth;
-  const h = window.innerHeight;
+  // keep the HUD clear of phone notches and the home indicator
+  const s = getComputedStyle(document.documentElement);
+  const inset = (name: string) => parseFloat(s.getPropertyValue(name)) || 0;
+  const w = window.innerWidth - inset("--sal") - inset("--sar");
+  const h = window.innerHeight - inset("--sat") - inset("--sab");
   // hidden or collapsed views report 0; keep the last good size instead of shrinking to nothing
   if (w < 50 || h < 50) return;
   const zoom = Math.max(1, Math.floor(Math.min(w / BASE_W, h / BASE_H)));

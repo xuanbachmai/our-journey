@@ -92,6 +92,16 @@ class Net {
     this.deviceId = dev;
   }
 
+  /** Forgets the pairing and this device's id, for 'erase my data'. */
+  forgetDevice() {
+    this.setPairing(null);
+    try {
+      localStorage.removeItem(DEVICE_KEY);
+    } catch {
+      /* private mode */
+    }
+  }
+
   private setPairing(p: Pairing | null) {
     if (this.pairing?.code !== p?.code) this.cancelScheduledSave();
     this.pairing = p;
