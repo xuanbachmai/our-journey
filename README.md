@@ -1,6 +1,8 @@
 # Our Journey
 
 Our Journey is a cute pixel-art farm, kitchen and little world for two: **xb** and **qd**.
+
+**Play it: https://our-journey-client.vercel.app** (add it to your phone home screen for a full-screen app)
 Version 1.0 is the private couple's version. See [PLAN.md](PLAN.md) for the design and roadmap.
 
 ## Run it locally
