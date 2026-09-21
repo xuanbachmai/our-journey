@@ -11,9 +11,17 @@ export class BootScene extends Phaser.Scene {
   async create() {
     this.cameras.main.setBackgroundColor('#7ecbff');
     try {
-      await Promise.race([document.fonts.load('8px "Press Start 2P"'), new Promise((r) => setTimeout(r, 2500))]);
+      await Promise.race([
+        Promise.all([
+          document.fonts.load('10px "Pixelify Sans"'),
+          document.fonts.load('10px "Fredoka"'),
+          document.fonts.load('8px "Silkscreen"'),
+          document.fonts.load('8px "Press Start 2P"'),
+        ]),
+        new Promise((r) => setTimeout(r, 2500)),
+      ]);
     } catch {
-      /* fall back to the default font */
+      /* fall back to default font */
     }
     buildTileset(this);
     buildObjectTextures(this);
