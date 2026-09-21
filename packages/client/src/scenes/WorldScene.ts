@@ -166,6 +166,7 @@ export class WorldScene extends Phaser.Scene {
   private lastCustomerSpawn = 0;
   private critters: Critter[] = [];
   private horse?: Phaser.GameObjects.Sprite;
+  private vehicle?: Phaser.GameObjects.Container;
   private togetherMs = 0;
 
   /** Snap! Together when your partner is close by and online. */
@@ -216,6 +217,43 @@ export class WorldScene extends Phaser.Scene {
       this.horse.destroy();
       this.horse = undefined;
     }
+  }
+
+  /** Switch between a bicycle and a two-person car for fast outdoor travel. */
+  get driving(): 'bike' | 'car' | null {
+    const mode = this.registry.get('vehicle') as 'bike' | 'car' | undefined;
+    return mode === 'bike' || mode === 'car' ? mode : null;
+  }
+
+  setDriving(mode: 'bike' | 'car' | null) {
+    const active = mode && AREAS[this.areaId].outdoor ? mode : null;
+    this.registry.set('vehicle', active);
+    if (active && this.riding) this.setRiding(false);
+    this.player.speed = active ? SPEED * (active === 'car' ? 1.8 : 1.45) : SPEED;
+    if (active && this.vehicle) {
+      this.vehicle.destroy();
+      this.vehicle = undefined;
+    }
+    if (active && !this.vehicle) {
+      const g = this.add.graphics();
+      if (active === 'car') {
+        g.fillStyle(0x4a2a3f, 1).fillRoundedRect(-20, -8, 40, 14, 4);
+        g.fillStyle(0x6bd6e8, 1).fillRoundedRect(-12, -6, 12, 6, 2).fillRoundedRect(2, -6, 12, 6, 2);
+        g.fillStyle(0x4a2a3f, 1).fillCircle(-12, 8, 5).fillCircle(12, 8, 5);
+        g.fillStyle(0xffd45c, 1).fillRect(-19, -4, 3, 4).fillRect(16, -4, 3, 4);
+      } else {
+        g.lineStyle(3, 0x4a2a3f, 1).lineBetween(-10, 5, 0, -8).lineBetween(0, -8, 10, 5).lineBetween(-10, 5, 10, 5);
+        g.lineStyle(2, 0x4a2a3f, 1).lineBetween(0, -8, 4, -13);
+        g.fillStyle(0xff6b8a, 1).fillCircle(-10, 5, 4).fillCircle(10, 5, 4);
+      }
+      this.vehicle = this.add.container(this.player.x, this.player.y + 5, [g]).setDepth(this.player.sprite.depth + 1);
+    }
+    if (!active && this.vehicle) {
+      this.vehicle.destroy();
+      this.vehicle = undefined;
+    }
+    if (!active && this.riding) this.applyRiding();
+    this.pushHud(true);
   }
   private npcs: Npc[] = [];
   private diners: Diner[] = [];
@@ -269,6 +307,7 @@ export class WorldScene extends Phaser.Scene {
     this.lastCustomerSpawn = 0;
     this.critters = [];
     this.horse = undefined;
+    this.vehicle = undefined;
     this.npcs = [];
     this.diners = [];
     this.nextDiner = 0;
@@ -363,6 +402,7 @@ export class WorldScene extends Phaser.Scene {
     }
 
     this.applyRiding();
+    this.setDriving(this.driving);
     this.time.delayedCall(1200, () => this.checkGifts());
 
     // ---- partner ----
@@ -388,6 +428,16 @@ export class WorldScene extends Phaser.Scene {
       this.keys = kb.addKeys('W,A,S,D') as Record<string, Phaser.Input.Keyboard.Key>;
       kb.on('keydown-SPACE', () => this.doAction());
       kb.on('keydown-E', () => this.doAction());
+      kb.on('keydown-V', () => {
+        if (!AREAS[this.areaId].outdoor) {
+          this.events.emit('toast', 'Vehicles can only be used outdoors.');
+          return;
+        }
+        const next = this.driving === null ? 'bike' : this.driving === 'bike' ? 'car' : null;
+        this.setDriving(next);
+        audio.play(next ? 'great' : 'pop');
+        this.events.emit('toast', next === 'bike' ? 'Bicycle ready! Press V again for the car.' : next === 'car' ? 'Car ready! Your partner can ride along.' : 'Vehicle parked.');
+      });
       kb.on('keydown-ENTER', () => this.decorate.mode === 'place' && this.decoratePlace());
       kb.on('keydown-ESC', () => this.decorate.mode && this.stopDecorate());
       const seeds: CropId[] = ['wheat', 'carrot', 'tomato', 'strawberry', 'potato', 'corn', 'blueberry', 'pumpkin'];
@@ -1859,6 +1909,9 @@ export class WorldScene extends Phaser.Scene {
     if (this.horse) {
       this.horse.setPosition(this.player.x + (this.player.facing === 'left' ? -6 : 6), this.player.y + 6).setDepth(this.player.sprite.depth + 1).setFlipX(this.player.facing === 'left');
       this.horse.setFrame(this.player.moving ? `horse${Math.floor(time / 140) % 2}` : 'horse0');
+    }
+    if (this.vehicle) {
+      this.vehicle.setPosition(this.player.x, this.player.y + 5).setDepth(this.player.sprite.depth + 1).setScale(this.player.facing === 'left' ? -1 : 1, 1);
     }
     if (moved || (!this.player.moving && this.lastMoving)) this.broadcastPos(!this.player.moving && this.lastMoving);
     this.lastMoving = this.player.moving;
