@@ -226,7 +226,7 @@ export class WorldScene extends Phaser.Scene {
   }
 
   setDriving(mode: 'bike' | 'car' | null) {
-    const active = mode && AREAS[this.areaId].outdoor ? mode : null;
+    const active = mode && AREAS[this.areaId].outdoor && this.state.upgradeLevel(mode === 'bike' ? 'bicycle' : 'car') > 0 ? mode : null;
     this.registry.set('vehicle', active);
     if (active && this.riding) this.setRiding(false);
     this.player.speed = active ? SPEED * (active === 'car' ? 1.8 : 1.45) : SPEED;
@@ -433,10 +433,14 @@ export class WorldScene extends Phaser.Scene {
           this.events.emit('toast', 'Vehicles can only be used outdoors.');
           return;
         }
-        const next = this.driving === null ? 'bike' : this.driving === 'bike' ? 'car' : null;
+        const next = this.driving === null ? (this.state.upgradeLevel('bicycle') ? 'bike' : this.state.upgradeLevel('car') ? 'car' : null) : this.driving === 'bike' ? (this.state.upgradeLevel('car') ? 'car' : null) : null;
+        if (!next && this.driving === null) {
+          this.events.emit('toast', 'Buy a bicycle or car at the Pet & Barn Shop first.');
+          return;
+        }
         this.setDriving(next);
         audio.play(next ? 'great' : 'pop');
-        this.events.emit('toast', next === 'bike' ? 'Bicycle ready! Press V again for the car.' : next === 'car' ? 'Car ready! Your partner can ride along.' : 'Vehicle parked.');
+        this.events.emit('toast', next === 'bike' ? (this.state.upgradeLevel('bikeSeat') ? 'Bicycle ready! Your partner can ride with you.' : 'Bicycle ready! Buy the passenger seat to carry your partner.') : next === 'car' ? 'Car ready! Your partner can ride along.' : 'Vehicle parked.');
       });
       kb.on('keydown-ENTER', () => this.decorate.mode === 'place' && this.decoratePlace());
       kb.on('keydown-ESC', () => this.decorate.mode && this.stopDecorate());
@@ -1912,6 +1916,10 @@ export class WorldScene extends Phaser.Scene {
     }
     if (this.vehicle) {
       this.vehicle.setPosition(this.player.x, this.player.y + 5).setDepth(this.player.sprite.depth + 1).setScale(this.player.facing === 'left' ? -1 : 1, 1);
+      if (this.driving === 'bike' && this.state.upgradeLevel('bikeSeat') > 0 && this.remote && this.partnerOnline && Math.hypot(this.remote.x - this.player.x, this.remote.y - this.player.y) < 3 * TILE) {
+        this.remote.sprite.setPosition(this.player.x + (this.player.facing === 'left' ? 12 : -12), this.player.y - 2);
+        this.remote.sprite.setDepth(this.player.sprite.depth + 2);
+      }
     }
     if (moved || (!this.player.moving && this.lastMoving)) this.broadcastPos(!this.player.moving && this.lastMoving);
     this.lastMoving = this.player.moving;

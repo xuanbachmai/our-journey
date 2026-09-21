@@ -1,4 +1,4 @@
-export type UpgradeId = 'sprinkler' | 'counter' | 'coop' | 'stove' | 'rod' | 'flowers' | 'tables' | 'beehive' | 'decor' | 'bigbag' | 'pasture' | 'stable' | 'bigcoop' | 'hoe' | 'can' | 'sickle' | 'seedmaker';
+export type UpgradeId = 'sprinkler' | 'counter' | 'coop' | 'stove' | 'rod' | 'flowers' | 'tables' | 'beehive' | 'decor' | 'bigbag' | 'pasture' | 'stable' | 'bigcoop' | 'hoe' | 'can' | 'sickle' | 'seedmaker' | 'bicycle' | 'bikeSeat' | 'car';
 
 export interface UpgradeDef {
   id: UpgradeId;
@@ -30,6 +30,9 @@ export const UPGRADES: Record<UpgradeId, UpgradeDef> = {
   tables: { id: 'tables', name: 'Restaurant table', desc: 'One more table to serve', prices: [300, 500, 800], icon: 'table', shop: 'store' },
   decor: { id: 'decor', name: 'Restaurant decor', desc: 'Diners tip more', prices: [400, 700], icon: 'painting', shop: 'store' },
   bigbag: { id: 'bigbag', name: 'Big backpack', desc: 'Carry 12 dishes', prices: [250], icon: 'bag', shop: 'store' },
+  bicycle: { id: 'bicycle', name: 'Bicycle', desc: 'A fast personal vehicle (press V)', prices: [450], icon: 'horse', shop: 'petshop' },
+  bikeSeat: { id: 'bikeSeat', name: 'Bicycle passenger seat', desc: 'Ride your partner on the bicycle', prices: [700], requires: 'bicycle', icon: 'heart', shop: 'petshop' },
+  car: { id: 'car', name: 'Two-person car', desc: 'A speedy vehicle for both players', prices: [1800], icon: 'horse', shop: 'petshop' },
 };
 
 export const UPGRADE_IDS = Object.keys(UPGRADES) as UpgradeId[];
