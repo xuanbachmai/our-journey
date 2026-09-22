@@ -200,7 +200,10 @@ export class WorldScene extends Phaser.Scene {
 
   setRiding(on: boolean) {
     this.registry.set('riding', on);
+    // you ride one thing at a time: climbing on the horse parks the vehicle
+    if (on && this.driving) this.setDriving(null);
     this.applyRiding();
+    if (!on) this.setDriving(this.driving);
     // the paddock horse leaves or returns
     for (const c of this.critters.filter((x) => x.kind === 'horse')) c.destroy();
     this.critters = this.critters.filter((x) => x.kind !== 'horse');
@@ -226,8 +229,10 @@ export class WorldScene extends Phaser.Scene {
   }
 
   setDriving(mode: 'bike' | 'car' | null) {
-    const active = mode && AREAS[this.areaId].outdoor && this.state.upgradeLevel(mode === 'bike' ? 'bicycle' : 'car') > 0 ? mode : null;
-    this.registry.set('vehicle', active);
+    // remember the vehicle even indoors, where it simply waits by the door
+    const owned = mode && this.state.upgradeLevel(mode === 'bike' ? 'bicycle' : 'car') > 0 ? mode : null;
+    this.registry.set('vehicle', owned);
+    const active = owned && AREAS[this.areaId].outdoor ? owned : null;
     if (active && this.riding) this.setRiding(false);
     this.player.speed = active ? SPEED * (active === 'car' ? 1.8 : 1.45) : SPEED;
     if (active && this.vehicle) {
