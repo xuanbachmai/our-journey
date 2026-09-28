@@ -73,7 +73,8 @@ export class TitleScene extends Phaser.Scene {
     const title = this.add.text(W / 2, titleY, 'Our Journey', style({ fontSize: '16px', color: '#fff4dc', strokeThickness: 4 })).setOrigin(0.5);
     this.tweens.add({ targets: title, y: title.y - 3, duration: 1200, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
     this.add.text(W / 2, titleY + 16, 'a little farm for two', style({ color: '#ffe066' })).setOrigin(0.5);
-    this.status = this.add.text(W / 2, H - 8, '', style({ color: '#fff' })).setOrigin(0.5, 1);
+    // errors can be a sentence long, so let the line wrap instead of running off both edges
+    this.status = this.add.text(W / 2, H - 8, '', style({ color: '#fff', align: 'center', wordWrap: { width: W - 24 } })).setOrigin(0.5, 1);
   }
 
   private clearUi() {
