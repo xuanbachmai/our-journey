@@ -10,6 +10,20 @@ to the home screen and opens full screen, with no browser bars and no store.
 
 That is the fastest way for the two of you to play. Nothing below is needed for it.
 
+## Keeping Supabase awake
+
+A free Supabase project pauses after about a week without activity, and someone
+has to press Restore in the dashboard before the farm works again. Two things
+prevent that:
+
+1. **Playing.** Every visit talks to the database, so regular play keeps it awake by itself.
+2. **A scheduled ping.** `api/keepalive.js` reads one row, and Vercel runs it daily (the `crons` entry in `vercel.json`). It uses the same `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` the game already needs, so there is nothing extra to configure. Before those exist it answers `{"state":"idle"}` and does nothing. You can also open `/api/keepalive` yourself any time to see whether the database is awake.
+
+Vercel Hobby allows a cron job once a day, which is plenty: Supabase only
+pauses after about a week. If you ever move off Vercel, cron-job.org can hit
+the same URL instead. Supabase Pro (25 USD a month) removes pausing entirely,
+which is more than two players need.
+
 ## Turning it into a real App Store / Google Play app
 
 The game is HTML5 (Phaser + TypeScript), so the normal route is
