@@ -93,6 +93,14 @@ export class TitleScene extends Phaser.Scene {
       this.showPick(null, null, null);
       return;
     }
+    // A paused, deleted or unreachable project would let the menu offer pairing
+    // that only ever errors, so ask the server once before showing it.
+    this.setStatus('Waking up the farm...');
+    if (!(await net.reachable())) {
+      this.setStatus('The farm server is asleep. Play solo, or try again in a minute.');
+      this.showMenu(true);
+      return;
+    }
     // returning from a magic link?
     if (window.location.hash.includes('access_token') || params.get('code')) {
       this.setStatus('Restoring your seat...');

@@ -76,6 +76,8 @@ class Net {
   readonly deviceId: string;
   pairing: Pairing | null = null;
   private channel: RealtimeChannel | null = null;
+  private url = '';
+  private key = '';
   private handlers = new Map<string, Handler[]>();
   online = new Set<PlayerId>();
   onPresence: ((online: Set<PlayerId>) => void) | null = null;
@@ -89,6 +91,8 @@ class Net {
     const key = String(import.meta.env.VITE_SUPABASE_ANON_KEY ?? '').trim();
     this.enabled = isRealConfig(url, key);
     this.client = this.enabled ? createClient(url, key, { auth: { persistSession: true } }) : null;
+    this.url = url;
+    this.key = key;
     let dev = '';
     try {
       dev = localStorage.getItem(DEVICE_KEY) ?? '';
@@ -256,6 +260,25 @@ class Net {
   }
 
   // ---------------- realtime ----------------
+
+  /**
+   * One quick request, so the title screen can tell a sleeping or missing
+   * project from a working one instead of offering pairing that only errors.
+   * Any answer at all means the server is up; 5xx or no answer means it is not.
+   */
+  async reachable(timeoutMs = 6000): Promise<boolean> {
+    if (!this.enabled) return false;
+    const c = new AbortController();
+    const timer = setTimeout(() => c.abort(), timeoutMs);
+    try {
+      const r = await fetch(`${this.url.replace(/\/$/, '')}/rest/v1/`, { headers: { apikey: this.key }, signal: c.signal });
+      return r.status < 500;
+    } catch {
+      return false;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
 
   async connect(player: PlayerId): Promise<boolean> {
     if (!this.client || !this.pairing) return false;
