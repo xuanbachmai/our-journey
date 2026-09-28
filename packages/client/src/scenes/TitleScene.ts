@@ -151,9 +151,12 @@ export class TitleScene extends Phaser.Scene {
     mk(0, 'New farm', () => void this.newFarm(), 0x7de8c8);
     mk(1, 'Join a farm', () => void this.joinPrompt());
     mk(2, 'Play solo', () => this.showPick(null, null, null), 0xe8dcc8);
-    const hint = this.add.text(W / 2, y0 + 70, 'One of you creates the farm, the other joins with the code', plain({ color: P.outline, align: 'center', wordWrap: { width: W - 40 } })).setOrigin(0.5, 0);
-    this.ui.push(hint);
-    if (!retry) this.setStatus('');
+    // after an error the status line explains what happened, so the hint would only collide with it
+    if (!retry) {
+      const hint = this.add.text(W / 2, y0 + 70, 'One of you creates the farm, the other joins with the code', plain({ color: P.outline, align: 'center', wordWrap: { width: W - 40 } })).setOrigin(0.5, 0);
+      this.ui.push(hint);
+      this.setStatus('');
+    }
   }
 
   private async newFarm() {
