@@ -9,7 +9,13 @@
 export default async function handler(_req, res) {
   const url = process.env.VITE_SUPABASE_URL ?? process.env.SUPABASE_URL ?? '';
   const key = process.env.VITE_SUPABASE_ANON_KEY ?? process.env.SUPABASE_ANON_KEY ?? '';
-  if (!url || !key) {
+  // hosts often prefill these from .env.example, so ignore placeholder values
+  const real =
+    /^https:\/\/[^\s.]+\.[^\s]+$/.test(url) &&
+    !/your-project|your-url|example\.com/i.test(url) &&
+    key.length >= 30 &&
+    !/your-anon|your-key|placeholder/i.test(key);
+  if (!real) {
     return res.status(200).json({ ok: true, state: 'idle', note: 'No Supabase project connected yet.' });
   }
 

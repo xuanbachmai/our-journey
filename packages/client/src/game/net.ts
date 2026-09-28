@@ -42,6 +42,18 @@ export function shouldDeliverNote(note: Pick<NoteRow, 'to_player'>, player: Play
   return note.to_player === player;
 }
 
+/**
+ * Hosts often prefill the env vars from .env.example. Placeholder values would
+ * make the game offer pairing that can never work, so treat them as unset.
+ */
+export function isRealConfig(url: string, key: string): boolean {
+  if (!url || !key) return false;
+  if (!/^https:\/\/[^\s.]+\.[^\s]+$/.test(url)) return false;
+  if (/your-project|your-url|example\.com/i.test(url)) return false;
+  if (/your-anon|your-key|placeholder/i.test(key) || key.length < 30) return false;
+  return true;
+}
+
 type Handler = (payload: unknown) => void;
 
 const PAIR_KEY = 'oj-pairing';
@@ -73,10 +85,10 @@ class Net {
   lastError = '';
 
   constructor() {
-    const url = import.meta.env.VITE_SUPABASE_URL;
-    const key = import.meta.env.VITE_SUPABASE_ANON_KEY;
-    this.enabled = !!url && !!key;
-    this.client = this.enabled ? createClient(url as string, key as string, { auth: { persistSession: true } }) : null;
+    const url = String(import.meta.env.VITE_SUPABASE_URL ?? '').trim();
+    const key = String(import.meta.env.VITE_SUPABASE_ANON_KEY ?? '').trim();
+    this.enabled = isRealConfig(url, key);
+    this.client = this.enabled ? createClient(url, key, { auth: { persistSession: true } }) : null;
     let dev = '';
     try {
       dev = localStorage.getItem(DEVICE_KEY) ?? '';
