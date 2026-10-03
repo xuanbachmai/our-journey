@@ -84,7 +84,7 @@ import { audio } from '../game/audio';
 import { net, type NoteRow } from '../game/net';
 import { eraseLocalData, MAX_PENDING_GIFTS, type AwaySummary, type ProgressEvent } from '../game/state';
 import { confirmBox, copyToClipboard, promptText } from '../ui/dom';
-import { button, panel, plain, style } from '../ui/text';
+import { button, FONT_OPTIONS, type FontKey, getSavedFontKey, panel, plain, refreshFontConfig, saveFontKey, style, tiny } from '../ui/text';
 import { TitleScene } from './TitleScene';
 import type { CookResult, HudData, WorldScene } from './WorldScene';
 
@@ -146,6 +146,8 @@ export class HudScene extends Phaser.Scene {
   private mapBtn!: Phaser.GameObjects.Container;
   private helpBtn!: Phaser.GameObjects.Container;
   private emoteBtn!: Phaser.GameObjects.Container;
+  private rideBtn!: Phaser.GameObjects.Container;
+  private rideIcon!: Phaser.GameObjects.Image;
   private decorBtn!: Phaser.GameObjects.Container;
   private decorStop!: Phaser.GameObjects.Container;
   private areaText!: Phaser.GameObjects.Text;
@@ -199,6 +201,10 @@ export class HudScene extends Phaser.Scene {
     this.mapBtn = this.iconButton('map', () => this.openMap());
     this.helpBtn = this.iconButton('help', () => this.openHelp(0));
     this.emoteBtn = this.iconButton('heart', () => this.toggleEmotes());
+    // one button for the horse, the bicycle and the car, so phones can ride too
+    this.rideBtn = this.iconButton('horse', () => this.world.cycleMount());
+    this.rideIcon = this.rideBtn.list.find((o) => o instanceof Phaser.GameObjects.Image) as Phaser.GameObjects.Image;
+    this.rideBtn.setVisible(false);
     this.decorBtn = this.smallButton('Decorate', () => this.openDecorate(), 0xffe066);
     this.decorStop = this.smallButton('Done', () => this.world.stopDecorate(), 0x7de8c8);
 
@@ -207,7 +213,7 @@ export class HudScene extends Phaser.Scene {
     for (let i = 0; i < 8; i++) {
       const g = this.add.graphics();
       const icon = this.add.image(i * 20 + 10, 10, 'icons', 'seed-wheat');
-      const count = this.add.text(i * 20 + 19, 19, '0', style()).setOrigin(1, 1);
+      const count = this.add.text(i * 20 + 19, 19, '0', tiny()).setOrigin(1, 1);
       const zone = this.add.zone(i * 20 + 10, 10, 20, 20).setInteractive();
       zone.on('pointerdown', () => this.slotSeeds[i] && this.world.selectSeed(this.slotSeeds[i]));
       this.slotGfx.push(g);
@@ -371,6 +377,7 @@ export class HudScene extends Phaser.Scene {
     this.helpBtn.setPosition(W - 58, 12);
     this.questBox.setPosition(W - 72, 12);
     this.emoteBtn.setPosition(W - 30, H - 78);
+    this.rideBtn.setPosition(W - 58, H - 78);
     this.bagBtn.setPosition(18, 46);
     this.decorBtn.setPosition(6, 64);
     this.decorStop.setPosition(6, 64);
@@ -420,6 +427,13 @@ export class HudScene extends Phaser.Scene {
     this.actionGfx.fillStyle(0xffffff, on ? 0.5 : 0.25).fillCircle(-4, -6, 5);
     this.actionLabel.setText(a ? a.label : '').setColor(on ? P.outline : '#8a7a70').setFontSize(a && a.label.length > 7 ? '6px' : '8px');
     this.actionBtn.setAlpha(a ? 1 : 0.55);
+    const mounts = d.mounts ?? [];
+    this.rideBtn.setVisible(mounts.length > 0 && !d.decorate);
+    if (mounts.length) {
+      const next = d.mount === null ? mounts[0] : (mounts[(mounts.indexOf(d.mount) + 1) % (mounts.length + 1)] ?? null);
+      this.rideIcon.setTexture('icons', next === 'bike' ? 'bike' : next === 'car' ? 'car' : 'horse');
+      this.rideIcon.setAlpha(next ? 1 : 0.5);
+    }
     // quest ticker
     this.questGfx.clear();
     if (d.quest) {
@@ -508,7 +522,7 @@ export class HudScene extends Phaser.Scene {
       panel(g, sx, sy, 24, 24, loved.includes(e.key) ? 0xffe8f4 : 0xffffff, loved.includes(e.key) ? 0xff8fcf : 0x4a2a3f);
       c.add(g);
       c.add(this.add.image(sx + 12, sy + 11, 'icons', e.icon).setScale(1.5));
-      if (e.count > 1) c.add(this.add.text(sx + 25, sy + 26, String(e.count), style()).setOrigin(1, 1));
+      if (e.count > 1) c.add(this.add.text(sx + 25, sy + 26, String(e.count), tiny()).setOrigin(1, 1));
       if (loved.includes(e.key)) c.add(this.add.image(sx + 5, sy + 5, 'icons', 'heart').setScale(0.6));
       const z = this.add.zone(sx + 12, sy + 12, 24, 24).setInteractive({ useHandCursor: true });
       z.on('pointerdown', () => {
@@ -976,10 +990,22 @@ export class HudScene extends Phaser.Scene {
     }
   }
 
-  private upgradeList(c: Phaser.GameObjects.Container, w: number, h: number, shop: 'stall' | 'tools' | 'store' | 'petshop', reopen: () => void) {
+  private upgPage = 0;
+
+  /** Returns how many pages the list needed, so callers can keep footers clear of the pager. */
+  private upgradeList(c: Phaser.GameObjects.Container, w: number, h: number, shop: 'stall' | 'tools' | 'store' | 'petshop', reopen: () => void): number {
     const st = this.world.state;
     const top = -h / 2 + 46;
-    UPGRADE_IDS.filter((u) => UPGRADES[u].shop === shop).forEach((id, i) => {
+    const all = UPGRADE_IDS.filter((u) => UPGRADES[u].shop === shop);
+    const per = Math.max(1, Math.floor((h / 2 - 26 - top) / 21));
+    const pages = Math.max(1, Math.ceil(all.length / per));
+    const page = this.upgPage % pages;
+    if (pages > 1)
+      this.pager(c, w, h, page, pages, (p) => {
+        this.upgPage = p;
+        reopen();
+      });
+    all.slice(page * per, page * per + per).forEach((id, i) => {
       const y = top + i * 21;
       const def = UPGRADES[id];
       const lvl = st.upgradeLevel(id);
@@ -1002,6 +1028,7 @@ export class HudScene extends Phaser.Scene {
         c.add(b.container);
       } else c.add(this.add.text(w / 2 - 20, y, 'max', plain({ color: '#3f9a5f' })).setOrigin(1, 0.5));
     });
+    return pages;
   }
 
   private sellList(c: Phaser.GameObjects.Container, w: number, h: number, reopen: () => void) {
@@ -1314,7 +1341,7 @@ export class HudScene extends Phaser.Scene {
       c.add(this.fitImage(this.add.image(x + cs / 2, y + cs / 2, 'furniture', id), cs - 5, cs - 5, 1).setAlpha(isOpen ? 1 : 0.35));
       if (id === sale) c.add(this.add.text(x + 2, y + 1, '%', plain({ color: '#d94a4a' })).setOrigin(0, 0));
       const have = st.furnitureOwned(id);
-      if (have) c.add(this.add.text(x + cs - 2, y + cs - 1, `x${have}`, style()).setOrigin(1, 1));
+      if (have) c.add(this.add.text(x + cs - 2, y + cs - 1, `x${have}`, tiny()).setOrigin(1, 1));
       const z = this.add.zone(x + cs / 2, y + cs / 2, cs, cs).setInteractive({ useHandCursor: true });
       z.on('pointerdown', () => {
         this.shopSel = id;
@@ -1458,7 +1485,7 @@ export class HudScene extends Phaser.Scene {
       panel(g, sx, sy, 24, 24, 0xffffff);
       c.add(g);
       c.add(e.frame ? this.fitImage(this.add.image(sx + 12, sy + 12, 'furniture', e.frame), 20, 20, 1) : this.add.image(sx + 12, sy + 12, 'icons', e.icon).setScale(1.5));
-      if (e.count > 1) c.add(this.add.text(sx + 25, sy + 26, String(e.count), style()).setOrigin(1, 1));
+      if (e.count > 1) c.add(this.add.text(sx + 25, sy + 26, String(e.count), tiny()).setOrigin(1, 1));
       const z = this.add.zone(sx + 12, sy + 12, 24, 24).setInteractive({ useHandCursor: true });
       z.on('pointerdown', async () => {
         const name = this.giftInfo(e.key).name;
@@ -1593,8 +1620,8 @@ export class HudScene extends Phaser.Scene {
     ], ['pets', 'animals', 'build'].indexOf(tab));
     const top = -h / 2 + 46;
     if (tab === 'build') {
-      this.upgradeList(c, w, h, 'petshop', () => this.openPetshop('build'));
-      c.add(this.add.text(0, h / 2 - 12, 'New pens show up right away', plain({ color: '#7a6a70' })).setOrigin(0.5));
+      const pages = this.upgradeList(c, w, h, 'petshop', () => this.openPetshop('build'));
+      if (pages < 2) c.add(this.add.text(0, h / 2 - 12, 'New pens show up right away', plain({ color: '#7a6a70' })).setOrigin(0.5));
       return;
     }
     if (tab === 'pets') {
@@ -1930,7 +1957,7 @@ export class HudScene extends Phaser.Scene {
       c.add(g);
       if (!e) continue;
       c.add(this.bagIcon(tab, e.key, e.icon, sx + 12, sy + 12, 20));
-      if (e.count > 1) c.add(this.add.text(sx + 25, sy + 26, String(e.count), style()).setOrigin(1, 1));
+      if (e.count > 1) c.add(this.add.text(sx + 25, sy + 26, String(e.count), tiny()).setOrigin(1, 1));
       const z = this.add.zone(sx + 12, sy + 12, 24, 24).setInteractive({ useHandCursor: true });
       z.on('pointerdown', () => {
         audio.play('blip');
@@ -2328,28 +2355,28 @@ export class HudScene extends Phaser.Scene {
     prev.setEnabled(idx > 0);
     next.setEnabled(idx < CHAPTERS.length - 1);
     c.add([prev.container, next.container]);
-    c.add(this.add.text(0, top + 2, `${idx + 1}/${CHAPTERS.length}  ${ch.title}`, plain({ color: complete ? '#3f9a5f' : locked ? '#9a8a90' : '#4a2a3f' })).setOrigin(0.5));
+    c.add(this.add.text(0, top + 2, `${idx + 1}/${CHAPTERS.length}  ${ch.title}`, plain({ color: complete ? '#005923' : locked ? '#9a8a90' : '#4a2a3f' })).setOrigin(0.5));
 
     const firstOpen = ch.tasks.findIndex((t) => !wd.questsClaimed.includes(t.id) && t.progress(wd) < t.target);
     ch.tasks.forEach((t, i) => {
-      const y = top + 20 + i * 21;
+      const y = top + 20 + i * 22;
       const done = complete || wd.questsClaimed.includes(t.id);
       const isNext = !locked && !complete && i === firstOpen;
       const g = this.add.graphics();
-      panel(g, -w / 2 + 8, y - 10, w - 16, 20, done ? 0xd8f5e0 : isNext ? 0xfffbe8 : locked ? 0xe8dcc8 : 0xffffff, isNext ? 0xff8fcf : 0x4a2a3f);
+      panel(g, -w / 2 + 8, y - 10, w - 16, 21, done ? 0xd8f5e0 : isNext ? 0xfffbe8 : locked ? 0xe8dcc8 : 0xffffff, isNext ? 0xff8fcf : 0x4a2a3f);
       c.add(g);
       c.add(this.add.image(-w / 2 + 18, y, 'icons', done ? 'star' : 'book').setAlpha(locked ? 0.4 : 1));
-      c.add(this.add.text(-w / 2 + 28, y - 4, t.title, plain({ color: locked ? '#9a8a90' : '#4a2a3f' })).setOrigin(0, 0.5));
+      c.add(this.add.text(-w / 2 + 28, y - 5, t.title, plain({ color: locked ? '#9a8a90' : '#4a2a3f' })).setOrigin(0, 0.5));
       // hint gets the whole second line; progress and reward share the first
-      c.add(this.add.text(-w / 2 + 28, y + 5, locked ? '...' : done ? 'done' : t.hint, plain({ color: done ? '#3f9a5f' : '#7a6a70' })).setOrigin(0, 0.5));
+      c.add(this.add.text(-w / 2 + 28, y + 5, locked ? '...' : done ? 'done' : t.hint, plain({ color: done ? '#005923' : '#6b5760' })).setOrigin(0, 0.5));
       if (!locked) {
         const short = (n: number) => (n >= 1000 ? `${Math.floor(n / 100) / 10}k` : String(n));
         const prog = done ? t.target : Math.min(t.target, t.progress(wd));
-        c.add(this.add.text(w / 2 - 14, y - 4, `${short(prog)}/${short(t.target)} +${t.reward}c`, plain({ color: done ? '#3f9a5f' : '#b07a00' })).setOrigin(1, 0.5));
+        c.add(this.add.text(w / 2 - 14, y - 5, `${short(prog)}/${short(t.target)} +${t.reward}c`, plain({ color: done ? '#005923' : '#905200' })).setOrigin(1, 0.5));
       }
     });
     const footer = complete ? `Claimed: ${ch.reward.text}` : locked ? 'Finish the chapters before this one' : `Reward: ${ch.reward.text}`;
-    c.add(this.add.text(0, h / 2 - 9, footer, plain({ color: complete ? '#3f9a5f' : '#b07a00' })).setOrigin(0.5));
+    c.add(this.add.text(0, h / 2 - 9, footer, plain({ color: complete ? '#005923' : '#905200' })).setOrigin(0.5));
   }
 
   /** Today: three small tasks that change every day, plus a bonus for all three. */
@@ -2369,18 +2396,18 @@ export class HudScene extends Phaser.Scene {
       const done = d.claimed.includes(def.id);
       const prog = done ? def.target : Math.min(def.target, dailyProgress(wd, def));
       const g = this.add.graphics();
-      panel(g, -w / 2 + 8, y - 11, w - 16, 23, done ? 0xd8f5e0 : 0xffffff);
+      panel(g, -w / 2 + 8, y - 11, w - 16, 24, done ? 0xd8f5e0 : 0xffffff);
       const barW = 120;
-      g.fillStyle(0x4a2a3f, 1).fillRect(-w / 2 + 28, y + 3, barW, 5);
-      g.fillStyle(done ? 0x3fb35f : 0xffd23f, 1).fillRect(-w / 2 + 29, y + 4, Math.round((barW - 2) * (prog / def.target)), 3);
+      g.fillStyle(0x4a2a3f, 1).fillRect(-w / 2 + 28, y + 4, barW, 5);
+      g.fillStyle(done ? 0x3fb35f : 0xffd23f, 1).fillRect(-w / 2 + 29, y + 5, Math.round((barW - 2) * (prog / def.target)), 3);
       c.add(g);
       c.add(this.add.image(-w / 2 + 18, y - 2, 'icons', done ? 'star' : 'sun'));
-      c.add(this.add.text(-w / 2 + 28, y - 5, def.title, plain()).setOrigin(0, 0.5));
-      c.add(this.add.text(-w / 2 + 34 + barW, y + 5, `${prog}/${def.target}`, plain({ color: done ? '#3f9a5f' : '#4a2a3f' })).setOrigin(0, 0.5));
-      c.add(this.add.text(w / 2 - 14, y, done ? 'done' : `+${def.reward}c`, plain({ color: done ? '#3f9a5f' : '#b07a00' })).setOrigin(1, 0.5));
+      c.add(this.add.text(-w / 2 + 28, y - 5, def.title, plain({ color: '#4a2a3f' })).setOrigin(0, 0.5));
+      c.add(this.add.text(-w / 2 + 34 + barW, y + 6, `${prog}/${def.target}`, plain({ color: done ? '#005923' : '#4a2a3f' })).setOrigin(0, 0.5));
+      c.add(this.add.text(w / 2 - 14, y, done ? 'done' : `+${def.reward}c`, plain({ color: done ? '#005923' : '#905200' })).setOrigin(1, 0.5));
     });
     const allDone = d.claimed.includes('all');
-    c.add(this.add.text(0, top + 26 + defs.length * 26 + 2, allDone ? 'Bonus claimed! See you tomorrow' : `Finish all ${defs.length}: +${DAILY_BONUS} coins, +1 rep`, plain({ color: allDone ? '#3f9a5f' : '#b07a00' })).setOrigin(0.5));
+    c.add(this.add.text(0, top + 26 + defs.length * 26 + 2, allDone ? 'Bonus claimed! See you tomorrow' : `Finish all ${defs.length}: +${DAILY_BONUS} coins, +1 rep`, plain({ color: allDone ? '#005923' : '#905200' })).setOrigin(0.5));
     c.add(this.add.text(0, h / 2 - 9, 'New tasks at midnight', plain({ color: '#7a6a70' })).setOrigin(0.5));
   }
 
@@ -2411,15 +2438,24 @@ export class HudScene extends Phaser.Scene {
       st.save();
       this.openJournal('settings');
     });
-    mk(3, 'Special days', () => void this.openSpecialDays(), 0xffe066);
+    const fontKey = getSavedFontKey();
+    const fontOpt = FONT_OPTIONS[fontKey];
+    mk(3, `Font: ${fontOpt.label}`, () => {
+      const keys: FontKey[] = ['pixelify', 'fredoka', 'silkscreen', 'pressstart'];
+      const nextKey = keys[(keys.indexOf(fontKey) + 1) % keys.length];
+      saveFontKey(nextKey);
+      refreshFontConfig();
+      this.openJournal('settings');
+    }, 0x7de8c8);
+    mk(4, 'Special days', () => void this.openSpecialDays(), 0xffe066);
     if (net.enabled && net.pairing) {
       const code = net.pairing.code;
-      mk(4, `Farm code: ${code}`, async () => {
+      mk(5, `Farm code: ${code}`, async () => {
         const link = `${window.location.origin}${window.location.pathname}?join=${code}`;
         const ok = await copyToClipboard(link);
         this.showToast(ok ? 'Invite link copied!' : `Code: ${code}`);
       }, 0x7de8c8);
-      mk(5, 'Keep my seat (email)', async () => {
+      mk(6, 'Keep my seat (email)', async () => {
         const cur = await net.userEmail();
         if (cur) {
           this.showToast(`Seat linked to ${cur}`);
@@ -2429,11 +2465,11 @@ export class HudScene extends Phaser.Scene {
         if (!email) return;
         this.showToast((await net.linkEmail(email)) ? 'Check your inbox and tap the link' : `Could not send: ${net.lastError}`);
       });
-      mk(6, 'Reset partner seat', async () => {
+      mk(7, 'Reset partner seat', async () => {
         if (!(await confirmBox(`Free ${otherPlayer(this.world.playerId)}'s seat so they can pair from a new phone?`, 'Reset', 'Cancel'))) return;
         this.showToast((await net.resetPartnerSeat()) ? 'Seat freed. Share the code again.' : 'Could not reset');
       });
-      mk(7, 'Leave this farm', async () => {
+      mk(8, 'Leave this farm', async () => {
         if (await TitleScene.leaveFarm()) {
           st.save();
           this.closeOverlay();
@@ -2442,7 +2478,7 @@ export class HudScene extends Phaser.Scene {
           this.scene.stop();
         }
       }, 0xff8fcf);
-      mk(8, 'Back to title', () => {
+      mk(9, 'Back to title', () => {
         st.save();
         void net.disconnect();
         this.closeOverlay();
@@ -2451,7 +2487,7 @@ export class HudScene extends Phaser.Scene {
         this.scene.stop();
       });
     } else {
-      mk(4, 'Back to title', () => {
+      mk(5, 'Back to title', () => {
         st.save();
         void net.disconnect();
         this.closeOverlay();
@@ -2462,7 +2498,7 @@ export class HudScene extends Phaser.Scene {
       c.add(this.add.text(-w / 2 + 12, rowY(7) + 8, net.enabled ? 'Solo mode. Pair up from the title.' : 'Solo mode: no backend configured.', plain({ color: '#7a6a70' })).setOrigin(0, 0.5));
     }
     // app stores ask for a way to erase your data; it is handy on a shared phone too
-    mk(net.enabled && net.pairing ? 9 : 5, 'Erase this phone', async () => {
+    mk(net.enabled && net.pairing ? 10 : 6, 'Erase this phone', async () => {
       if (!(await confirmBox('Erase the save, notes and pairing stored on this phone? The farm itself stays online.', 'Erase', 'Keep'))) return;
       eraseLocalData();
       net.forgetDevice();

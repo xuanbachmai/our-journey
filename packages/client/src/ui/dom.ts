@@ -15,14 +15,16 @@ export interface PromptOptions {
   type?: 'text' | 'email';
 }
 
+import { getFontFamily } from './text';
+
 const STYLE = `
-.hh-dim{position:fixed;inset:0;background:rgba(42,26,47,.55);display:flex;align-items:center;justify-content:center;z-index:50;font-family:'Press Start 2P',monospace}
-.hh-box{background:#fff4dc;border:3px solid #4a2a3f;box-shadow:0 4px 0 #4a2a3f;padding:14px;width:min(92vw,420px);color:#4a2a3f}
-.hh-title{font-size:12px;margin:0 0 10px;line-height:1.5}
-.hh-input{width:100%;box-sizing:border-box;font-family:inherit;font-size:14px;padding:10px;border:2px solid #4a2a3f;background:#fff;color:#4a2a3f;outline:none}
-textarea.hh-input{height:110px;resize:none;font-size:12px;line-height:1.6}
-.hh-row{display:flex;gap:8px;margin-top:12px;justify-content:flex-end}
-.hh-btn{font-family:inherit;font-size:11px;padding:10px 14px;border:2px solid #4a2a3f;box-shadow:0 3px 0 #4a2a3f;cursor:pointer;background:#e8dcc8;color:#4a2a3f}
+.hh-dim{position:fixed;inset:0;background:rgba(42,26,47,.55);display:flex;align-items:center;justify-content:center;z-index:50;font-family:'Pixelify Sans','Fredoka','Press Start 2P',sans-serif}
+.hh-box{background:#fff4dc;border:3px solid #4a2a3f;box-shadow:0 4px 0 #4a2a3f;padding:16px;width:min(92vw,420px);color:#4a2a3f;border-radius:4px}
+.hh-title{font-size:14px;font-weight:600;margin:0 0 12px;line-height:1.5}
+.hh-input{width:100%;box-sizing:border-box;font-family:inherit;font-size:14px;padding:10px 12px;border:2px solid #4a2a3f;background:#fff;color:#4a2a3f;outline:none;border-radius:3px}
+textarea.hh-input{height:110px;resize:none;font-size:13px;line-height:1.6}
+.hh-row{display:flex;gap:10px;margin-top:14px;justify-content:flex-end}
+.hh-btn{font-family:inherit;font-size:13px;font-weight:600;padding:8px 16px;border:2px solid #4a2a3f;box-shadow:0 3px 0 #4a2a3f;cursor:pointer;background:#e8dcc8;color:#4a2a3f;border-radius:3px}
 .hh-btn.ok{background:#7de8c8}
 .hh-btn:active{transform:translateY(2px);box-shadow:0 1px 0 #4a2a3f}
 `;

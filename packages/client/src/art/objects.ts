@@ -1089,6 +1089,35 @@ export function buildObjectTextures(scene: Phaser.Scene) {
   ps.rows(12, 13, ['o.o', 'rrr', '.r.'], { o: P.red, r: P.red });
   ps.done();
 
+  // vehicles, drawn side-on like the animals so they sit in the same world
+  const vh = new PixelCanvas(scene, 'vehicles', 64, 20);
+  const bikeP = { o: P.outline, f: '#ff6b8a', r: '#5a5a6a', w: '#c9c9d9', s: '#ffd23f' };
+  vh.rows(0, 4, [
+    '....o......o....',
+    '...ooo....ooo...',
+    '..oo.oo..oo.oo..',
+    '.of...fo.of...fo',
+    '.of.r.fossof.rfo',
+    '..oo.oorwroo.oo.',
+    '...ooo.ww..ooo..',
+    '....o...w...o...',
+  ], bikeP);
+  vh.frame('bike', 0, 0, 16, 20);
+  const carP = { o: P.outline, b: '#ff8fcf', d: '#e05fa8', g: '#a8e8ff', y: '#ffd23f', k: '#3b2a3a' };
+  vh.rows(18, 3, [
+    '.....oooooooo.....',
+    '....ogggggggo.....',
+    '...oggoggoggbo....',
+    '.oobbbbbbbbbbboo..',
+    'oybbbbbbbbbbbbbyo.',
+    'obbbbbbbbbbbbbbbo.',
+    'odddddddddddddddo.',
+    '.okko.......okko..',
+    '.okko.......okko..',
+  ], carP);
+  vh.frame('car', 18, 0, 20, 20);
+  vh.done();
+
   const sb = new PixelCanvas(scene, 'stable', 64, 56);
   facade(sb, 0, 0, 64, 56, '#c98b4e', '#a86a3c', '#8a5a33', '#6e4426', { windows: 2 });
   sb.rows(28, 24, ['.oooo.', 'oo..oo', 'o....o', 'o....o'], { o: P.coin });
@@ -1268,6 +1297,23 @@ export function buildObjectTextures(scene: Phaser.Scene) {
   I('duck', (x0) => icons.rows(x0, 1, ['.......ooo..', '......owwwo.', '......oweoBB', '.......owo..', '.ooooooowo..', 'owwwwwwwwo..', 'owgwwwwwwo..', '.owwwwwwo...', '..oooooo....'], { o: P.outline, w: '#fafafa', g: '#d8d8e6', e: P.eye, B: P.orange }));
   I('pig', (x0) => icons.rows(x0 + 1, 2, ['.oo....oo.', 'odpoooopdo', 'oppppppppo', 'opeppppepo', 'oppnnnnppo', 'oppnoonppo', '.oppppppo.', '..oooooo..'], { o: P.outline, p: '#ffb3c8', d: '#ff8fa8', e: P.eye, n: '#ff7aa0' }));
   I('goat', (x0) => icons.rows(x0 + 1, 1, ['o........o', '.o......o.', '..oooooo..', '.owwwwwwo.', '.owewwewo.', '..owwwwo..', '..owwwwo..', '...oggo...', '....gg....'], { o: P.outline, w: '#f0ece0', g: '#c9c0a8', e: P.eye }));
+  I('bike', (x0) => {
+    icons.disc(x0 + 3, 8, 3, P.outline);
+    icons.disc(x0 + 9, 8, 3, P.outline);
+    icons.disc(x0 + 3, 8, 1, '#c9c9d9');
+    icons.disc(x0 + 9, 8, 1, '#c9c9d9');
+    icons.rows(x0 + 2, 3, ['..o..o', '.oo.oo', 'o..o..'], { o: '#ff6b8a' });
+    icons.px(x0 + 8, 2, P.outline);
+  });
+  I('car', (x0) => {
+    icons.rect(x0 + 1, 5, 10, 4, P.outline);
+    icons.rect(x0 + 2, 6, 8, 2, '#ff8fcf');
+    icons.rect(x0 + 3, 2, 6, 3, P.outline);
+    icons.rect(x0 + 4, 3, 4, 1, '#a8e8ff');
+    icons.disc(x0 + 3, 9, 1, P.outline);
+    icons.disc(x0 + 9, 9, 1, P.outline);
+    icons.px(x0 + 11, 6, P.yellow);
+  });
   I('horse', (x0) => icons.rows(x0 + 1, 1, ['..oo......', '.ommo.....', 'ommbbo....', 'ombbbbo...', 'obbbebbo..', 'obbbbbbbo.', 'obbboobbbo', 'obbo..oooo', 'obbo......', 'oooo......'], { o: P.outline, b: '#a0663c', m: '#3b2a3a', e: P.eye }));
   I('fence', (x0) => {
     for (const px of [1, 5, 9]) icons.rect(x0 + px, 2, 2, 9, P.outline);

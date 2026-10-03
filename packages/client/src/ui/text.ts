@@ -1,26 +1,88 @@
 import Phaser from 'phaser';
 import { P } from '../art/palette';
 
-export const FONT = '"Press Start 2P"';
+export type FontKey = 'pixelify' | 'fredoka' | 'silkscreen' | 'pressstart';
+
+export interface FontOption {
+  key: FontKey;
+  label: string;
+  family: string;
+  defaultSize: number;
+}
+
+export const FONT_OPTIONS: Record<FontKey, FontOption> = {
+  pixelify: { key: 'pixelify', label: 'Pixel Clean', family: '"Pixelify Sans", sans-serif', defaultSize: 10 },
+  fredoka: { key: 'fredoka', label: 'Cozy Rounded', family: '"Fredoka", sans-serif', defaultSize: 10 },
+  silkscreen: { key: 'silkscreen', label: 'Compact Pixel', family: '"Silkscreen", monospace', defaultSize: 8 },
+  pressstart: { key: 'pressstart', label: 'Retro Classic', family: '"Press Start 2P", monospace', defaultSize: 8 },
+};
+
+export function getSavedFontKey(): FontKey {
+  try {
+    const k = localStorage.getItem('oj-font-key') as FontKey;
+    if (k && FONT_OPTIONS[k]) return k;
+  } catch {
+    /* ignore */
+  }
+  return 'pixelify';
+}
+
+export function saveFontKey(key: FontKey) {
+  try {
+    if (FONT_OPTIONS[key]) localStorage.setItem('oj-font-key', key);
+  } catch {
+    /* ignore */
+  }
+}
+
+export function getFontFamily(): string {
+  return FONT_OPTIONS[getSavedFontKey()].family;
+}
+
+export function getFontDefaultSize(): number {
+  return FONT_OPTIONS[getSavedFontKey()].defaultSize;
+}
+
+export let FONT = getFontFamily();
+
+export function refreshFontConfig() {
+  FONT = getFontFamily();
+}
 
 export function style(extra: Partial<Phaser.Types.GameObjects.Text.TextStyle> = {}): Phaser.Types.GameObjects.Text.TextStyle {
+  const curKey = getSavedFontKey();
+  const opt = FONT_OPTIONS[curKey];
+  const size = extra.fontSize ? parseInt(String(extra.fontSize), 10) : opt.defaultSize;
+  const strokeThick = extra.strokeThickness !== undefined ? extra.strokeThickness : size > 10 ? 3 : 2;
+
   return {
-    fontFamily: FONT,
-    fontSize: '8px',
+    fontFamily: opt.family,
+    fontSize: `${size}px`,
     color: '#ffffff',
     stroke: P.outline,
-    strokeThickness: 3,
-    resolution: 1,
+    strokeThickness: strokeThick,
+    resolution: 2,
+    padding: { x: 4, y: 3 },
     ...extra,
   };
 }
 
+/** Slot counts sit on top of an icon, so they stay small and tight. */
+export function tiny(extra: Partial<Phaser.Types.GameObjects.Text.TextStyle> = {}): Phaser.Types.GameObjects.Text.TextStyle {
+  return style({ fontSize: '8px', strokeThickness: 2, padding: { x: 1, y: 1 }, ...extra });
+}
+
 export function plain(extra: Partial<Phaser.Types.GameObjects.Text.TextStyle> = {}): Phaser.Types.GameObjects.Text.TextStyle {
+  const curKey = getSavedFontKey();
+  const opt = FONT_OPTIONS[curKey];
+  const size = extra.fontSize ? parseInt(String(extra.fontSize), 10) : opt.defaultSize;
+
   return {
-    fontFamily: FONT,
-    fontSize: '8px',
+    fontFamily: opt.family,
+    fontSize: `${size}px`,
     color: P.outline,
-    resolution: 1,
+    resolution: 2,
+    padding: { x: 4, y: 3 },
     ...extra,
   };
 }
@@ -59,7 +121,7 @@ export function button(
     panel(g, 0, 0, w, h, c);
   };
   draw(color);
-  const t = scene.add.text(w / 2, h / 2 + 1, label, plain()).setOrigin(0.5);
+  const t = scene.add.text(w / 2, h / 2, label, plain()).setOrigin(0.5);
   const zone = scene.add.zone(w / 2, h / 2, w, h).setInteractive({ useHandCursor: true });
   const c = scene.add.container(x, y, [g, t, zone]);
   let enabled = true;

@@ -107,3 +107,10 @@ if (import.meta.env.DEV) {
     Object.assign(window, { __getArea: areas.getArea, __shared: shared });
   });
 }
+
+// Offline play once installed. Development always runs live code, never a cache.
+if ('serviceWorker' in navigator && import.meta.env.PROD) {
+  window.addEventListener('load', () => {
+    void navigator.serviceWorker.register('./sw.js').catch(() => undefined);
+  });
+}

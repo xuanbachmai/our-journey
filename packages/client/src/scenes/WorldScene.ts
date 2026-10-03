@@ -88,6 +88,9 @@ export interface HudData {
   decorate: { item: FurnitureId | null; mode: 'place' | 'pickup' | null } | null;
   special: string | null;
   loveDays: number;
+  /** What the ride button should offer here. */
+  mounts: string[];
+  mount: string | null;
 }
 
 export interface CookResult {
@@ -222,6 +225,42 @@ export class WorldScene extends Phaser.Scene {
     }
   }
 
+  /** What the player can climb on here: the horse, then the vehicles they own. */
+  get mounts(): ('horse' | 'bike' | 'car')[] {
+    if (!AREAS[this.areaId].outdoor) return [];
+    const out: ('horse' | 'bike' | 'car')[] = [];
+    if (this.state.animalCount('horse') > 0) out.push('horse');
+    if (this.state.upgradeLevel('bicycle') > 0) out.push('bike');
+    if (this.state.upgradeLevel('car') > 0) out.push('car');
+    return out;
+  }
+
+  get mount(): 'horse' | 'bike' | 'car' | null {
+    return this.riding ? 'horse' : this.driving;
+  }
+
+  /** One button for every ride: horse, bike, car, then back on foot. */
+  cycleMount() {
+    const list = this.mounts;
+    if (!list.length) {
+      this.events.emit('toast', AREAS[this.areaId].outdoor ? 'Buy a horse, a bicycle or a car first.' : 'Rides wait outside.');
+      return;
+    }
+    const here = this.mount;
+    const next = here === null ? list[0] : list[(list.indexOf(here) + 1) % (list.length + 1)] ?? null;
+    if (next === 'horse') {
+      this.setDriving(null);
+      this.setRiding(true);
+    } else {
+      this.setRiding(false);
+      this.setDriving(next ?? null);
+    }
+    audio.play(next ? 'great' : 'pop');
+    const name = next === 'horse' ? 'your horse' : next === 'bike' ? 'the bicycle' : next === 'car' ? 'the car' : null;
+    this.events.emit('toast', name ? `Off we go on ${name}!` : 'Back on foot.');
+    this.pushHud(true);
+  }
+
   /** Switch between a bicycle and a two-person car for fast outdoor travel. */
   get driving(): 'bike' | 'car' | null {
     const mode = this.registry.get('vehicle') as 'bike' | 'car' | undefined;
@@ -240,18 +279,8 @@ export class WorldScene extends Phaser.Scene {
       this.vehicle = undefined;
     }
     if (active && !this.vehicle) {
-      const g = this.add.graphics();
-      if (active === 'car') {
-        g.fillStyle(0x4a2a3f, 1).fillRoundedRect(-20, -8, 40, 14, 4);
-        g.fillStyle(0x6bd6e8, 1).fillRoundedRect(-12, -6, 12, 6, 2).fillRoundedRect(2, -6, 12, 6, 2);
-        g.fillStyle(0x4a2a3f, 1).fillCircle(-12, 8, 5).fillCircle(12, 8, 5);
-        g.fillStyle(0xffd45c, 1).fillRect(-19, -4, 3, 4).fillRect(16, -4, 3, 4);
-      } else {
-        g.lineStyle(3, 0x4a2a3f, 1).lineBetween(-10, 5, 0, -8).lineBetween(0, -8, 10, 5).lineBetween(-10, 5, 10, 5);
-        g.lineStyle(2, 0x4a2a3f, 1).lineBetween(0, -8, 4, -13);
-        g.fillStyle(0xff6b8a, 1).fillCircle(-10, 5, 4).fillCircle(10, 5, 4);
-      }
-      this.vehicle = this.add.container(this.player.x, this.player.y + 5, [g]).setDepth(this.player.sprite.depth + 1);
+      const sprite = this.add.sprite(0, 0, 'vehicles', active === 'car' ? 'car' : 'bike').setOrigin(0.5, 1).setScale(active === 'car' ? 1.6 : 1.4);
+      this.vehicle = this.add.container(this.player.x, this.player.y + 5, [sprite]).setDepth(this.player.sprite.depth + 1);
     }
     if (!active && this.vehicle) {
       this.vehicle.destroy();
@@ -433,20 +462,7 @@ export class WorldScene extends Phaser.Scene {
       this.keys = kb.addKeys('W,A,S,D') as Record<string, Phaser.Input.Keyboard.Key>;
       kb.on('keydown-SPACE', () => this.doAction());
       kb.on('keydown-E', () => this.doAction());
-      kb.on('keydown-V', () => {
-        if (!AREAS[this.areaId].outdoor) {
-          this.events.emit('toast', 'Vehicles can only be used outdoors.');
-          return;
-        }
-        const next = this.driving === null ? (this.state.upgradeLevel('bicycle') ? 'bike' : this.state.upgradeLevel('car') ? 'car' : null) : this.driving === 'bike' ? (this.state.upgradeLevel('car') ? 'car' : null) : null;
-        if (!next && this.driving === null) {
-          this.events.emit('toast', 'Buy a bicycle or car at the Pet & Barn Shop first.');
-          return;
-        }
-        this.setDriving(next);
-        audio.play(next ? 'great' : 'pop');
-        this.events.emit('toast', next === 'bike' ? (this.state.upgradeLevel('bikeSeat') ? 'Bicycle ready! Your partner can ride with you.' : 'Bicycle ready! Buy the passenger seat to carry your partner.') : next === 'car' ? 'Car ready! Your partner can ride along.' : 'Vehicle parked.');
-      });
+      kb.on('keydown-V', () => this.cycleMount());
       kb.on('keydown-ENTER', () => this.decorate.mode === 'place' && this.decoratePlace());
       kb.on('keydown-ESC', () => this.decorate.mode && this.stopDecorate());
       const seeds: CropId[] = ['wheat', 'carrot', 'tomato', 'strawberry', 'potato', 'corn', 'blueberry', 'pumpkin'];
@@ -954,6 +970,8 @@ export class WorldScene extends Phaser.Scene {
       decorate: this.decorate.mode ? { item: this.decorate.item, mode: this.decorate.mode } : null,
       special: this.specialLabel,
       loveDays: this.state.daysTogether,
+      mounts: this.mounts,
+      mount: this.mount,
     };
     const snapshot = JSON.stringify(data);
     if (!force && snapshot === this.lastHud) return;
