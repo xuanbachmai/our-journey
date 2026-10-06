@@ -10,6 +10,7 @@
     "build": "npm run build -w @hh/client",
     "preview": "npm run preview -w @hh/client",
     "test": "npm run test --workspaces --if-present",
-    "typecheck": "npm run typecheck -w @hh/client"
+    "typecheck": "npm run typecheck -w @hh/client",
+    "playtest": "npm run test:game -w @hh/client"
   }
 }
