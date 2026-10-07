@@ -1,7 +1,9 @@
 import { CROPS, CROP_IDS, type CropId } from './crops';
 
 export type ProduceId = 'egg' | 'fish' | 'milk' | 'wool' | 'mushroom' | 'berry' | 'herb' | 'honey' | 'duck_egg' | 'goat_milk' | 'truffle';
-export type ItemId = `seed:${CropId}` | `crop:${CropId}` | ProduceId;
+/** Made by a machine out of something the farm produced. */
+export type GoodId = 'flour' | 'jam' | 'juice' | 'cheese' | 'cloth';
+export type ItemId = `seed:${CropId}` | `crop:${CropId}` | ProduceId | GoodId;
 
 export interface ItemDef {
   id: ItemId;
@@ -31,10 +33,16 @@ export const ITEMS: Record<ItemId, ItemDef> = {
   duck_egg: { id: 'duck_egg', name: 'Duck egg', sellPrice: 38, icon: 'duck_egg' },
   goat_milk: { id: 'goat_milk', name: 'Goat milk', sellPrice: 55, icon: 'goat_milk' },
   truffle: { id: 'truffle', name: 'Truffle', sellPrice: 120, icon: 'truffle' },
+  flour: { id: 'flour', name: 'Flour', sellPrice: 45, icon: 'flour' },
+  jam: { id: 'jam', name: 'Jam', sellPrice: 130, icon: 'jam' },
+  juice: { id: 'juice', name: 'Juice', sellPrice: 95, icon: 'juice' },
+  cheese: { id: 'cheese', name: 'Cheese', sellPrice: 115, icon: 'cheese' },
+  cloth: { id: 'cloth', name: 'Cloth', sellPrice: 160, icon: 'cloth' },
 };
 
 export const PRODUCE_IDS: ProduceId[] = ['egg', 'duck_egg', 'milk', 'goat_milk', 'wool', 'honey', 'truffle', 'fish', 'mushroom', 'berry', 'herb'];
-export const SELLABLE: ItemId[] = [...CROP_IDS.map((c) => `crop:${c}` as ItemId), ...PRODUCE_IDS];
+export const GOOD_IDS: GoodId[] = ['flour', 'jam', 'juice', 'cheese', 'cloth'];
+export const SELLABLE: ItemId[] = [...CROP_IDS.map((c) => `crop:${c}` as ItemId), ...PRODUCE_IDS, ...GOOD_IDS];
 
 export function itemIcon(id: ItemId) {
   return ITEMS[id].icon;

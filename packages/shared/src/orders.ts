@@ -1,4 +1,4 @@
-import { ITEMS, SELLABLE, type ItemId } from './items';
+import { GOOD_IDS, ITEMS, SELLABLE, type GoodId, type ItemId } from './items';
 import { RECIPES, unlockedRecipes, type BookId, type RecipeId } from './recipes';
 import { roll01 } from './prices';
 
@@ -28,7 +28,11 @@ export function makeOrder(seed: number, counter: number, reputation: number, boo
     const value = RECIPES[dish].basePrice * qty;
     return { id: `o${counter}`, dish, qty, reward: Math.round(value * 1.6), rep: 2 + qty, from };
   }
-  const pool = SELLABLE.filter((i) => !['wool', 'honey', 'milk'].includes(i) || reputation >= 10);
+  // nobody asks for cheese before the farm could plausibly make any
+  const pool = SELLABLE.filter((i) => {
+    if (GOOD_IDS.includes(i as GoodId)) return reputation >= 14;
+    return !['wool', 'honey', 'milk'].includes(i) || reputation >= 10;
+  });
   const item = pool[Math.floor(r('item') * pool.length)];
   const qty = 2 + Math.floor(r('qty') * 3);
   const value = ITEMS[item].sellPrice * qty;

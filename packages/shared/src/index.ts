@@ -19,3 +19,6 @@ export * from './fish';
 export * from './friends';
 export * from './tools';
 export * from './bond';
+export * from './machines';
+export * from './hands';
+export * from './contracts';
