@@ -1,3 +1,4 @@
+import { MACHINE_IDS } from '@hh/shared';
 import { mulberry32 } from '../art/pixel';
 import { T } from '../art/tiles';
 import { blockRect, boolGrid, fillRect, grid, type AreaDef, type AreaObject, photoSpot } from './types';
@@ -141,10 +142,21 @@ export function buildFarm(): AreaDef {
   fillRect(tiles, 0, 21, 7, 1, T.PATH);
   fillRect(tiles, 6, 21, 1, 1, T.PATH);
   fillRect(tiles, 7, 19, 1, 3, T.PATH);
+  fillRect(tiles, 2, 21, 11, 1, T.PATH);
 
   // seed maker next to the field path (upgrade)
   const seedMaker = { tx: 12, ty: 13 };
   objects.push({ key: 'seedmaker', tx: seedMaker.tx, ty: seedMaker.ty, w: 1, h: 1, dy: 0, requiresUpgrade: 'seedmaker', interact: 'seedmaker', label: 'Seeds' });
+
+  // The machine yard, south of the road: one spot per machine with room to
+  // walk between them. Each only appears once it has been bought.
+  const MACHINE_LABELS: Record<string, string> = { mill: 'Mill', juicer: 'Juicer', kettle: 'Kettle', press: 'Press', loom: 'Loom' };
+  const machineYard: { tx: number; ty: number }[] = [];
+  MACHINE_IDS.forEach((id, i) => {
+    const spot = { tx: 3 + i * 2, ty: 20 };
+    machineYard.push(spot);
+    objects.push({ key: 'machines', frame: id, tx: spot.tx, ty: spot.ty, w: 1, h: 1, dy: 0, blocked: true, requiresMachine: id, machine: id, interact: 'machine', label: MACHINE_LABELS[id] });
+  });
 
   // chicken coop (left of the path, below the house) and bee garden, both upgrades
   const coopTx = 2;

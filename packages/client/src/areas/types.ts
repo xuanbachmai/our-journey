@@ -18,6 +18,7 @@ export type InteractId =
   | 'furnshop'
   | 'stable'
   | 'seedmaker'
+  | 'machine'
   | 'photo'
   | 'wardrobe'
   | 'lovetree'
@@ -42,6 +43,10 @@ export interface AreaObject {
   text?: string;
   /** Only shown when this upgrade is owned. */
   requiresUpgrade?: string;
+  /** Only shown when this machine has been bought. */
+  requiresMachine?: string;
+  /** Which machine this is, for the panel. */
+  machine?: string;
   /** Render behind everything (floor decals). */
   floor?: boolean;
 }

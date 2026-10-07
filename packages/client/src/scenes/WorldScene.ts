@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import {
+  type MachineId,
   ANIMALS,
   AREAS,
   cropTotalSeconds,
@@ -551,6 +552,7 @@ export class WorldScene extends Phaser.Scene {
 
   private addObject(o: AreaObject) {
     if (!this.upgradeOwned(o.requiresUpgrade)) return;
+    if (o.requiresMachine && this.state.machineCount(o.requiresMachine as MachineId) <= 0) return;
     const by = (o.ty + o.h) * TILE + (o.dy ?? 0);
     const img = this.add.image(o.tx * TILE, by, o.key, o.frame).setOrigin(0, 1);
     img.setDepth(o.floor ? -15 : by - 2);
@@ -590,7 +592,7 @@ export class WorldScene extends Phaser.Scene {
   /** Re-add objects that an upgrade just unlocked (coop, hives, tables). */
   private refreshUpgradeObjects() {
     for (const o of this.area.objects) {
-      if (!o.requiresUpgrade) continue;
+      if (!o.requiresUpgrade && !o.requiresMachine) continue;
       if (this.objectSprites.some((s) => s.obj === o)) continue;
       this.addObject(o);
     }
@@ -1060,6 +1062,11 @@ export class WorldScene extends Phaser.Scene {
         if (!this.state.animalCount('horse')) return { type: 'none', label: 'No horse', enabled: false };
         return { type: 'stable', label: this.riding ? 'Unsaddle' : 'Ride', enabled: true };
       }
+      if (obj.interact === 'machine') {
+        const id = obj.machine as MachineId;
+        const ready = this.state.machineState(id).ready;
+        return { type: 'machine', label: ready ? `Collect ${ready}` : obj.label ?? 'Use', enabled: true, text: id };
+      }
       return { type: obj.interact, label: obj.label ?? 'Use', enabled: true, text: obj.text };
     }
     // forage
@@ -1197,6 +1204,10 @@ export class WorldScene extends Phaser.Scene {
       case 'seedmaker':
         audio.play('open');
         this.events.emit('openSeedMaker');
+        return;
+      case 'machine':
+        audio.play('open');
+        this.events.emit('openMachine', (a.text ?? 'mill') as MachineId);
         return;
       case 'photo':
         this.takePhoto(a.text as PhotoSpot);

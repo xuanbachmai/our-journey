@@ -1,5 +1,29 @@
 import {
   ACCESSORIES,
+  ANIMAL_IDS,
+  CONTRACT_SLOTS,
+  contractDone,
+  contractExpired,
+  CROP_IDS,
+  cropTotalSeconds,
+  isRipe,
+  HANDS,
+  HAND_IDS,
+  hireCost,
+  HIRE_DAYS,
+  handDaysLeft,
+  handWorking,
+  loadMachines,
+  MACHINES,
+  MACHINE_IDS,
+  machineFree,
+  machineSlots,
+  MAX_ACTIVE_CONTRACTS,
+  MAX_MACHINES,
+  MAX_READY,
+  type Contract,
+  type HandId,
+  type MachineId,
   ANIMALS,
   animalCount,
   animalMax,
@@ -574,6 +598,201 @@ export class GameState {
     bump(this.world, `by:${this.me}:forage`, n);
     this.touch();
     return n;
+  }
+
+  // ----- machines -----
+
+  /** The machine book, created on demand so old saves need no migration. */
+  private machineBook() {
+    if (!this.world.machines) this.world.machines = {};
+    return this.world.machines;
+  }
+
+  machineState(id: MachineId) {
+    const book = this.machineBook();
+    if (!book[id]) book[id] = { count: 0, jobs: [], ready: 0 };
+    return book[id];
+  }
+
+  machineCount(id: MachineId) {
+    return this.world.machines?.[id]?.count ?? 0;
+  }
+
+  machineSlots(id: MachineId) {
+    return machineSlots(this.world.machines, id);
+  }
+
+  machineFree(id: MachineId) {
+    return machineFree(this.world.machines, id);
+  }
+
+  /** Machines the store will sell: unlocked by reputation, up to three each. */
+  machinePrice(id: MachineId): number | null {
+    if (this.reputation < MACHINES[id].unlockRep) return null;
+    if (this.machineCount(id) >= MAX_MACHINES) return null;
+    return MACHINES[id].price;
+  }
+
+  buyMachine(id: MachineId): boolean {
+    const price = this.machinePrice(id);
+    if (price === null || this.coins < price) return false;
+    this.world.coins -= price;
+    this.machineState(id).count++;
+    bump(this.world, 'machine');
+    this.touch();
+    return true;
+  }
+
+  /** Put one item in. Returns false when there is no room or nothing to put in. */
+  startBatch(id: MachineId, item: ItemId, now = Date.now()): boolean {
+    if (this.machineFree(id) <= 0 || this.count(item) <= 0) return false;
+    if (!MACHINES[id].accepts.includes(item)) return false;
+    this.add(item, -1);
+    this.machineState(id).jobs.push({ input: item, startedAt: now, doneAt: now + MACHINES[id].minutes * 60_000 });
+    bump(this.world, 'batch');
+    this.touch();
+    return true;
+  }
+
+  /** Fill every free slot on every machine from the bag. */
+  loadAllMachines(now = Date.now()): number {
+    const n = loadMachines(this.world, now);
+    if (n) {
+      bump(this.world, 'batch', n);
+      this.touch();
+    }
+    return n;
+  }
+
+  /** Take the finished goods off a machine. */
+  collectMachine(id: MachineId): number {
+    const m = this.machineState(id);
+    const n = Math.min(m.ready, MAX_READY);
+    if (n <= 0) return 0;
+    m.ready -= n;
+    this.add(MACHINES[id].output, n);
+    bump(this.world, 'crafted', n);
+    this.touch();
+    return n;
+  }
+
+  /** Milliseconds until the next batch is done, or null when nothing is running. */
+  machineNextDone(id: MachineId, now = Date.now()): number | null {
+    const jobs = this.world.machines?.[id]?.jobs ?? [];
+    if (!jobs.length) return null;
+    return Math.max(0, Math.min(...jobs.map((j) => j.doneAt)) - now);
+  }
+
+  // ----- hired help -----
+
+  handDaysLeft(id: HandId, now = Date.now()) {
+    return handDaysLeft(this.world.hands, id, dayIndex(now));
+  }
+
+  handWorking(id: HandId, now = Date.now()) {
+    return handWorking(this.world.hands, id, dayIndex(now));
+  }
+
+  handPrice(id: HandId): number | null {
+    return this.reputation < HANDS[id].unlockRep ? null : hireCost(id);
+  }
+
+  /** Hire for a week. Hiring again while they are on adds another week. */
+  hireHand(id: HandId, now = Date.now()): boolean {
+    const price = this.handPrice(id);
+    if (price === null || this.coins < price) return false;
+    if (!this.world.hands) this.world.hands = {};
+    const today = dayIndex(now);
+    const from = Math.max(this.world.hands[id] ?? today - 1, today - 1);
+    this.world.hands[id] = from + HIRE_DAYS;
+    this.world.coins -= price;
+    bump(this.world, 'hired');
+    this.touch();
+    return true;
+  }
+
+  /** Coins a day the staff currently costs, for the farm page. */
+  get wageBill(): number {
+    return HAND_IDS.filter((id) => this.handWorking(id)).reduce((s, id) => s + HANDS[id].wage, 0);
+  }
+
+  // ----- shipping contracts -----
+
+  get contractBoard(): Contract[] {
+    return this.world.contracts ?? [];
+  }
+
+  get activeContracts(): Contract[] {
+    return this.world.activeContracts ?? [];
+  }
+
+  canTakeContract() {
+    return this.activeContracts.length < MAX_ACTIVE_CONTRACTS;
+  }
+
+  takeContract(index: number): Contract | null {
+    const board = this.world.contracts ?? [];
+    const c = board[index];
+    if (!c || !this.canTakeContract()) return null;
+    board.splice(index, 1);
+    if (!this.world.activeContracts) this.world.activeContracts = [];
+    this.world.activeContracts.push({ ...c, done: 0 });
+    this.touch();
+    return c;
+  }
+
+  /** Ship as much as the bag can spare. Returns what went, and the reward when it finishes. */
+  shipToContract(id: string, now = Date.now()): { sent: number; finished: Contract | null } {
+    const c = this.activeContracts.find((x) => x.id === id);
+    if (!c || contractDone(c) || contractExpired(c, dayIndex(now))) return { sent: 0, finished: null };
+    const sent = Math.min(this.count(c.item), c.qty - c.done);
+    if (sent <= 0) return { sent: 0, finished: null };
+    this.add(c.item, -sent);
+    c.done += sent;
+    bump(this.world, 'shipped', sent);
+    let finished: Contract | null = null;
+    if (contractDone(c)) {
+      this.world.coins += c.reward;
+      this.world.reputation = Math.min(100, this.reputation + c.rep);
+      bump(this.world, 'contracts');
+      bump(this.world, 'earned', c.reward);
+      this.world.activeContracts = this.activeContracts.filter((x) => x.id !== c.id);
+      finished = c;
+    }
+    this.touch();
+    return { sent, finished };
+  }
+
+  /** How full the board is, for the badge on the journal tab. */
+  get contractSlotsFree() {
+    return Math.max(0, CONTRACT_SLOTS - this.contractBoard.length);
+  }
+
+  // ----- the farm at a glance -----
+
+  /**
+   * What each crop is worth per hour of growing, at today's prices. This is
+   * the number that decides what to plant, so the farm page leads with it.
+   */
+  cropProfit(): { crop: CropId; perHour: number; each: number; grown: number }[] {
+    return CROP_IDS.map((crop) => {
+      const def = CROPS[crop];
+      const hours = cropTotalSeconds(crop) / 3600;
+      const each = this.sellPrice(`crop:${crop}`);
+      const perHour = ((each * def.yieldCount) - def.seedPrice) / hours;
+      return { crop, perHour, each, grown: this.world.stats[`grew:${crop}`] ?? 0 };
+    }).sort((a, b) => b.perHour - a.perHour);
+  }
+
+  /** Everything the farm is quietly working on, for the farm page. */
+  farmSummary(now = Date.now()) {
+    const planted = Object.values(this.world.plots).filter((p) => p.crop).length;
+    const ripe = Object.values(this.world.plots).filter((p) => isRipe(p)).length;
+    const dry = Object.values(this.world.plots).filter((p) => p.crop && !isRipe(p) && p.wateredUntil < now).length;
+    const running = MACHINE_IDS.reduce((s, id) => s + (this.world.machines?.[id]?.jobs.length ?? 0), 0);
+    const ready = MACHINE_IDS.reduce((s, id) => s + (this.world.machines?.[id]?.ready ?? 0), 0);
+    const waiting = ANIMAL_IDS.reduce((s, id) => s + (this.world.producers[id]?.waiting ?? 0), 0);
+    return { planted, ripe, dry, running, ready, waiting, wages: this.wageBill, onCounter: this.world.counter.filter((s) => s.dish).length };
   }
 
   // ----- orders -----

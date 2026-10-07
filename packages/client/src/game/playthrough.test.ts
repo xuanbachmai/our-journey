@@ -217,6 +217,80 @@ describe('a long session', () => {
   });
 });
 
+describe('the long game', () => {
+  it('turns a harvest into artisan goods while nobody is playing', () => {
+    const bot = new Bot();
+    const st = bot.state;
+    st.world.coins = 5000;
+    expect(st.buyMachine('mill')).toBe(true);
+    bot.farm('wheat', 4);
+
+    const wheat = st.count('crop:wheat');
+    expect(wheat).toBeGreaterThan(1);
+    expect(st.loadAllMachines(bot.now)).toBe(2);
+    expect(st.count('crop:wheat')).toBe(wheat - 2);
+
+    bot.advance(60);
+    expect(st.machineState('mill').ready).toBe(2);
+    expect(st.collectMachine('mill')).toBe(2);
+    expect(st.count('flour')).toBe(2);
+    // the whole point: flour is worth more than the wheat that went in
+    expect(st.sellPrice('flour')).toBeGreaterThan(st.sellPrice('crop:wheat'));
+  });
+
+  it('lets hired help keep the farm going over a weekend', () => {
+    const bot = new Bot();
+    const st = bot.state;
+    st.world.coins = 9000;
+    st.addRep(20);
+    st.buyUpgrade('coop');
+    st.buyAnimal('chicken');
+    expect(st.hireHand('barn', bot.now)).toBe(true);
+    expect(st.handWorking('barn', bot.now)).toBe(true);
+    expect(st.wageBill).toBeGreaterThan(0);
+
+    bot.advance(2 * 24 * 60);
+    expect(st.count('egg'), 'the barn hand should have filled the bag').toBeGreaterThan(0);
+  });
+
+  it('plans a shipping contract from the board to the payout', () => {
+    const bot = new Bot();
+    const st = bot.state;
+    expect(st.contractBoard.length).toBeGreaterThan(0);
+
+    const taken = st.takeContract(0);
+    expect(taken).not.toBe(null);
+    const c = st.activeContracts[0];
+    expect(c.done).toBe(0);
+
+    // nothing in the bag yet, so nothing ships
+    expect(st.shipToContract(c.id, bot.now).sent).toBe(0);
+
+    st.add(c.item, c.qty);
+    const coins = st.coins;
+    const { sent, finished } = st.shipToContract(c.id, bot.now);
+    expect(sent).toBe(c.qty);
+    expect(finished?.id).toBe(c.id);
+    expect(st.coins).toBe(coins + c.reward);
+    expect(st.activeContracts).toHaveLength(0);
+  });
+
+  it('keeps the farm page honest about what is going on', () => {
+    const bot = new Bot();
+    const st = bot.state;
+    st.world.coins = 5000;
+    st.buyMachine('mill');
+    bot.farm('wheat', 2);
+    st.loadAllMachines(bot.now);
+
+    const f = st.farmSummary(bot.now);
+    expect(f.running).toBeGreaterThan(0);
+    const best = st.cropProfit();
+    expect(best).toHaveLength(8);
+    expect(best[0].perHour).toBeGreaterThanOrEqual(best[best.length - 1].perHour);
+  });
+});
+
 describe('time away', () => {
   it('catches up three quiet days without anything going strange', () => {
     const bot = new Bot();

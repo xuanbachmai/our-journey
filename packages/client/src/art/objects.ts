@@ -1072,6 +1072,70 @@ export function buildObjectTextures(scene: Phaser.Scene) {
   sm.rect(2, 23, 12, 3, P.woodDark);
   sm.done();
 
+  // ---- the machines that stand in the farm yard ----
+  // One 16x24 frame each, all on their own legs so they read as equipment
+  // rather than furniture when they sit out in the grass.
+  const mc = new PixelCanvas(scene, 'machines', 16 * 5, 24);
+  const legs = (x0: number) => {
+    mc.rect(x0 + 2, 21, 2, 3, P.woodDark);
+    mc.rect(x0 + 12, 21, 2, 3, P.woodDark);
+    mc.rect(x0 + 1, 20, 14, 1, P.outline);
+  };
+  // mill: a squat tower with turning sails
+  let x = 0;
+  mc.rect(x + 4, 6, 8, 14, P.outline);
+  mc.rect(x + 5, 7, 6, 12, P.cream);
+  mc.rect(x + 5, 7, 6, 2, '#e8dcc0');
+  mc.rect(x + 6, 12, 4, 4, P.outline);
+  mc.rect(x + 7, 13, 2, 2, P.wood);
+  mc.rows(x + 5, 0, ['w.....w', '.w...w.', '..www..', '..wow..', '..www..', '.w...w.', 'w.....w'], { w: P.woodLight, o: P.outline });
+  legs(x);
+  mc.frame('mill', 0, 0, 16, 24);
+  // juice press: a funnel over a bottle
+  x = 16;
+  mc.rect(x + 3, 4, 10, 2, P.outline);
+  mc.rows(x + 4, 6, ['oooooooo', '.oyyyyo.', '..oyyo..', '...oo...'], { o: P.outline, y: '#ff9a3c' });
+  mc.rect(x + 6, 10, 4, 3, P.woodDark);
+  mc.rect(x + 4, 13, 8, 7, P.outline);
+  mc.rect(x + 5, 14, 6, 5, '#ffc07a');
+  mc.rect(x + 5, 14, 6, 1, '#ffe0b8');
+  legs(x);
+  mc.frame('juicer', 16, 0, 16, 24);
+  // jam kettle: a round copper pot, steaming
+  x = 32;
+  mc.px(x + 7, 1, '#e8d8e8');
+  mc.px(x + 8, 3, '#e8d8e8');
+  mc.disc(x + 8, 13, 6, P.outline);
+  mc.disc(x + 8, 13, 5, '#c4784a');
+  mc.disc(x + 6, 11, 2, '#e8a070');
+  mc.rect(x + 5, 10, 6, 1, '#d4356b');
+  mc.rect(x + 3, 7, 10, 1, P.outline);
+  mc.rect(x + 4, 8, 8, 1, '#ff6f9a');
+  legs(x);
+  mc.frame('kettle', 32, 0, 16, 24);
+  // cheese press: a screw press over a wheel of cheese
+  x = 48;
+  mc.rect(x + 2, 3, 12, 2, P.outline);
+  mc.rect(x + 7, 5, 2, 5, P.woodDark);
+  mc.rect(x + 4, 10, 8, 2, P.outline);
+  mc.rect(x + 3, 13, 10, 7, P.outline);
+  mc.rect(x + 4, 14, 8, 5, '#ffd255');
+  mc.rect(x + 4, 14, 8, 1, '#ffe89a');
+  mc.px(x + 6, 17, '#e0a82e');
+  mc.px(x + 9, 16, '#e0a82e');
+  legs(x);
+  mc.frame('press', 48, 0, 16, 24);
+  // loom: an upright frame strung with thread
+  x = 64;
+  mc.frameRect(x + 2, 2, 12, 18, P.outline);
+  mc.rect(x + 3, 3, 10, 16, P.wood);
+  for (let i = 0; i < 4; i++) mc.rect(x + 4 + i * 2, 4, 1, 14, '#9fc6f0');
+  mc.rect(x + 3, 9, 10, 2, P.woodDark);
+  mc.rect(x + 3, 10, 10, 1, '#d4e8ff');
+  legs(x);
+  mc.frame('loom', 64, 0, 16, 24);
+  mc.done();
+
   // photo spot: a little camera on a tripod with a heart flag
   const ps = new PixelCanvas(scene, 'photospot', 16, 26);
   ps.rect(2, 3, 12, 9, P.outline);
@@ -1379,6 +1443,75 @@ export function buildObjectTextures(scene: Phaser.Scene) {
     icons.rect(x0 + 3, 5, 6, 5, P.coin);
     icons.rect(x0 + 3, 5, 6, 1, '#fff0a8');
     icons.rect(x0 + 4, 3, 4, 1, P.woodDark);
+  });
+  // ---- what the machines make ----
+  I('flour', (x0) => {
+    // a paper sack, folded over at the top
+    icons.rect(x0 + 2, 2, 8, 9, P.outline);
+    icons.rect(x0 + 3, 3, 6, 7, '#efe3c8');
+    icons.rect(x0 + 3, 3, 6, 2, '#d8c9a8');
+    icons.rect(x0 + 5, 6, 2, 3, '#c9b48a');
+  });
+  I('jam', (x0) => {
+    icons.rect(x0 + 3, 1, 6, 2, P.outline);
+    icons.rect(x0 + 2, 3, 8, 8, P.outline);
+    icons.rect(x0 + 3, 4, 6, 6, '#d4356b');
+    icons.rect(x0 + 3, 4, 6, 1, '#ff6f9a');
+    icons.rect(x0 + 4, 2, 4, 1, P.pink);
+    icons.px(x0 + 5, 7, '#ff9ac0');
+  });
+  I('juice', (x0) => {
+    icons.rect(x0 + 4, 1, 4, 2, P.outline);
+    icons.rect(x0 + 3, 3, 6, 8, P.outline);
+    icons.rect(x0 + 4, 4, 4, 6, '#ff9a3c');
+    icons.rect(x0 + 4, 4, 4, 1, '#ffc07a');
+    icons.px(x0 + 5, 2, P.leaf);
+  });
+  I('cheese', (x0) => {
+    // a wedge with two holes in it
+    icons.rows(x0 + 1, 3, ['...ooo', '..oyyo', '.oyyyo', 'oyyyyo', 'oyyyyo', 'oooooo'], { o: P.outline, y: '#ffd255' });
+    icons.px(x0 + 4, 7, '#e0a82e');
+    icons.px(x0 + 3, 6, '#e0a82e');
+  });
+  I('cloth', (x0) => {
+    icons.rect(x0 + 1, 3, 10, 7, P.outline);
+    icons.rect(x0 + 2, 4, 8, 5, '#9fc6f0');
+    icons.rect(x0 + 2, 4, 8, 1, '#d4e8ff');
+    icons.rect(x0 + 2, 6, 8, 1, '#7fa8d8');
+    icons.rect(x0 + 2, 8, 8, 1, '#7fa8d8');
+  });
+  I('mill', (x0) => {
+    // a little windmill: tower and sails
+    icons.rows(x0 + 3, 4, ['.oo.', 'owwo', 'owwo', 'oooo'], { o: P.outline, w: P.cream });
+    icons.rect(x0 + 5, 1, 2, 3, P.woodDark);
+    icons.rect(x0 + 2, 2, 3, 1, P.wood);
+    icons.rect(x0 + 7, 2, 3, 1, P.wood);
+    icons.px(x0 + 6, 2, P.outline);
+  });
+  I('kettle', (x0) => {
+    icons.disc(x0 + 6, 7, 4, P.outline);
+    icons.disc(x0 + 6, 7, 3, '#b0455f');
+    icons.rect(x0 + 3, 3, 6, 1, P.outline);
+    icons.px(x0 + 6, 2, P.woodDark);
+    icons.px(x0 + 5, 6, '#ff9ac0');
+  });
+  I('juicer', (x0) => {
+    icons.rect(x0 + 3, 2, 6, 3, P.outline);
+    icons.rect(x0 + 4, 3, 4, 1, P.wood);
+    icons.rect(x0 + 2, 8, 8, 3, P.outline);
+    icons.rect(x0 + 3, 9, 6, 1, '#ff9a3c');
+    icons.rect(x0 + 5, 5, 2, 3, P.woodDark);
+  });
+  I('press', (x0) => {
+    icons.rect(x0 + 2, 7, 8, 4, P.outline);
+    icons.rect(x0 + 3, 8, 6, 2, '#ffd255');
+    icons.rect(x0 + 3, 2, 6, 2, P.outline);
+    icons.rect(x0 + 5, 4, 2, 3, P.woodDark);
+  });
+  I('loom', (x0) => {
+    icons.frameRect(x0 + 2, 2, 8, 9, P.outline);
+    for (let i = 0; i < 3; i++) icons.rect(x0 + 4 + i * 2, 3, 1, 7, '#9fc6f0');
+    icons.rect(x0 + 3, 6, 6, 1, P.wood);
   });
   I('rod', (x0) => {
     for (let i = 0; i < 9; i++) icons.px(x0 + 2 + i, 10 - i, P.woodDark);

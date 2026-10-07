@@ -1,6 +1,15 @@
 import Phaser from 'phaser';
 import {
   ACCESSORIES,
+  dayIndex,
+  dueLabel,
+  formatDuration,
+  HANDS,
+  HAND_IDS,
+  machineMargin,
+  MACHINES,
+  MACHINE_IDS,
+  type MachineId,
   ACCESSORY_IDS,
   ANIMALS,
   ANIMAL_IDS,
@@ -301,7 +310,7 @@ export class HudScene extends Phaser.Scene {
     this.world = w;
     const f = w.events;
     // the world scene object survives area changes; drop the listeners from the previous visit
-    for (const ev of ['hud', 'toast', 'openStall', 'openStore', 'openTailor', 'openPetshop', 'openFurnshop', 'openWardrobe', 'openMail', 'openCounter', 'openRecipes', 'openBoard', 'openSign', 'openLoveTree', 'cookResult', 'away', 'progress', 'guideEdge', 'postcard', 'coopInvite', 'notes', 'dialog', 'catch', 'openSeedMaker', 'photo', 'gifts']) f.removeAllListeners(ev);
+    for (const ev of ['hud', 'toast', 'openStall', 'openStore', 'openTailor', 'openPetshop', 'openFurnshop', 'openWardrobe', 'openMail', 'openCounter', 'openRecipes', 'openBoard', 'openSign', 'openLoveTree', 'cookResult', 'away', 'progress', 'guideEdge', 'postcard', 'coopInvite', 'notes', 'dialog', 'catch', 'openSeedMaker', 'photo', 'gifts', 'openMachine']) f.removeAllListeners(ev);
     f.on('hud', (d: HudData) => this.refresh(d));
     f.on('toast', (msg: string) => this.showToast(msg));
     f.on('openStall', () => this.openStall('seeds'));
@@ -328,6 +337,7 @@ export class HudScene extends Phaser.Scene {
     f.on('openCounter', () => this.openCounter());
     f.on('openRecipes', () => this.openRecipes(0));
     f.on('openBoard', () => this.openBoard());
+    f.on('openMachine', (id: MachineId) => this.openMachine(id));
     f.on('openSign', (t: string) => this.openSign(t));
     f.on('openLoveTree', () => this.openLoveTree());
     f.on('dialog', (d: { name: string; text: string; villager?: { id: string; hearts: number; canGift: boolean } }) => this.showDialog(d.name, d.text, d.villager));
@@ -1078,7 +1088,7 @@ export class HudScene extends Phaser.Scene {
   }
 
   // ---------- town store ----------
-  private openStore(tab: 'seeds' | 'books' | 'sell') {
+  private openStore(tab: 'seeds' | 'books' | 'machines' | 'sell') {
     const w = 280;
     const h = 168;
     const st = this.world.state;
@@ -1086,10 +1096,12 @@ export class HudScene extends Phaser.Scene {
     this.tabs(c, w, h, [
       ['Seeds', () => this.openStore('seeds')],
       ['Books+', () => this.openStore('books')],
+      ['Make', () => this.openStore('machines')],
       ['Sell', () => this.openStore('sell')],
-    ], ['seeds', 'books', 'sell'].indexOf(tab));
+    ], ['seeds', 'books', 'machines', 'sell'].indexOf(tab));
     const reopen = () => this.openStore(tab);
     if (tab === 'seeds') this.seedList(c, w, h, reopen);
+    else if (tab === 'machines') this.machineList(c, w, h, reopen);
     else if (tab === 'sell') this.sellList(c, w, h, reopen);
     else if (tab === 'books') {
       const top = -h / 2 + 46;
@@ -1858,12 +1870,19 @@ export class HudScene extends Phaser.Scene {
   }
 
   // ---------- orders board ----------
-  private openBoard() {
-    const w = 270;
-    const h = 150;
+  private openBoard(tab: 'orders' | 'contracts' | 'help' = 'orders') {
+    const w = 282;
+    const h = 176;
     const st = this.world.state;
-    const c = this.openOverlay(w, h, 'Orders board');
-    const top = -h / 2 + 28;
+    const c = this.openOverlay(w, h, 'Work board');
+    this.tabs(c, w, h, [
+      ['Orders', () => this.openBoard('orders')],
+      ['Shipping', () => this.openBoard('contracts')],
+      ['Help', () => this.openBoard('help')],
+    ], ['orders', 'contracts', 'help'].indexOf(tab));
+    if (tab === 'contracts') return this.contractsPage(c, w, h);
+    if (tab === 'help') return this.helpPage(c, w, h);
+    const top = -h / 2 + 44;
     st.world.orders.forEach((o: Order, i) => {
       const y = top + i * 44;
       const g = this.add.graphics();
@@ -1888,6 +1907,227 @@ export class HudScene extends Phaser.Scene {
       c.add(b.container);
     });
     c.add(this.add.text(0, h / 2 - 9, 'New requests every day', plain({ color: '#7a6a70' })).setOrigin(0.5));
+  }
+
+
+  /** The machines the store sells, with what they turn into what. */
+  private machineList(c: Phaser.GameObjects.Container, w: number, h: number, reopen: () => void) {
+    const st = this.world.state;
+    const top = -h / 2 + 44;
+    MACHINE_IDS.forEach((id, i) => {
+      const y = top + i * 24;
+      const def = MACHINES[id];
+      const owned = st.machineCount(id);
+      const price = st.machinePrice(id);
+      c.add(this.add.image(-w / 2 + 16, y, 'icons', def.icon).setScale(1.5));
+      c.add(this.add.text(-w / 2 + 30, y - 6, def.name + (owned ? ` (${owned})` : ''), plain()).setOrigin(0, 0.5));
+      // short enough to clear the price tag on the right
+      c.add(this.add.text(-w / 2 + 30, y + 5, `Makes ${ITEMS[def.output].name.toLowerCase()}, ${formatDuration(def.minutes * 60)} a batch`, plain({ color: '#7a6a70' })).setOrigin(0, 0.5));
+      if (price === null) {
+        const why = owned >= 3 ? 'full' : `${def.unlockRep} rep`;
+        c.add(this.add.text(w / 2 - 34, y, why, plain({ color: '#7a6a70' })).setOrigin(0.5));
+        return;
+      }
+      this.priceTag(c, w / 2 - 66, y, price, st.coins >= price);
+      const b = button(this, w / 2 - 60, y - 7, 46, 14, 'Buy', () => {
+        if (!st.buyMachine(id)) return audio.play('bad');
+        audio.play('coin');
+        this.showToast(`${def.name} delivered to the yard`);
+        this.world.afterChange();
+        reopen();
+      });
+      b.setEnabled(st.coins >= price);
+      c.add(b.container);
+    });
+  }
+
+  // ---------- machines ----------
+
+  /** "in 2h 10m", or "ready" when a batch has just finished. */
+  private whenDone(ms: number | null): string {
+    if (ms === null) return '';
+    if (ms <= 0) return 'ready';
+    return 'in ' + formatDuration(ms / 1000);
+  }
+
+  /**
+   * One machine: what is waiting to be collected, what is cooking, and what
+   * you could put in. The margin is shown next to each input, because the only
+   * real question here is whether to sell the thing or wait for it.
+   */
+  private openMachine(id: MachineId) {
+    const st = this.world.state;
+    const def = MACHINES[id];
+    const w = 282;
+    // only as tall as it needs to be: one row per thing it will take
+    const h = 112 + def.accepts.length * ROW;
+    const m = st.machineState(id);
+    const c = this.openOverlay(w, h, `${def.name}${m.count > 1 ? ` x${m.count}` : ''}`);
+    const top = -h / 2 + 30;
+    const reopen = () => this.openMachine(id);
+
+    c.add(this.add.text(0, top - 6, `${def.desc} — one batch takes ${formatDuration(def.minutes * 60)}`, plain({ color: '#7a6a70' })).setOrigin(0.5));
+
+    // what is finished
+    const g = this.add.graphics();
+    panel(g, -w / 2 + 8, top + 4, w - 16, 26, 0xffffff);
+    c.add(g);
+    c.add(this.add.image(-w / 2 + 22, top + 17, 'icons', ITEMS[def.output].icon).setScale(1.5));
+    c.add(this.add.text(-w / 2 + 36, top + 11, `${ITEMS[def.output].name} ready: ${m.ready}`, plain()).setOrigin(0, 0.5));
+    const runningLabel = m.jobs.length
+      ? `${m.jobs.length} of ${st.machineSlots(id)} working, next ${this.whenDone(st.machineNextDone(id))}`
+      : `nothing working (${st.machineSlots(id)} free)`;
+    c.add(this.add.text(-w / 2 + 36, top + 22, runningLabel, plain({ color: '#7a6a70' })).setOrigin(0, 0.5));
+    const take = button(this, w / 2 - 66, top + 9, 54, 16, 'Collect', () => {
+      const n = st.collectMachine(id);
+      if (!n) return audio.play('bad');
+      audio.play('pop');
+      this.showToast(`+${n} ${ITEMS[def.output].name.toLowerCase()}`);
+      this.world.afterChange();
+      reopen();
+    }, 0x7de8c8);
+    take.setEnabled(m.ready > 0);
+    c.add(take.container);
+
+    // what you can put in
+    const free = st.machineFree(id);
+    c.add(this.add.text(-w / 2 + 12, top + 42, 'Put in', plain({ color: '#7a6a70' })).setOrigin(0, 0.5));
+    def.accepts.forEach((item, i) => {
+      const y = top + 58 + i * ROW;
+      const have = st.count(item);
+      c.add(this.add.image(-w / 2 + 16, y, 'icons', ITEMS[item].icon));
+      c.add(this.add.text(-w / 2 + 28, y - 4, `${ITEMS[item].name} x${have}`, plain()).setOrigin(0, 0.5));
+      const gain = machineMargin(id, item);
+      c.add(this.add.text(-w / 2 + 28, y + 6, `+${gain}c over selling it`, plain({ color: '#b07a00' })).setOrigin(0, 0.5));
+      const put = button(this, w / 2 - 66, y - 8, 54, 16, 'Load', () => {
+        if (!st.startBatch(id, item)) return audio.play('bad');
+        audio.play('pop');
+        this.world.afterChange();
+        reopen();
+      }, 0xffe066);
+      put.setEnabled(have > 0 && free > 0);
+      c.add(put.container);
+    });
+    if (free <= 0 && m.jobs.length) c.add(this.add.text(0, h / 2 - 9, 'Every slot is busy. Come back later.', plain({ color: '#7a6a70' })).setOrigin(0.5));
+    else if (!def.accepts.some((i) => st.count(i) > 0)) c.add(this.add.text(0, h / 2 - 9, 'Nothing in the bag it can use yet.', plain({ color: '#7a6a70' })).setOrigin(0.5));
+  }
+
+  // ---------- the farm at a glance ----------
+
+  /**
+   * The page you open when you are deciding what to do with an evening: what
+   * is waiting, what is running, and which crop is actually worth planting.
+   */
+  private farmPage(c: Phaser.GameObjects.Container, w: number, h: number) {
+    const st = this.world.state;
+    const f = st.farmSummary();
+    const top = -h / 2 + 44;
+    const lines = [
+      `${f.ripe} ripe, ${f.planted} growing${f.dry ? `, ${f.dry} thirsty` : ''}`,
+      `${f.waiting} waiting in the barn, ${f.onCounter} on the counter`,
+      f.running || f.ready ? `${f.running} batch${f.running === 1 ? '' : 'es'} working, ${f.ready} made` : 'no machines working',
+      f.wages ? `help costs ${f.wages}c a day` : 'no help hired',
+    ];
+    lines.forEach((t, i) => c.add(this.add.text(-w / 2 + 14, top + i * 12, t, plain({ color: i === 0 ? '#3f3a3f' : '#7a6a70' })).setOrigin(0, 0.5)));
+
+    c.add(this.add.text(-w / 2 + 14, top + 56, 'Worth planting (coins an hour)', plain()).setOrigin(0, 0.5));
+    st.cropProfit().slice(0, 4).forEach((row, i) => {
+      const y = top + 72 + i * 13;
+      c.add(this.add.image(-w / 2 + 20, y, 'icons', `crop-${row.crop}`));
+      c.add(this.add.text(-w / 2 + 32, y, CROPS[row.crop].name, plain()).setOrigin(0, 0.5));
+      c.add(this.add.text(w / 2 - 58, y, `${row.each}c each`, plain({ color: '#7a6a70' })).setOrigin(1, 0.5));
+      c.add(this.add.text(w / 2 - 14, y, `${Math.round(row.perHour)}/h`, plain({ color: i === 0 ? '#3f9a5f' : '#b07a00' })).setOrigin(1, 0.5));
+    });
+    const load = button(this, w / 2 - 96, top + 48, 84, 16, 'Load machines', () => {
+      const n = st.loadAllMachines();
+      if (!n) return audio.play('bad');
+      audio.play('pop');
+      this.showToast(`Started ${n} batch${n === 1 ? '' : 'es'}`);
+      this.world.afterChange();
+    }, 0xffe066);
+    load.setEnabled(MACHINE_IDS.some((id) => st.machineFree(id) > 0 && MACHINES[id].accepts.some((i) => st.count(i) > 0)));
+    c.add(load.container);
+  }
+
+  // ---------- contracts and hired help ----------
+
+  private contractsPage(c: Phaser.GameObjects.Container, w: number, h: number) {
+    const st = this.world.state;
+    const today = dayIndex(Date.now());
+    const top = -h / 2 + 54;
+    let y = top;
+
+    for (const ct of st.activeContracts) {
+      const g = this.add.graphics();
+      panel(g, -w / 2 + 8, y - 13, w - 16, 30, 0xf6ffe8);
+      c.add(g);
+      c.add(this.add.image(-w / 2 + 22, y, 'icons', ITEMS[ct.item].icon).setScale(1.5));
+      c.add(this.add.text(-w / 2 + 36, y - 6, `${ct.from}: ${ct.done}/${ct.qty} ${ITEMS[ct.item].name}`, plain()).setOrigin(0, 0.5));
+      c.add(this.add.text(-w / 2 + 36, y + 5, `${ct.reward}c, due ${dueLabel(ct, today)} — you have ${st.count(ct.item)}`, plain({ color: '#b07a00' })).setOrigin(0, 0.5));
+      const ship = button(this, w / 2 - 68, y - 8, 56, 16, 'Ship', () => {
+        const { sent, finished } = st.shipToContract(ct.id);
+        if (!sent) return audio.play('bad');
+        audio.play(finished ? 'quest' : 'coin');
+        this.showToast(finished ? `${finished.from} paid ${finished.reward} coins!` : `Shipped ${sent}`);
+        this.world.afterChange();
+        this.openBoard('contracts');
+      }, 0x7de8c8);
+      ship.setEnabled(st.count(ct.item) > 0);
+      c.add(ship.container);
+      y += 34;
+    }
+
+    if (!st.canTakeContract()) {
+      c.add(this.add.text(0, h / 2 - 9, 'Finish one before taking another', plain({ color: '#7a6a70' })).setOrigin(0.5));
+      return;
+    }
+    c.add(this.add.text(-w / 2 + 12, y - 2, 'On the board', plain({ color: '#7a6a70' })).setOrigin(0, 0.5));
+    y += 12;
+    st.contractBoard.slice(0, 3).forEach((ct, i) => {
+      const row = y + i * 26;
+      if (row > h / 2 - 22) return;
+      c.add(this.add.image(-w / 2 + 20, row, 'icons', ITEMS[ct.item].icon));
+      c.add(this.add.text(-w / 2 + 32, row - 5, `${ct.qty} ${ITEMS[ct.item].name} for ${ct.from}`, plain()).setOrigin(0, 0.5));
+      c.add(this.add.text(-w / 2 + 32, row + 5, `${ct.reward}c  +${ct.rep} rep  ${dueLabel(ct, today)}`, plain({ color: '#b07a00' })).setOrigin(0, 0.5));
+      const take = button(this, w / 2 - 62, row - 7, 50, 15, 'Take', () => {
+        if (!st.takeContract(i)) return audio.play('bad');
+        audio.play('quest');
+        this.world.afterChange();
+        this.openBoard('contracts');
+      }, 0xffe066);
+      c.add(take.container);
+    });
+  }
+
+  private helpPage(c: Phaser.GameObjects.Container, w: number, h: number) {
+    const st = this.world.state;
+    const top = -h / 2 + 62;
+    c.add(this.add.text(0, top - 20, 'A week at a time. They work the mornings you are away.', plain({ color: '#7a6a70' })).setOrigin(0.5));
+    HAND_IDS.forEach((id, i) => {
+      const y = top + 10 + i * 34;
+      const hand = HANDS[id];
+      const left = st.handDaysLeft(id);
+      const price = st.handPrice(id);
+      const g = this.add.graphics();
+      panel(g, -w / 2 + 8, y - 13, w - 16, 30, left ? 0xf6ffe8 : 0xffffff);
+      c.add(g);
+      c.add(this.add.image(-w / 2 + 22, y, 'icons', hand.icon).setScale(1.5));
+      c.add(this.add.text(-w / 2 + 36, y - 6, hand.name, plain()).setOrigin(0, 0.5));
+      c.add(this.add.text(-w / 2 + 36, y + 5, left ? `${hand.desc} — ${left} day${left === 1 ? '' : 's'} left` : hand.desc, plain({ color: left ? '#3f9a5f' : '#7a6a70' })).setOrigin(0, 0.5));
+      if (price === null) {
+        c.add(this.add.text(w / 2 - 40, y, `${hand.unlockRep} rep`, plain({ color: '#7a6a70' })).setOrigin(0.5));
+        return;
+      }
+      const hire = button(this, w / 2 - 74, y - 8, 62, 16, `${price}c`, () => {
+        if (!st.hireHand(id)) return audio.play('bad');
+        audio.play('coin');
+        this.showToast(`${hand.name} starts tomorrow`);
+        this.world.afterChange();
+        this.openBoard('help');
+      }, 0xffe066);
+      hire.setEnabled(st.coins >= price);
+      c.add(hire.container);
+    });
   }
 
   // ---------- bag ----------
@@ -2300,22 +2540,24 @@ export class HudScene extends Phaser.Scene {
   // ---------- journal ----------
   private journeyView: number | null = null;
 
-  private openJournal(tab: 'journey' | 'today' | 'us' | 'album' | 'stats' | 'settings') {
+  private openJournal(tab: 'journey' | 'today' | 'farm' | 'us' | 'album' | 'stats' | 'settings') {
     const w = 300;
     const h = 174;
     const c = this.openOverlay(w, h, 'Journal');
     this.tabs(c, w, h, [
       ['Story', () => { this.journeyView = null; this.openJournal('journey'); }],
       ['Today', () => this.openJournal('today')],
+      ['Farm', () => this.openJournal('farm')],
       ['Us', () => this.openJournal('us')],
       ['Book', () => this.openJournal('album')],
       ['Stats', () => this.openJournal('stats')],
       ['Setup', () => this.openJournal('settings')],
-    ], ['journey', 'today', 'us', 'album', 'stats', 'settings'].indexOf(tab));
+    ], ['journey', 'today', 'farm', 'us', 'album', 'stats', 'settings'].indexOf(tab));
     const st = this.world.state;
     const top = -h / 2 + 40;
     if (tab === 'journey') this.journeyPage(c, w, h, top);
     else if (tab === 'today') this.todayPage(c, w, h, top);
+    else if (tab === 'farm') this.farmPage(c, w, h);
     else if (tab === 'us') this.usPage(c, w, h, top);
     else if (tab === 'album') {
       this.bookPage(c, w, h, top);

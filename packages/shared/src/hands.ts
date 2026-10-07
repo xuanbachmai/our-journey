@@ -19,9 +19,9 @@ export interface HandDef {
 }
 
 export const HANDS: Record<HandId, HandDef> = {
-  water: { id: 'water', name: 'Mina the waterer', desc: 'Waters every planted row each morning', wage: 90, icon: 'can', unlockRep: 0 },
-  barn: { id: 'barn', name: 'Bo the barn hand', desc: 'Gathers eggs, milk and wool into your bag', wage: 130, icon: 'egg', unlockRep: 8 },
-  tend: { id: 'tend', name: 'Rue the tinker', desc: 'Reloads your machines from the bag', wage: 180, icon: 'mill', unlockRep: 14 },
+  water: { id: 'water', name: 'Mina the waterer', desc: 'Waters the field each morning', wage: 90, icon: 'can', unlockRep: 0 },
+  barn: { id: 'barn', name: 'Bo the barn hand', desc: 'Brings in eggs, milk and wool', wage: 130, icon: 'egg', unlockRep: 8 },
+  tend: { id: 'tend', name: 'Rue the tinker', desc: 'Reloads your machines', wage: 180, icon: 'mill', unlockRep: 14 },
 };
 
 export const HAND_IDS: HandId[] = ['water', 'barn', 'tend'];
