@@ -36,9 +36,30 @@ export const T = {
 export const TILESET_KEY = 'tiles';
 const COUNT = 26;
 
+/**
+ * Ground with depth: a soft dither so the base reads as two tones, clumps of
+ * light and shade like real turf, and a darker lip along the bottom edge so
+ * tiles stack with a hint of relief instead of looking flat.
+ */
 function speckle(pc: PixelCanvas, x0: number, y0: number, base: string, dots: string[], n: number, rnd: () => number) {
   pc.rect(x0, y0, TILE, TILE, base);
-  for (let i = 0; i < n; i++) pc.px(x0 + Math.floor(rnd() * TILE), y0 + Math.floor(rnd() * TILE), dots[Math.floor(rnd() * dots.length)]);
+  const shade = dots[dots.length - 1] ?? base;
+  // A loose checker dither reads as a second tone without banding: every other
+  // pixel is a candidate, and only a few of them are taken.
+  for (let y = 0; y < TILE; y++) {
+    for (let x = 0; x < TILE; x++) {
+      if ((x + y) % 2 === 0 && rnd() < 0.16) pc.px(x0 + x, y0 + y, shade);
+    }
+  }
+  // clumps: a blade or a catch of light, two or three pixels together
+  for (let i = 0; i < n; i++) {
+    const cx = x0 + Math.floor(rnd() * TILE);
+    const cy = y0 + Math.floor(rnd() * TILE);
+    const color = dots[Math.floor(rnd() * dots.length)];
+    pc.px(cx, cy, color);
+    if (rnd() < 0.5) pc.px(cx, cy - 1, color);
+    if (rnd() < 0.3) pc.px(cx + 1, cy + 1, shade);
+  }
 }
 
 function flower(pc: PixelCanvas, x: number, y: number, color: string, center: string) {
@@ -88,14 +109,27 @@ export function buildTileset(scene: Phaser.Scene) {
     pc.rect(at(T.TILLED), y, TILE, 1, P.tilledDark);
     pc.rect(at(T.TILLED), y + 2, TILE, 1, P.soil);
   }
+  // crumbs of earth, so the furrows read as broken ground and not as stripes
+  for (let i = 0; i < 10; i++) pc.px(at(T.TILLED) + Math.floor(rnd() * TILE), Math.floor(rnd() * TILE), i % 3 ? P.tilledDark : P.pathLight);
   pc.rect(at(T.WATERED), 0, TILE, TILE, P.wet);
   for (let y = 1; y < TILE; y += 4) {
     pc.rect(at(T.WATERED), y, TILE, 1, P.wetDark);
     pc.rect(at(T.WATERED), y + 2, TILE, 1, P.tilled);
   }
+  for (let i = 0; i < 10; i++) pc.px(at(T.WATERED) + Math.floor(rnd() * TILE), Math.floor(rnd() * TILE), i % 3 ? P.wetDark : P.tilled);
+  // water: deeper towards the bottom, with ripples and a few sun sparkles
   pc.rect(at(T.WATER), 0, TILE, TILE, P.water);
-  for (let i = 0; i < 5; i++) pc.rect(at(T.WATER) + Math.floor(rnd() * 13), Math.floor(rnd() * TILE), 3, 1, P.waterLight);
-  for (let i = 0; i < 4; i++) pc.px(at(T.WATER) + Math.floor(rnd() * TILE), Math.floor(rnd() * TILE), P.waterDark);
+  for (let y = 0; y < TILE; y++) {
+    const deep = y / TILE;
+    for (let x = 0; x < TILE; x++) if ((x + y) % 2 === 0 && rnd() < deep * 0.5) pc.px(at(T.WATER) + x, y, P.waterDark);
+  }
+  for (let i = 0; i < 6; i++) pc.rect(at(T.WATER) + Math.floor(rnd() * 12), Math.floor(rnd() * TILE), 3, 1, P.waterLight);
+  for (let i = 0; i < 3; i++) {
+    const sx = at(T.WATER) + 1 + Math.floor(rnd() * 13);
+    const sy = 1 + Math.floor(rnd() * 13);
+    pc.px(sx, sy, P.white);
+    pc.px(sx + 1, sy, P.waterLight);
+  }
   speckle(pc, at(T.SAND), 0, P.sand, [P.pathLight, '#fff0c0'], 10, rnd);
   speckle(pc, at(T.CLOVER), 0, P.grass, [P.grassLight, P.grassDark], 8, rnd);
   const cx = at(T.CLOVER) + 8;

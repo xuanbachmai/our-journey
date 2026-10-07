@@ -1664,4 +1664,14 @@ export function buildObjectTextures(scene: Phaser.Scene) {
   fx.rows(105, 2, ['.o.', 'ooo', '.o.'], { o: P.white });
   fx.frame('twinkle', 104, 0, 8, 8);
   fx.done();
+
+  // ---- lamp light ----
+  // Rings of rising alpha: additive on screen this reads as a warm pool of
+  // light, but it is still drawn in whole pixels like everything else.
+  const glow = new PixelCanvas(scene, 'glow', 32, 32);
+  for (let r = 15; r >= 1; r--) {
+    const t = 1 - r / 15;
+    glow.disc(16, 16, r, `rgba(255, 206, 126, ${(0.03 + t * t * 0.16).toFixed(3)})`);
+  }
+  glow.done();
 }

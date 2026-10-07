@@ -17,6 +17,7 @@ const FOOT_H = 5;
 
 export class Character {
   sprite: Phaser.GameObjects.Sprite;
+  shadow: Phaser.GameObjects.Ellipse;
   label: Phaser.GameObjects.Text;
   facing: Facing = 'down';
   moving = false;
@@ -34,6 +35,8 @@ export class Character {
     readonly world: CollisionWorld,
   ) {
     this.texKey = texKey;
+    // a soft contact shadow so the character sits on the ground, not above it
+    this.shadow = scene.add.ellipse(x, y, 13, 5, 0x2a1a2f, 0.22).setOrigin(0.5, 0.5);
     this.sprite = scene.add.sprite(x, y, texKey, 0).setOrigin(0.5, 1);
     this.label = scene.add
       .text(x, y - CHAR_H - 3, name, { fontFamily: '"Press Start 2P"', fontSize: '8px', color: '#ffffff', stroke: P.outline, strokeThickness: 3, resolution: 1 })
@@ -201,12 +204,14 @@ export class Character {
 
   update() {
     this.sprite.setDepth(this.sprite.y);
+    this.shadow.setPosition(Math.round(this.sprite.x), Math.round(this.sprite.y - 1)).setDepth(this.sprite.y - 0.5);
     this.label.setPosition(Math.round(this.sprite.x), Math.round(this.sprite.y - CHAR_H - 1));
     this.label.setDepth(this.sprite.y + 1);
     this.bubble?.setPosition(Math.round(this.sprite.x), Math.round(this.sprite.y - CHAR_H - 6));
   }
 
   destroy() {
+    this.shadow.destroy();
     this.sprite.destroy();
     this.label.destroy();
     this.bubble?.destroy();

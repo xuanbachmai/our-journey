@@ -299,6 +299,9 @@ export class WorldScene extends Phaser.Scene {
   private objectSprites: { obj: AreaObject; img: Phaser.GameObjects.Image }[] = [];
   private upgradeDecorSprites: Phaser.GameObjects.Image[] = [];
   private night!: Phaser.GameObjects.Rectangle;
+  private vignette!: Phaser.GameObjects.Graphics;
+  private lampGlows: Phaser.GameObjects.Image[] = [];
+  private motes: Phaser.GameObjects.Image[] = [];
   private cloud!: Phaser.GameObjects.Rectangle;
   private fireflies: Phaser.GameObjects.Image[] = [];
   private rain: Phaser.GameObjects.Image[] = [];
@@ -351,6 +354,8 @@ export class WorldScene extends Phaser.Scene {
     this.objectSprites = [];
     this.upgradeDecorSprites = [];
     this.fireflies = [];
+    this.lampGlows = [];
+    this.motes = [];
     this.rain = [];
     this.weather = 'sunny';
     this.inPortal = false;
@@ -451,6 +456,8 @@ export class WorldScene extends Phaser.Scene {
     this.tweens.add({ targets: this.cursor, alpha: 0.35, duration: 500, yoyo: true, repeat: -1 });
 
     this.night = this.add.rectangle(0, 0, 10, 10, 0x1a2a6a, 0).setOrigin(0).setScrollFactor(0).setDepth(20000);
+    // a gentle vignette keeps the eye on the middle of the screen
+    this.vignette = this.add.graphics().setScrollFactor(0).setDepth(20001);
     this.cloud = this.add.rectangle(0, 0, 10, 10, 0x6a7a9a, 0).setOrigin(0).setScrollFactor(0).setDepth(19999);
     this.scale.on('resize', this.layoutOverlays, this);
     this.layoutOverlays();
@@ -547,6 +554,16 @@ export class WorldScene extends Phaser.Scene {
     const by = (o.ty + o.h) * TILE + (o.dy ?? 0);
     const img = this.add.image(o.tx * TILE, by, o.key, o.frame).setOrigin(0, 1);
     img.setDepth(o.floor ? -15 : by - 2);
+    if (!o.floor && o.blocked && o.w <= 6) {
+      const sw = o.w * TILE * 0.85;
+      this.add.ellipse(o.tx * TILE + (o.w * TILE) / 2, by, sw, Math.max(4, sw * 0.2), 0x2a1a2f, 0.18).setDepth(by - 3);
+    }
+    if (o.frame === 'lamp') {
+      // above the night tint, so the lamp cuts a pool of warm light out of it
+      const g = this.add.image(o.tx * TILE + TILE / 2, by - 18, 'glow').setDepth(20002).setAlpha(0);
+      g.setBlendMode(Phaser.BlendModes.ADD);
+      this.lampGlows.push(g);
+    }
     this.objectSprites.push({ obj: o, img });
     if (o.blocked) for (let y = o.ty; y < o.ty + o.h; y++) for (let x = o.tx; x < o.tx + o.w; x++) if (this.blocked[y]?.[x] !== undefined) this.blocked[y][x] = true;
   }
@@ -1692,6 +1709,23 @@ export class WorldScene extends Phaser.Scene {
       };
       wander();
     }
+    // motes of dust catching the sun; they fade out as the light goes
+    for (let i = 0; i < 10; i++) {
+      const m = this.add.image(Phaser.Math.Between(24, w * TILE - 24), Phaser.Math.Between(24, h * TILE - 24), 'fx', i % 2 ? 'dust1' : 'dust0').setDepth(19000).setAlpha(0);
+      this.motes.push(m);
+      const float = () => {
+        if (!m.scene) return;
+        this.tweens.add({
+          targets: m,
+          x: Phaser.Math.Clamp(m.x + Phaser.Math.Between(-40, 40), 16, w * TILE - 16),
+          y: Phaser.Math.Clamp(m.y + Phaser.Math.Between(-24, 10), 16, h * TILE - 16),
+          duration: Phaser.Math.Between(4000, 8000),
+          ease: 'Sine.easeInOut',
+          onComplete: float,
+        });
+      };
+      float();
+    }
     for (let i = 0; i < 8; i++) {
       const f = this.add.image(Phaser.Math.Between(48, w * TILE - 48), Phaser.Math.Between(48, h * TILE - 48), 'fx', 'firefly').setDepth(20001).setAlpha(0);
       this.fireflies.push(f);
@@ -1705,6 +1739,11 @@ export class WorldScene extends Phaser.Scene {
 
   private layoutOverlays() {
     this.night?.setSize(this.scale.width + 4, this.scale.height + 4);
+    if (this.vignette) {
+      const { width: w, height: h } = this.scale;
+      this.vignette.clear();
+      for (let i = 0; i < 10; i++) this.vignette.fillStyle(0x2a1a2f, 0.018).fillRect(i, i, w - i * 2, h - i * 2);
+    }
     this.cloud?.setSize(this.scale.width + 4, this.scale.height + 4);
   }
 
@@ -1720,6 +1759,8 @@ export class WorldScene extends Phaser.Scene {
     else if (hour >= 18) a = ((hour - 18) / 3) * MAX;
     else if (hour < 7) a = ((7 - hour) / 2) * MAX;
     this.night.setFillStyle(hour >= 17 && hour < 20 ? 0x7a3a6a : 0x1a2a6a, a);
+    for (const g of this.lampGlows) g.setAlpha(Math.min(0.8, a * 3) * (0.85 + 0.15 * Math.sin(this.time.now / 600 + g.x)));
+    for (const m of this.motes) m.setAlpha(Math.max(0, 0.34 - a * 1.4));
     const glow = a > 0.2 ? (Math.sin(this.time.now / 300) + 1) / 2 : 0;
     this.fireflies.forEach((f, i) => f.setAlpha(a > 0.2 ? glow * (0.4 + ((i * 37) % 60) / 100) : 0));
   }
