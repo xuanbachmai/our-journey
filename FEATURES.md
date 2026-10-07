@@ -30,6 +30,13 @@ A cute pixel farm, kitchen and little world for two players, **xb** and **qd**. 
 - Town orders board with daily requests that pay extra. Farm stall and store buy produce at daily prices.
 - Coziness and the couple bond raise dish prices.
 
+## Machines, help and contracts
+- Five machines turn what the farm makes into something worth two or three times as much: a mill (flour), a juice press, a jam kettle, a cheese press and a loom. Bought from the general store's Make shelf, they stand in the yard south of the farm road and keep working while nobody is playing.
+- Each panel shows what is finished, what is cooking and the coins gained over simply selling the input, so waiting is an honest choice.
+- Hired help, a week paid up front: Mina waters the field each morning, Bo brings in eggs, milk and wool, Rue reloads the machines.
+- Shipping contracts on the work board: a lot of one thing over a few days, paid well over the counter price. Two at a time.
+- The Journal's Farm page: what is ripe, thirsty, waiting and working, what the help costs, and which crop is worth planting in coins an hour.
+
 ## Animals and the ranch
 - Chickens and ducks (coop), bee hives (garden), cows, sheep, goats and pigs (ranch), a horse.
 - Products: eggs, duck eggs, milk, goat milk, wool, honey, truffles; cook with them or sell them.
@@ -59,7 +66,7 @@ A cute pixel farm, kitchen and little world for two players, **xb** and **qd**. 
 - A letter for qd in the mailbox.
 
 ## Progression
-- The Story: 13 chapters of step-by-step tasks with rewards and a guide arrow that follows doors.
+- The Story: 14 chapters of step-by-step tasks with rewards and a guide arrow that follows doors.
 - Today: 3 daily tasks from a pool of 14, with a bonus for finishing all.
 - The Book: postcards, photos, fish, dishes and friends. Stats page.
 

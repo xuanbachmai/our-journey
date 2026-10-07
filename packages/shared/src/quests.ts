@@ -56,6 +56,9 @@ const STALL = g('farm', 34, 21);
 const STORE = g('store', 7, 5);
 
 const FURNSHOP = g('furnshop', 7, 5);
+// the machine yard south of the farm road, and the town work board
+const YARD = g('farm', 4, 21);
+const BOARD = g('town', 14, 12);
 
 export const CHAPTERS: Chapter[] = [
   {
@@ -193,6 +196,19 @@ export const CHAPTERS: Chapter[] = [
       { id: 'cf_gifts', title: 'Give 10 gifts', hint: 'One gift per friend per day', target: 10, reward: 80, progress: stat('gifts') },
     ],
     reward: { coins: 250, furniture: { bookshelf: 1 }, text: '+250 coins, a bookshelf' },
+  },
+  {
+    id: 'ch_slow',
+    title: 'The slow things',
+    blurb: 'Set the farm working on the days you are not here.',
+    tasks: [
+      { id: 'cs_buy', title: 'Buy a machine', hint: 'The Make shelf at the general store', target: 1, reward: 80, progress: stat('machine'), guide: STORE },
+      { id: 'cs_load', title: 'Start 5 batches', hint: 'Load a machine and walk away', target: 5, reward: 80, progress: stat('batch'), guide: YARD },
+      { id: 'cs_made', title: 'Collect 10 made goods', hint: 'They keep working while you are gone', target: 10, reward: 120, progress: stat('crafted'), guide: YARD },
+      { id: 'cs_contract', title: 'Finish a shipping contract', hint: 'Take one from the work board', target: 1, reward: 150, progress: stat('contracts'), guide: BOARD },
+      { id: 'cs_hire', title: 'Hire a hand for a week', hint: 'The Help tab on the work board', target: 1, reward: 100, progress: stat('hired'), guide: BOARD },
+    ],
+    reward: { coins: 400, rep: 3, text: '+400 coins, a word around town' },
   },
   {
     id: 'ch10',
