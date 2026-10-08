@@ -93,12 +93,14 @@ import { audio } from '../game/audio';
 import { net, type NoteRow } from '../game/net';
 import { eraseLocalData, MAX_PENDING_GIFTS, type AwaySummary, type ProgressEvent } from '../game/state';
 import { confirmBox, copyToClipboard, promptText } from '../ui/dom';
-import { button, FONT_OPTIONS, type FontKey, getSavedFontKey, panel, plain, refreshFontConfig, saveFontKey, style, tiny } from '../ui/text';
+import { button, FONT_OPTIONS, note, type FontKey, getSavedFontKey, panel, plain, refreshFontConfig, saveFontKey, style, tiny } from '../ui/text';
 import { TitleScene } from './TitleScene';
 import type { CookResult, HudData, WorldScene } from './WorldScene';
 
 const JOY_R = 20;
 const ROW = 17;
+/** Rows that carry a name and a note underneath. */
+const ROW2 = 21;
 
 interface HelpPage {
   title: string;
@@ -394,7 +396,16 @@ export class HudScene extends Phaser.Scene {
     this.areaText.setOrigin(1, 0).setPosition(W - 8, 26);
     this.partnerText.setOrigin(1, 0).setPosition(W - 8, 38);
     this.weatherIcon.setPosition(W - 8 - this.areaText.width - 10, 32);
-    this.overlay?.setPosition(Math.round(W / 2), Math.round(H / 2));
+    if (this.overlay) {
+      // an open panel re-fits when the window changes, so turning a phone or
+      // dragging a window edge never leaves half of it off screen
+      const size = this.overlay.getData('size') as { w: number; h: number } | undefined;
+      if (size) {
+        this.tweens.killTweensOf(this.overlay);
+        this.overlay.setScale(Math.min(1, (W - 8) / size.w, (H - 6) / size.h));
+      }
+      this.overlay.setPosition(Math.round(W / 2), Math.round(H / 2));
+    }
     this.emoteRow?.setPosition(W - 30, H - 100);
     if (this.last) this.refresh(this.last);
   }
@@ -893,8 +904,11 @@ export class HudScene extends Phaser.Scene {
   private openOverlay(w: number, h: number, title: string): Phaser.GameObjects.Container {
     this.closeOverlay();
     const { width: W, height: H } = this.scale;
-    w = Math.min(w, W - 8);
-    h = Math.min(h, H - 6);
+    // Panels are laid out at their designed size and the whole thing is shrunk
+    // to fit the screen. Clamping the size instead used to cut off the bottom
+    // row on short screens, because the contents were still placed for the
+    // size the panel asked for.
+    const fit = Math.min(1, (W - 8) / w, (H - 6) / h);
     const dim = this.add.rectangle(0, 0, W * 3, H * 3, 0x2a1a2f, 0.45).setInteractive();
     const g = this.add.graphics();
     panel(g, -w / 2, -h / 2, w, h, 0xfff4dc);
@@ -905,8 +919,8 @@ export class HudScene extends Phaser.Scene {
     c.setData('size', { w, h });
     this.overlay = c;
     this.world.setUiOpen(true);
-    c.setScale(0.8);
-    this.tweens.add({ targets: c, scale: 1, duration: 150, ease: 'Back.easeOut' });
+    c.setScale(fit * 0.8);
+    this.tweens.add({ targets: c, scale: fit, duration: 150, ease: 'Back.easeOut' });
     return c;
   }
 
@@ -1920,9 +1934,9 @@ export class HudScene extends Phaser.Scene {
       const owned = st.machineCount(id);
       const price = st.machinePrice(id);
       c.add(this.add.image(-w / 2 + 16, y, 'icons', def.icon).setScale(1.5));
-      c.add(this.add.text(-w / 2 + 30, y - 6, def.name + (owned ? ` (${owned})` : ''), plain()).setOrigin(0, 0.5));
+      c.add(this.add.text(-w / 2 + 30, y - 5, def.name + (owned ? ` (${owned})` : ''), plain()).setOrigin(0, 0.5));
       // short enough to clear the price tag on the right
-      c.add(this.add.text(-w / 2 + 30, y + 5, `Makes ${ITEMS[def.output].name.toLowerCase()}, ${formatDuration(def.minutes * 60)} a batch`, plain({ color: '#7a6a70' })).setOrigin(0, 0.5));
+      c.add(this.add.text(-w / 2 + 30, y + 6, `Makes ${ITEMS[def.output].name.toLowerCase()}, ${formatDuration(def.minutes * 60)} a batch`, note({ color: '#7a6a70' })).setOrigin(0, 0.5));
       if (price === null) {
         const why = owned >= 3 ? 'full' : `${def.unlockRep} rep`;
         c.add(this.add.text(w / 2 - 34, y, why, plain({ color: '#7a6a70' })).setOrigin(0.5));
@@ -1960,13 +1974,13 @@ export class HudScene extends Phaser.Scene {
     const def = MACHINES[id];
     const w = 282;
     // only as tall as it needs to be: one row per thing it will take
-    const h = 112 + def.accepts.length * ROW;
+    const h = 92 + def.accepts.length * ROW2;
     const m = st.machineState(id);
     const c = this.openOverlay(w, h, `${def.name}${m.count > 1 ? ` x${m.count}` : ''}`);
     const top = -h / 2 + 30;
     const reopen = () => this.openMachine(id);
 
-    c.add(this.add.text(0, top - 6, `${def.desc} — one batch takes ${formatDuration(def.minutes * 60)}`, plain({ color: '#7a6a70' })).setOrigin(0.5));
+    c.add(this.add.text(0, top - 8, `${def.desc} — one batch takes ${formatDuration(def.minutes * 60)}`, note({ color: '#7a6a70' })).setOrigin(0.5));
 
     // what is finished
     const g = this.add.graphics();
@@ -1977,7 +1991,7 @@ export class HudScene extends Phaser.Scene {
     const runningLabel = m.jobs.length
       ? `${m.jobs.length} of ${st.machineSlots(id)} working, next ${this.whenDone(st.machineNextDone(id))}`
       : `nothing working (${st.machineSlots(id)} free)`;
-    c.add(this.add.text(-w / 2 + 36, top + 22, runningLabel, plain({ color: '#7a6a70' })).setOrigin(0, 0.5));
+    c.add(this.add.text(-w / 2 + 36, top + 22, runningLabel, note({ color: '#7a6a70' })).setOrigin(0, 0.5));
     const take = button(this, w / 2 - 66, top + 9, 54, 16, 'Collect', () => {
       const n = st.collectMachine(id);
       if (!n) return audio.play('bad');
@@ -1991,14 +2005,14 @@ export class HudScene extends Phaser.Scene {
 
     // what you can put in
     const free = st.machineFree(id);
-    c.add(this.add.text(-w / 2 + 12, top + 42, 'Put in', plain({ color: '#7a6a70' })).setOrigin(0, 0.5));
+    c.add(this.add.text(-w / 2 + 12, top + 41, 'Put in', note({ color: '#7a6a70' })).setOrigin(0, 0.5));
     def.accepts.forEach((item, i) => {
-      const y = top + 58 + i * ROW;
+      const y = top + 58 + i * ROW2;
       const have = st.count(item);
       c.add(this.add.image(-w / 2 + 16, y, 'icons', ITEMS[item].icon));
-      c.add(this.add.text(-w / 2 + 28, y - 4, `${ITEMS[item].name} x${have}`, plain()).setOrigin(0, 0.5));
+      c.add(this.add.text(-w / 2 + 28, y - 5, `${ITEMS[item].name} x${have}`, plain()).setOrigin(0, 0.5));
       const gain = machineMargin(id, item);
-      c.add(this.add.text(-w / 2 + 28, y + 6, `+${gain}c over selling it`, plain({ color: '#b07a00' })).setOrigin(0, 0.5));
+      c.add(this.add.text(-w / 2 + 28, y + 6, `+${gain}c over selling it`, note({ color: '#b07a00' })).setOrigin(0, 0.5));
       const put = button(this, w / 2 - 66, y - 8, 54, 16, 'Load', () => {
         if (!st.startBatch(id, item)) return audio.play('bad');
         audio.play('pop');
@@ -2008,8 +2022,8 @@ export class HudScene extends Phaser.Scene {
       put.setEnabled(have > 0 && free > 0);
       c.add(put.container);
     });
-    if (free <= 0 && m.jobs.length) c.add(this.add.text(0, h / 2 - 9, 'Every slot is busy. Come back later.', plain({ color: '#7a6a70' })).setOrigin(0.5));
-    else if (!def.accepts.some((i) => st.count(i) > 0)) c.add(this.add.text(0, h / 2 - 9, 'Nothing in the bag it can use yet.', plain({ color: '#7a6a70' })).setOrigin(0.5));
+    if (free <= 0 && m.jobs.length) c.add(this.add.text(0, h / 2 - 8, 'Every slot is busy. Come back later.', note({ color: '#7a6a70' })).setOrigin(0.5));
+    else if (!def.accepts.some((i) => st.count(i) > 0)) c.add(this.add.text(0, h / 2 - 8, 'Nothing in the bag it can use yet.', note({ color: '#7a6a70' })).setOrigin(0.5));
   }
 
   // ---------- the farm at a glance ----------
@@ -2028,14 +2042,14 @@ export class HudScene extends Phaser.Scene {
       f.running || f.ready ? `${f.running} batch${f.running === 1 ? '' : 'es'} working, ${f.ready} made` : 'no machines working',
       f.wages ? `help costs ${f.wages}c a day` : 'no help hired',
     ];
-    lines.forEach((t, i) => c.add(this.add.text(-w / 2 + 14, top + i * 12, t, plain({ color: i === 0 ? '#3f3a3f' : '#7a6a70' })).setOrigin(0, 0.5)));
+    lines.forEach((t, i) => c.add(this.add.text(-w / 2 + 14, top + i * 12, t, i === 0 ? plain() : note({ color: '#7a6a70' })).setOrigin(0, 0.5)));
 
     c.add(this.add.text(-w / 2 + 14, top + 56, 'Worth planting (coins an hour)', plain()).setOrigin(0, 0.5));
     st.cropProfit().slice(0, 4).forEach((row, i) => {
       const y = top + 72 + i * 13;
       c.add(this.add.image(-w / 2 + 20, y, 'icons', `crop-${row.crop}`));
       c.add(this.add.text(-w / 2 + 32, y, CROPS[row.crop].name, plain()).setOrigin(0, 0.5));
-      c.add(this.add.text(w / 2 - 58, y, `${row.each}c each`, plain({ color: '#7a6a70' })).setOrigin(1, 0.5));
+      c.add(this.add.text(w / 2 - 56, y, `${row.each}c each`, note({ color: '#7a6a70' })).setOrigin(1, 0.5));
       c.add(this.add.text(w / 2 - 14, y, `${Math.round(row.perHour)}/h`, plain({ color: i === 0 ? '#3f9a5f' : '#b07a00' })).setOrigin(1, 0.5));
     });
     const load = button(this, w / 2 - 96, top + 48, 84, 16, 'Load machines', () => {
@@ -2063,7 +2077,7 @@ export class HudScene extends Phaser.Scene {
       c.add(g);
       c.add(this.add.image(-w / 2 + 22, y, 'icons', ITEMS[ct.item].icon).setScale(1.5));
       c.add(this.add.text(-w / 2 + 36, y - 6, `${ct.from}: ${ct.done}/${ct.qty} ${ITEMS[ct.item].name}`, plain()).setOrigin(0, 0.5));
-      c.add(this.add.text(-w / 2 + 36, y + 5, `${ct.reward}c, due ${dueLabel(ct, today)} — you have ${st.count(ct.item)}`, plain({ color: '#b07a00' })).setOrigin(0, 0.5));
+      c.add(this.add.text(-w / 2 + 36, y + 6, `${ct.reward}c, due ${dueLabel(ct, today)} — you have ${st.count(ct.item)}`, note({ color: '#b07a00' })).setOrigin(0, 0.5));
       const ship = button(this, w / 2 - 68, y - 8, 56, 16, 'Ship', () => {
         const { sent, finished } = st.shipToContract(ct.id);
         if (!sent) return audio.play('bad');
@@ -2078,17 +2092,17 @@ export class HudScene extends Phaser.Scene {
     }
 
     if (!st.canTakeContract()) {
-      c.add(this.add.text(0, h / 2 - 9, 'Finish one before taking another', plain({ color: '#7a6a70' })).setOrigin(0.5));
+      c.add(this.add.text(0, h / 2 - 8, 'Finish one before taking another', note({ color: '#7a6a70' })).setOrigin(0.5));
       return;
     }
-    c.add(this.add.text(-w / 2 + 12, y - 2, 'On the board', plain({ color: '#7a6a70' })).setOrigin(0, 0.5));
-    y += 12;
+    c.add(this.add.text(-w / 2 + 12, y - 2, 'On the board', note({ color: '#7a6a70' })).setOrigin(0, 0.5));
+    y += 13;
     st.contractBoard.slice(0, 3).forEach((ct, i) => {
-      const row = y + i * 26;
-      if (row > h / 2 - 22) return;
+      const row = y + i * ROW2;
+      if (row > h / 2 - 16) return;
       c.add(this.add.image(-w / 2 + 20, row, 'icons', ITEMS[ct.item].icon));
       c.add(this.add.text(-w / 2 + 32, row - 5, `${ct.qty} ${ITEMS[ct.item].name} for ${ct.from}`, plain()).setOrigin(0, 0.5));
-      c.add(this.add.text(-w / 2 + 32, row + 5, `${ct.reward}c  +${ct.rep} rep  ${dueLabel(ct, today)}`, plain({ color: '#b07a00' })).setOrigin(0, 0.5));
+      c.add(this.add.text(-w / 2 + 32, row + 6, `${ct.reward}c  +${ct.rep} rep  ${dueLabel(ct, today)}`, note({ color: '#b07a00' })).setOrigin(0, 0.5));
       const take = button(this, w / 2 - 62, row - 7, 50, 15, 'Take', () => {
         if (!st.takeContract(i)) return audio.play('bad');
         audio.play('quest');
@@ -2102,7 +2116,7 @@ export class HudScene extends Phaser.Scene {
   private helpPage(c: Phaser.GameObjects.Container, w: number, h: number) {
     const st = this.world.state;
     const top = -h / 2 + 62;
-    c.add(this.add.text(0, top - 20, 'A week at a time. They work the mornings you are away.', plain({ color: '#7a6a70' })).setOrigin(0.5));
+    c.add(this.add.text(0, top - 20, 'A week at a time. They work the mornings you are away.', note({ color: '#7a6a70' })).setOrigin(0.5));
     HAND_IDS.forEach((id, i) => {
       const y = top + 10 + i * 34;
       const hand = HANDS[id];
@@ -2112,10 +2126,10 @@ export class HudScene extends Phaser.Scene {
       panel(g, -w / 2 + 8, y - 13, w - 16, 30, left ? 0xf6ffe8 : 0xffffff);
       c.add(g);
       c.add(this.add.image(-w / 2 + 22, y, 'icons', hand.icon).setScale(1.5));
-      c.add(this.add.text(-w / 2 + 36, y - 6, hand.name, plain()).setOrigin(0, 0.5));
-      c.add(this.add.text(-w / 2 + 36, y + 5, left ? `${hand.desc} — ${left} day${left === 1 ? '' : 's'} left` : hand.desc, plain({ color: left ? '#3f9a5f' : '#7a6a70' })).setOrigin(0, 0.5));
+      c.add(this.add.text(-w / 2 + 36, y - 5, hand.name, plain()).setOrigin(0, 0.5));
+      c.add(this.add.text(-w / 2 + 36, y + 6, left ? `${hand.desc} — ${left} day${left === 1 ? '' : 's'} left` : hand.desc, note({ color: left ? '#3f9a5f' : '#7a6a70' })).setOrigin(0, 0.5));
       if (price === null) {
-        c.add(this.add.text(w / 2 - 40, y, `${hand.unlockRep} rep`, plain({ color: '#7a6a70' })).setOrigin(0.5));
+        c.add(this.add.text(w / 2 - 40, y, `${hand.unlockRep} rep`, note({ color: '#7a6a70' })).setOrigin(0.5));
         return;
       }
       const hire = button(this, w / 2 - 74, y - 8, 62, 16, `${price}c`, () => {

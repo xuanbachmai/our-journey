@@ -400,14 +400,16 @@ export function simulateWorld(input: WorldState, now: number): { world: WorldSta
   for (const id of MACHINE_IDS) {
     const m = w.machines?.[id];
     if (!m || !m.jobs.length) continue;
-    const done = m.jobs.filter((j) => j.doneAt <= now);
+    const done = m.jobs.filter((j) => j.doneAt <= now).sort((a, b) => a.doneAt - b.doneAt);
     if (!done.length) continue;
-    m.jobs = m.jobs.filter((j) => j.doneAt > now);
+    // Only bank what there is room for. A batch that will not fit stays on the
+    // machine until the goods are collected, rather than quietly vanishing.
     const made = Math.min(done.length, MAX_READY - m.ready);
-    if (made > 0) {
-      m.ready += made;
-      events.push({ type: 'crafted', at: now, machine: id, count: made });
-    }
+    if (made <= 0) continue;
+    const banked = new Set(done.slice(0, made));
+    m.jobs = m.jobs.filter((j) => !banked.has(j));
+    m.ready += made;
+    events.push({ type: 'crafted', at: now, machine: id, count: made });
   }
 
   // ---- daily orders and the contract board ----

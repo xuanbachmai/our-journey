@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { contractDone, contractExpired, dueLabel, makeContract, MAX_ACTIVE_CONTRACTS } from './contracts';
 import { HANDS, HAND_IDS, handDaysLeft, handWorking, hireCost, HIRE_DAYS } from './hands';
 import { ITEMS } from './items';
-import { MACHINES, MACHINE_IDS, machineFor, machineFree, machineMargin, machineRate } from './machines';
+import { MACHINES, MACHINE_IDS, machineFor, machineFree, machineMargin, machineRate, MAX_READY } from './machines';
 import { isRipe } from './growth';
 import { dayIndex } from './prices';
 import { give, loadMachines, newWorld, simulateWorld } from './world';
@@ -51,6 +51,23 @@ describe('machines', () => {
     expect(later.world.machines?.mill?.ready).toBe(2);
     expect(later.world.machines?.mill?.jobs).toHaveLength(0);
     expect(later.events.some((e) => e.type === 'crafted')).toBe(true);
+  });
+
+  it('holds finished batches on the machine when the shelf is full', () => {
+    const w = newWorld(Date.now(), 19);
+    const at = w.lastSimulatedAt;
+    w.machines = { mill: { count: 1, jobs: [], ready: MAX_READY - 1 } };
+    w.machines.mill!.jobs = [
+      { input: 'crop:wheat', startedAt: at, doneAt: at + 1000 },
+      { input: 'crop:wheat', startedAt: at, doneAt: at + 2000 },
+    ];
+
+    const after = simulateWorld(w, at + 10 * MIN).world;
+    const mill = after.machines?.mill;
+    expect(mill?.ready).toBe(MAX_READY);
+    // the second batch is still sitting there, not thrown away
+    expect(mill?.jobs).toHaveLength(1);
+    expect(mill?.jobs[0].doneAt).toBe(at + 2000);
   });
 
   it('does not start a batch it has no room or input for', () => {

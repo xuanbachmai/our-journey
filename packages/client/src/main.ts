@@ -7,6 +7,8 @@ import { TitleScene } from './scenes/TitleScene';
 
 const BASE_W = 320;
 const BASE_H = 180;
+/** The narrowest view we will scale up to: menus are drawn about this wide. */
+const MIN_W = 280;
 
 let game: Phaser.Game | null = null;
 let fellBack = false;
@@ -47,7 +49,10 @@ function fit() {
   const h = window.innerHeight - inset("--sat") - inset("--sab");
   // hidden or collapsed views report 0; keep the last good size instead of shrinking to nothing
   if (w < 50 || h < 50) return;
-  const zoom = Math.max(1, Math.floor(Math.min(w / BASE_W, h / BASE_H)));
+  // Pick the zoom from the height, so the world is always about a screenful
+  // tall and the art never ends up tiny on a small phone, then hold it back if
+  // that would leave the view too narrow for a menu to sit in.
+  const zoom = Math.max(1, Math.min(Math.round(h / BASE_H), Math.floor(w / MIN_W)));
   const gw = Math.ceil(w / zoom);
   const gh = Math.ceil(h / zoom);
   game.scale.setZoom(zoom);

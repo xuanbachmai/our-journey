@@ -87,6 +87,16 @@ export function plain(extra: Partial<Phaser.Types.GameObjects.Text.TextStyle> = 
   };
 }
 
+/**
+ * The second line of a row inside a panel: a size down from plain, same dark
+ * ink, no outline. (tiny() is for counts that sit on top of a sprite and needs
+ * its stroke; inside a panel that stroke turns small text into a smudge.)
+ */
+export function note(extra: Partial<Phaser.Types.GameObjects.Text.TextStyle> = {}): Phaser.Types.GameObjects.Text.TextStyle {
+  const opt = FONT_OPTIONS[getSavedFontKey()];
+  return plain({ fontSize: `${Math.max(7, opt.defaultSize - 2)}px`, padding: { x: 2, y: 2 }, ...extra });
+}
+
 /** Rounded pixel panel: outline + fill + light top edge. */
 export function panel(g: Phaser.GameObjects.Graphics, x: number, y: number, w: number, h: number, fill = 0xfff4dc, outline = 0x4a2a3f) {
   g.fillStyle(outline, 1);
@@ -122,7 +132,11 @@ export function button(
   };
   draw(color);
   const t = scene.add.text(w / 2, h / 2, label, plain()).setOrigin(0.5);
-  const zone = scene.add.zone(w / 2, h / 2, w, h).setInteractive({ useHandCursor: true });
+  // A thumb is wider than the button looks. The tap area is grown to at least
+  // 22x20 game pixels (44pt on a phone) without changing what is drawn.
+  const zw = Math.max(w, 22);
+  const zh = Math.max(h, 20);
+  const zone = scene.add.zone(w / 2, h / 2, zw, zh).setInteractive({ useHandCursor: true });
   const c = scene.add.container(x, y, [g, t, zone]);
   let enabled = true;
   zone.on('pointerdown', () => {
