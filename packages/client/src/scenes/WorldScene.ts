@@ -968,8 +968,8 @@ export class WorldScene extends Phaser.Scene {
     this.pushHud(true);
   }
 
-  pushHud(force = false) {
-    const a = this.currentAction();
+  pushHud(force = false, known?: Action | null) {
+    const a = known !== undefined ? known : this.currentAction();
     const q = currentQuest(this.state.world);
     const other = otherPlayer(this.playerId);
     const data: HudData = {
@@ -992,7 +992,23 @@ export class WorldScene extends Phaser.Scene {
       mounts: this.mounts,
       mount: this.mount,
     };
-    const snapshot = JSON.stringify(data);
+    const snapshot = [
+      this.state.world.changeCounter,
+      data.coins,
+      Math.round(data.reputation),
+      data.dishes,
+      data.selectedSeed,
+      a ? `${a.type}|${a.label}|${a.enabled ? 1 : 0}|${a.text ?? ''}` : '-',
+      data.quest ? `${data.quest.title}|${data.quest.progress}` : '-',
+      data.area,
+      data.weather,
+      data.partner ? `${data.partner.online ? 1 : 0}|${data.partner.area ?? ''}` : '-',
+      data.decorate ? `${data.decorate.item ?? ''}|${data.decorate.mode}` : '-',
+      data.special ?? '',
+      data.loveDays,
+      data.mount ?? '',
+      data.mounts.length,
+    ].join('\u0001');
     if (!force && snapshot === this.lastHud) return;
     this.lastHud = snapshot;
     this.events.emit('hud', data);
@@ -2111,7 +2127,7 @@ export class WorldScene extends Phaser.Scene {
       this.lastSave = time;
       this.state.saveIfDirty();
     }
-    this.pushHud();
+    this.pushHud(false, a);
   }
   private lastMoving = false;
 

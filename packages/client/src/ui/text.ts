@@ -97,6 +97,32 @@ export function note(extra: Partial<Phaser.Types.GameObjects.Text.TextStyle> = {
   return plain({ fontSize: `${Math.max(7, opt.defaultSize - 2)}px`, padding: { x: 2, y: 2 }, ...extra });
 }
 
+/** A rounded pill, for tabs and for the coin chip beside a price. */
+export function pill(g: Phaser.GameObjects.Graphics, x: number, y: number, w: number, h: number, fill: number, outline = 0x4a2a3f) {
+  const r = Math.min(4, Math.floor(h / 2));
+  g.fillStyle(outline, 1);
+  g.fillRect(x + r, y, w - r * 2, h);
+  g.fillRect(x, y + r, w, h - r * 2);
+  g.fillRect(x + 1, y + 1, w - 2, h - 2);
+  g.fillStyle(fill, 1);
+  g.fillRect(x + r, y + 1, w - r * 2, h - 2);
+  g.fillRect(x + 1, y + r, w - 2, h - r * 2);
+  g.fillRect(x + 2, y + 2, w - 4, h - 4);
+  g.fillStyle(0xffffff, 0.5);
+  g.fillRect(x + r, y + 1, w - r * 2, 1);
+}
+
+/** A filled bar: how much of a wait is done, how much of an order is shipped. */
+export function meter(g: Phaser.GameObjects.Graphics, x: number, y: number, w: number, h: number, frac: number, fill: number) {
+  g.fillStyle(0x4a2a3f, 1).fillRect(x, y, w, h);
+  g.fillStyle(0xe8dcc8, 1).fillRect(x + 1, y + 1, w - 2, h - 2);
+  const inner = Math.max(0, Math.min(1, frac)) * (w - 2);
+  if (inner > 0) {
+    g.fillStyle(fill, 1).fillRect(x + 1, y + 1, inner, h - 2);
+    g.fillStyle(0xffffff, 0.35).fillRect(x + 1, y + 1, inner, 1);
+  }
+}
+
 /** Rounded pixel panel: outline + fill + light top edge. */
 export function panel(g: Phaser.GameObjects.Graphics, x: number, y: number, w: number, h: number, fill = 0xfff4dc, outline = 0x4a2a3f) {
   g.fillStyle(outline, 1);

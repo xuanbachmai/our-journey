@@ -95,7 +95,7 @@ import { audio } from '../game/audio';
 import { net, type NoteRow } from '../game/net';
 import { eraseLocalData, MAX_PENDING_GIFTS, type AwaySummary, type ProgressEvent } from '../game/state';
 import { confirmBox, copyToClipboard, promptText } from '../ui/dom';
-import { button, FONT_OPTIONS, note, type FontKey, getSavedFontKey, panel, plain, refreshFontConfig, saveFontKey, style, tiny } from '../ui/text';
+import { button, FONT_OPTIONS, meter, note, pill, type FontKey, getSavedFontKey, panel, plain, refreshFontConfig, saveFontKey, style, tiny } from '../ui/text';
 import { TitleScene } from './TitleScene';
 import type { CookResult, HudData, WorldScene } from './WorldScene';
 
@@ -934,11 +934,26 @@ export class HudScene extends Phaser.Scene {
     if (this.pendingPostcards.length) this.time.delayedCall(400, () => this.flushPostcards());
   }
 
+/**
+   * Tabs as pills. The live one is filled and sits a pixel proud of the rest,
+   * so which page you are on reads at a glance instead of by shade.
+   */
   private tabs(c: Phaser.GameObjects.Container, w: number, h: number, items: [string, () => void][], active: number) {
     const tw = Math.floor((w - 16) / items.length);
+    const g = this.add.graphics();
+    c.add(g);
     items.forEach(([label, fn], i) => {
-      const b = button(this, -w / 2 + 8 + i * tw, -h / 2 + 19, tw - 3, 15, label, fn, i === active ? 0xffe066 : 0xe8dcc8);
-      c.add(b.container);
+      const live = i === active;
+      const x = -w / 2 + 8 + i * tw;
+      const y = -h / 2 + (live ? 18 : 19);
+      pill(g, x, y, tw - 3, live ? 17 : 15, live ? 0xffd23f : 0xf3e7d4, live ? 0x4a2a3f : 0xd8c4b4);
+      c.add(this.add.text(x + (tw - 3) / 2, y + (live ? 9 : 8), label, plain({ color: live ? '#4a2a3f' : '#6a5a60' })).setOrigin(0.5));
+      const z = this.add.zone(x + (tw - 3) / 2, y + 8, tw - 3, 20).setInteractive({ useHandCursor: true });
+      z.on('pointerdown', () => {
+        audio.play('blip');
+        fn();
+      });
+      c.add(z);
     });
   }
 
@@ -952,8 +967,15 @@ export class HudScene extends Phaser.Scene {
     void w;
   }
 
+/** A price in a coin chip, so it reads as money rather than as a number. */
   private priceTag(c: Phaser.GameObjects.Container, x: number, y: number, price: number, canAfford: boolean) {
-    c.add(this.add.text(x, y, `${price}c`, plain({ color: canAfford ? '#b07a00' : '#d94a4a' })).setOrigin(1, 0.5));
+    const label = this.add.text(x - 2, y, String(price), plain({ color: canAfford ? '#8a5e00' : '#b4432a' })).setOrigin(1, 0.5);
+    const g = this.add.graphics();
+    pill(g, x - label.width - 16, y - 7, label.width + 18, 14, canAfford ? 0xfff2c2 : 0xffe0dc, canAfford ? 0xd8b45e : 0xd98a7a);
+    g.fillStyle(0xffd23f, 1).fillCircle(x - label.width - 8, y, 3);
+    g.fillStyle(0x4a2a3f, 1).fillCircle(x - label.width - 8, y, 3).fillStyle(0xffd23f, 1).fillCircle(x - label.width - 8, y, 2);
+    c.add(g);
+    c.add(label);
   }
 
   // ---------- stall (farm) ----------
@@ -2072,10 +2094,11 @@ export class HudScene extends Phaser.Scene {
    */
   private openMachine(id: MachineId) {
     const st = this.world.state;
+    const now = Date.now();
     const def = MACHINES[id];
     const w = 282;
     // only as tall as it needs to be: one row per thing it will take
-    const h = 92 + def.accepts.length * ROW2;
+    const h = 100 + def.accepts.length * ROW2;
     const m = st.machineState(id);
     const c = this.openOverlay(w, h, `${def.name}${m.count > 1 ? ` x${m.count}` : ''}`);
     const top = -h / 2 + 30;
@@ -2093,6 +2116,18 @@ export class HudScene extends Phaser.Scene {
       ? `${m.jobs.length} of ${st.machineSlots(id)} working, next ${this.whenDone(st.machineNextDone(id))}`
       : `nothing working (${st.machineSlots(id)} free)`;
     c.add(this.add.text(-w / 2 + 36, top + 22, runningLabel, note({ color: '#7a6a70' })).setOrigin(0, 0.5));
+    // one little bar per slot: how far through its batch each one is
+    const slots = st.machineSlots(id);
+    if (slots > 0) {
+      const bars = this.add.graphics();
+      const bw = Math.floor((w - 24) / Math.max(1, slots)) - 3;
+      for (let i = 0; i < slots; i++) {
+        const job = m.jobs[i];
+        const frac = job ? 1 - Math.max(0, job.doneAt - now) / Math.max(1, job.doneAt - job.startedAt) : 0;
+        meter(bars, -w / 2 + 12 + i * (bw + 3), top + 36, bw, 5, frac, job ? 0x7de8c8 : 0xe8dcc8);
+      }
+      c.add(bars);
+    }
     const take = button(this, w / 2 - 66, top + 9, 54, 16, 'Collect', () => {
       const n = st.collectMachine(id);
       if (!n) return audio.play('bad');
@@ -2106,9 +2141,9 @@ export class HudScene extends Phaser.Scene {
 
     // what you can put in
     const free = st.machineFree(id);
-    c.add(this.add.text(-w / 2 + 12, top + 41, 'Put in', note({ color: '#7a6a70' })).setOrigin(0, 0.5));
+    c.add(this.add.text(-w / 2 + 12, top + 50, 'Put in', note({ color: '#7a6a70' })).setOrigin(0, 0.5));
     def.accepts.forEach((item, i) => {
-      const y = top + 58 + i * ROW2;
+      const y = top + 66 + i * ROW2;
       const have = st.count(item);
       c.add(this.add.image(-w / 2 + 16, y, 'icons', ITEMS[item].icon));
       c.add(this.add.text(-w / 2 + 28, y - 5, `${ITEMS[item].name} x${have}`, plain()).setOrigin(0, 0.5));
@@ -2177,8 +2212,11 @@ export class HudScene extends Phaser.Scene {
       panel(g, -w / 2 + 8, y - 13, w - 16, 30, 0xf6ffe8);
       c.add(g);
       c.add(this.add.image(-w / 2 + 22, y, 'icons', ITEMS[ct.item].icon).setScale(1.5));
-      c.add(this.add.text(-w / 2 + 36, y - 6, `${ct.from}: ${ct.done}/${ct.qty} ${ITEMS[ct.item].name}`, plain()).setOrigin(0, 0.5));
-      c.add(this.add.text(-w / 2 + 36, y + 6, `${ct.reward}c, due ${dueLabel(ct, today)} — you have ${st.count(ct.item)}`, note({ color: '#b07a00' })).setOrigin(0, 0.5));
+      c.add(this.add.text(-w / 2 + 36, y - 8, `${ct.from}: ${ct.done}/${ct.qty} ${ITEMS[ct.item].name}`, plain()).setOrigin(0, 0.5));
+      const bar = this.add.graphics();
+      meter(bar, -w / 2 + 36, y + 1, w - 112, 5, ct.done / Math.max(1, ct.qty), 0xff8fcf);
+      c.add(bar);
+      c.add(this.add.text(-w / 2 + 36, y + 10, `${ct.reward}c, due ${dueLabel(ct, today)} — you have ${st.count(ct.item)}`, note({ color: '#b07a00' })).setOrigin(0, 0.5));
       const ship = button(this, w / 2 - 68, y - 8, 56, 16, 'Ship', () => {
         const { sent, finished } = st.shipToContract(ct.id);
         if (!sent) return audio.play('bad');
