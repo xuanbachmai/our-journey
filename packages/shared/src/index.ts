@@ -22,3 +22,4 @@ export * from './bond';
 export * from './machines';
 export * from './hands';
 export * from './contracts';
+export * from './costumes';

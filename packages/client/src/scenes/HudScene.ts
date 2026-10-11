@@ -1,6 +1,8 @@
 import Phaser from 'phaser';
 import {
   ACCESSORIES,
+  COSTUMES,
+  type Costume,
   dayIndex,
   dueLabel,
   formatDuration,
@@ -324,7 +326,7 @@ export class HudScene extends Phaser.Scene {
     f.on('openTailor', () => {
       this.shopSel = null;
       this.page = 0;
-      this.openClothes('buy', 'top');
+      this.openClothes('buy', 'looks');
     });
     f.on('openPetshop', () => this.openPetshop('pets'));
     f.on('openSeedMaker', () => this.openSeedMaker());
@@ -333,7 +335,7 @@ export class HudScene extends Phaser.Scene {
     f.on('openWardrobe', () => {
       this.shopSel = null;
       this.page = 0;
-      this.openClothes('equip', 'top');
+      this.openClothes('equip', 'looks');
     });
     f.on('openMail', () => this.openMail('letter'));
     f.on('openCounter', () => this.openCounter());
@@ -1175,13 +1177,111 @@ export class HudScene extends Phaser.Scene {
   }
 
   /** Card-grid clothes shop with a try-on mannequin. 'buy' is Rosa's Tailor, 'equip' is the home wardrobe. */
-  private openClothes(mode: 'buy' | 'equip', kind: ClothingKind) {
+  /**
+   * Whole looks. Five are free from the first morning and hand over their
+   * pieces when you wear them, so there is something to mix with on day one;
+   * the rest are a set, priced a third under the pieces you still need.
+   */
+  private looksPage(c: Phaser.GameObjects.Container, w: number, h: number, mode: 'buy' | 'equip') {
+    const st = this.world.state;
+    const look = LOOKS[this.world.playerId];
+    const reopen = () => this.openClothes(mode, 'looks');
+    const list = mode === 'buy' ? COSTUMES.filter((x) => !x.free) : COSTUMES;
+    const pick = (c?: Costume) => (c && list.includes(c) ? c : undefined);
+    const sel = pick(COSTUMES.find((x) => x.id === this.shopSel)) ?? pick(st.wornCostume) ?? list[0];
+    const top = -h / 2 + 38;
+
+    // ---- the one you are looking at ----
+    const pw = 94;
+    const pxl = -w / 2 + 8;
+    const g = this.add.graphics();
+    panel(g, pxl, top, pw, h / 2 - 8 - top, 0xfff9ee);
+    c.add(g);
+    const cx = pxl + pw / 2;
+    const tex = buildCharacterTexture(this, look, sel.outfit);
+    c.add(this.add.image(cx, top + 46, tex, [0, 3, 6][this.previewFacing]).setScale(3));
+    const turn = this.add.zone(cx, top + 46, 50, 84).setInteractive({ useHandCursor: true });
+    turn.on('pointerdown', () => {
+      this.previewFacing = (this.previewFacing + 1) % 3;
+      audio.play('pop');
+      reopen();
+    });
+    c.add(turn);
+    c.add(this.add.text(cx, top + 88, sel.name, plain()).setOrigin(0.5));
+
+    const owned = st.costumeOwned(sel);
+    const wearing = st.wearingCostume(sel);
+    const { price, full, unlockRep } = st.costumePrice(sel);
+    let label = wearing ? 'Wearing' : owned ? 'Wear it' : `Set ${price}c`;
+    let colour = wearing ? 0xffe066 : owned ? 0x7de8c8 : 0xffd23f;
+    let can = !wearing;
+    if (!owned && unlockRep > st.reputation) {
+      label = `Rep ${unlockRep}`;
+      colour = 0xe8dcc8;
+      can = false;
+    } else if (!owned) can = st.coins >= price;
+    const b = button(this, pxl + 6, h / 2 - 26, pw - 12, 18, label, () => {
+      const got = owned ? st.wearCostume(sel) : st.buyCostume(sel);
+      if (!got) return audio.play('bad');
+      audio.play(owned ? 'pop' : 'coin');
+      this.showToast(owned ? `${sel.name}: looking good` : `${sel.name} is yours — every piece of it`);
+      this.world.refreshFromState();
+      this.world.afterChange();
+      reopen();
+    }, colour);
+    b.setEnabled(can);
+    c.add(b.container);
+    // one line under the name: what the set saves while buying, the flavour once it is yours
+    const sub = !owned && price < full ? `${full}c bought apart` : sel.blurb;
+    c.add(this.add.text(cx, top + 99, sub, note({ color: '#6a5a60', align: 'center', wordWrap: { width: pw - 4 } })).setOrigin(0.5, 0));
+
+    // ---- the rack ----
+    const gx = pxl + pw + 8;
+    const cw = 28;
+    const chh = 52;
+    const cols = 6;
+    const per = cols * 2;
+    const pages = Math.max(1, Math.ceil(list.length / per));
+    const page = this.page % pages;
+    list.slice(page * per, page * per + per).forEach((cos, i) => {
+      const x = gx + (i % cols) * (cw + 2);
+      const y = top + Math.floor(i / cols) * (chh + 4);
+      const has = st.costumeOwned(cos);
+      const locked = !has && cos.unlockRep > st.reputation;
+      const isSel = cos.id === sel.id;
+      const cg = this.add.graphics();
+      panel(cg, x, y, cw, chh, isSel ? 0xffe066 : st.wearingCostume(cos) ? 0xdff7ee : 0xffffff, isSel ? 0xff8fcf : 0x4a2a3f);
+      c.add(cg);
+      const img = this.add.image(x + cw / 2, y + chh / 2 - 5, buildCharacterTexture(this, look, cos.outfit), 0).setScale(1.5);
+      if (locked) img.setAlpha(0.35);
+      c.add(img);
+      const tag = cos.free ? 'free' : locked ? `${cos.unlockRep} rep` : has ? 'yours' : `${st.costumePrice(cos).price}c`;
+      const tagColour = cos.free ? '#1f6a56' : has ? '#1f6a56' : locked ? '#6a5a60' : '#8a5e00';
+      c.add(this.add.text(x + cw / 2, y + chh - 7, tag, note({ color: tagColour })).setOrigin(0.5));
+      const z = this.add.zone(x + cw / 2, y + chh / 2, cw, chh).setInteractive({ useHandCursor: true });
+      z.on('pointerdown', () => {
+        this.shopSel = cos.id;
+        audio.play('blip');
+        reopen();
+      });
+      c.add(z);
+    });
+    if (pages > 1)
+      this.pager(c, w, h, page, pages, (n) => {
+        this.page = n;
+        reopen();
+      });
+    else c.add(this.add.text(gx + 93, h / 2 - 12, mode === 'buy' ? 'A set costs less than its pieces' : 'The first five are free', note({ color: '#6a5a60' })).setOrigin(0.5));
+  }
+
+  private openClothes(mode: 'buy' | 'equip', kind: ClothingKind | 'looks') {
     const st = this.world.state;
     const w = 300;
     const h = 176;
     const c = this.openOverlay(w, h, mode === 'buy' ? `Rosa's Tailor   (coins: ${st.coins})` : 'Wardrobe');
     const reopen = () => this.openClothes(mode, kind);
-    const kinds: [ClothingKind, string][] = [
+    const kinds: [ClothingKind | 'looks', string][] = [
+      ['looks', 'Looks'],
       ['top', 'Outfits'],
       ['hat', 'Hats'],
       ['accessory', 'Extras'],
@@ -1199,6 +1299,7 @@ export class HudScene extends Phaser.Scene {
       }]),
       kinds.findIndex(([k]) => k === kind),
     );
+    if (kind === 'looks') return this.looksPage(c, w, h, mode);
     const ids = clothingIds(kind);
     const list = mode === 'buy' ? ids.filter((id) => !isFreeClothing(id) && !clothingDef(kind, id).rewardOnly) : ids.filter((id) => st.owns(kind, id));
     const worn = st.outfit[kind] as string;

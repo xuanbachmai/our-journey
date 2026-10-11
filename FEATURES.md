@@ -54,6 +54,11 @@ A cute pixel farm, kitchen and little world for two players, **xb** and **qd**. 
 - Cozy Corner: 26 furniture pieces in Living, Bedroom, Decor and Wall, real previews and a daily 30% sale. Place with Decorate; coziness raises dish prices.
 - Rosa's Tailor: outfits (overalls, tee, hoodie, sundress), 14 hats, 8 extras, 10 dyes, 9 hair colours, a try-on mannequin and a daily sale. The home wardrobe swaps what you own.
 
+## Dressing up
+- Eleven whole looks, each one hair colour, clothes, a hat and something extra at once. Five are free from the first morning — Farm Day, Sunrise, Cocoa, Study Hall and Blossom — and wearing one keeps every piece in it, so there is a wardrobe to mix from on day one.
+- Six sets at Rosa's: Catnap, Garden Fairy, Head Chef, Pondside, Starlight and Royal, each about a third under its pieces bought one at a time, and never charging twice for a piece already in the wardrobe.
+- The pieces themselves still sell separately: 5 tops, 16 hats, 9 extras, 11 dyes and 10 hair colours, with one item 30% off each day.
+
 ## Just for the two of you
 - Bond level (1 to 10) from both playing the same day, notes, the daily question, co-op cooking, hugs, matching outfits, photos and gifts, with daily caps.
 - Bond rewards: picnic blanket, heart headbands, couple bench, couple tees, golden rings, and up to +10% dish prices.

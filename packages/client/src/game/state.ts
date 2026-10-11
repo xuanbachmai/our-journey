@@ -2,6 +2,13 @@ import {
   ACCESSORIES,
   ANIMAL_IDS,
   CONTRACT_SLOTS,
+  costumeFor,
+  costumeFullPrice,
+  costumeOwned,
+  costumePieces,
+  costumePrice,
+  wearingCostume,
+  type Costume,
   contractDone,
   contractExpired,
   CROP_IDS,
@@ -904,6 +911,57 @@ export class GameState {
     bump(this.world, 'clothes');
     this.touch();
     return true;
+  }
+
+  // ----- costumes -----
+
+  /** A whole look: what it costs today, given what is already in the wardrobe. */
+  costumePrice(c: Costume) {
+    return { price: costumePrice(c, this.world.clothingOwned), full: costumeFullPrice(c, []), unlockRep: c.unlockRep };
+  }
+
+  costumeOwned(c: Costume) {
+    return costumeOwned(c, this.world.clothingOwned);
+  }
+
+  wearingCostume(c: Costume) {
+    return wearingCostume(c, this.outfit);
+  }
+
+  /** The look the outfit matches exactly, when it matches one. */
+  get wornCostume() {
+    return costumeFor(this.outfit);
+  }
+
+  /** Put the whole look on. Free looks hand over their pieces as you wear them. */
+  wearCostume(c: Costume): boolean {
+    if (!this.costumeOwned(c)) return false;
+    this.grantCostume(c);
+    this.setOutfit({ ...c.outfit });
+    bump(this.world, 'costume');
+    this.touch();
+    return true;
+  }
+
+  /** Buy the set: every piece you do not have yet, a third off, then wear it. */
+  buyCostume(c: Costume): boolean {
+    if (this.costumeOwned(c)) return false;
+    const { price, unlockRep } = this.costumePrice(c);
+    if (unlockRep > this.reputation || this.coins < price) return false;
+    this.world.coins -= price;
+    this.grantCostume(c);
+    bump(this.world, 'clothes');
+    bump(this.world, 'sets');
+    this.setOutfit({ ...c.outfit });
+    this.touch();
+    return true;
+  }
+
+  private grantCostume(c: Costume) {
+    for (const p of costumePieces(c)) {
+      if (isFreeClothing(p.id) || this.world.clothingOwned.includes(p.key)) continue;
+      this.world.clothingOwned.push(p.key);
+    }
   }
 
   get outfit(): Outfit {

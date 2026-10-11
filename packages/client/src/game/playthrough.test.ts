@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { CHAPTERS, isRipe, newWorld, RECIPES, simulateWorld, type CropId } from '@hh/shared';
+import { CHAPTERS, costume, isRipe, newWorld, RECIPES, simulateWorld, type CropId } from '@hh/shared';
 import { GameState } from './state';
 
 /**
@@ -311,5 +311,61 @@ describe('time away', () => {
     expect(events.length).toBeGreaterThan(0);
     for (const key of Object.keys(st.world.stats)) expect(st.world.stats[key]).toBeGreaterThanOrEqual(0);
     expect(Number.isFinite(st.coins)).toBe(true);
+  });
+});
+
+describe('getting dressed', () => {
+  it('hands over the pieces of a free look', () => {
+    const bot = new Bot();
+    const st = bot.state;
+    const cocoa = costume('cocoa') as NonNullable<ReturnType<typeof costume>>;
+
+    expect(st.costumeOwned(cocoa)).toBe(true);
+    expect(st.owns('hat', 'beanie'), 'not yours until you wear it').toBe(false);
+
+    const coins = st.coins;
+    expect(st.wearCostume(cocoa)).toBe(true);
+    expect(st.coins, 'a free look costs nothing').toBe(coins);
+    expect(st.outfit.hat).toBe('beanie');
+    expect(st.outfit.hair).toBe('brown');
+    // and now the pieces are in the wardrobe to mix with
+    expect(st.owns('hat', 'beanie')).toBe(true);
+    expect(st.owns('accessory', 'scarf')).toBe(true);
+    expect(st.wornCostume?.id).toBe('cocoa');
+  });
+
+  it('sells a set for less than its pieces, and only once', () => {
+    const bot = new Bot();
+    const st = bot.state;
+    st.world.coins = 9000;
+    st.addRep(40);
+    const royal = costume('royal') as NonNullable<ReturnType<typeof costume>>;
+
+    const { price, full } = st.costumePrice(royal);
+    expect(price).toBeLessThan(full);
+
+    const before = st.coins;
+    expect(st.buyCostume(royal)).toBe(true);
+    expect(before - st.coins).toBe(price);
+    expect(st.costumeOwned(royal)).toBe(true);
+    expect(st.wearingCostume(royal)).toBe(true);
+    expect(st.buyCostume(royal), 'already yours').toBe(false);
+
+    // the necklace it shares with Starlight is not charged for twice
+    const star = costume('starlight') as NonNullable<ReturnType<typeof costume>>;
+    expect(st.costumePrice(star).price).toBeLessThan(st.costumePrice(star).full);
+  });
+
+  it('keeps a set behind its reputation and your coins', () => {
+    const bot = new Bot();
+    const st = bot.state;
+    const royal = costume('royal') as NonNullable<ReturnType<typeof costume>>;
+    st.world.coins = 9000;
+    expect(st.buyCostume(royal), 'no reputation yet').toBe(false);
+
+    st.addRep(40);
+    st.world.coins = 10;
+    expect(st.buyCostume(royal), 'no coins').toBe(false);
+    expect(st.owns('hat', 'crown')).toBe(false);
   });
 });
