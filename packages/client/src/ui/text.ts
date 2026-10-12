@@ -24,7 +24,10 @@ export function getSavedFontKey(): FontKey {
   } catch {
     /* ignore */
   }
-  return 'pixelify';
+  // Cozy Rounded by default: measured against the others at the size the game
+  // actually draws, it was the only one that resolved a 2 from an 8 at 10px,
+  // and it is a shade narrower than the pixel face it replaces.
+  return 'fredoka';
 }
 
 export function saveFontKey(key: FontKey) {
@@ -69,7 +72,9 @@ export function style(extra: Partial<Phaser.Types.GameObjects.Text.TextStyle> = 
 
 /** Slot counts sit on top of an icon, so they stay small and tight. */
 export function tiny(extra: Partial<Phaser.Types.GameObjects.Text.TextStyle> = {}): Phaser.Types.GameObjects.Text.TextStyle {
-  return style({ fontSize: '8px', strokeThickness: 2, padding: { x: 1, y: 1 }, ...extra });
+  // Weight rather than outline: a 2px stroke closes up a rounded 8px digit
+  // until a 5 and a 6 look the same. 1.5 keeps it off the icon beneath.
+  return style({ fontSize: '8px', strokeThickness: 1.5, fontStyle: '600', padding: { x: 1, y: 1 }, ...extra });
 }
 
 export function plain(extra: Partial<Phaser.Types.GameObjects.Text.TextStyle> = {}): Phaser.Types.GameObjects.Text.TextStyle {
@@ -94,7 +99,9 @@ export function plain(extra: Partial<Phaser.Types.GameObjects.Text.TextStyle> = 
  */
 export function note(extra: Partial<Phaser.Types.GameObjects.Text.TextStyle> = {}): Phaser.Types.GameObjects.Text.TextStyle {
   const opt = FONT_OPTIONS[getSavedFontKey()];
-  return plain({ fontSize: `${Math.max(7, opt.defaultSize - 2)}px`, padding: { x: 2, y: 2 }, ...extra });
+  // A size down, but a weight up: at 8px the thin cut goes faint against
+  // cream, and the weight buys back the legibility without costing width.
+  return plain({ fontSize: `${Math.max(7, opt.defaultSize - 2)}px`, fontStyle: '600', padding: { x: 2, y: 2 }, ...extra });
 }
 
 /** A rounded pill, for tabs and for the coin chip beside a price. */
