@@ -130,6 +130,7 @@ export class HudScene extends Phaser.Scene {
   private isTouch = false;
   private coinText!: Phaser.GameObjects.Text;
   private repBar!: Phaser.GameObjects.Graphics;
+  private statusGfx!: Phaser.GameObjects.Graphics;
   private repText!: Phaser.GameObjects.Text;
   private bagBtn!: Phaser.GameObjects.Container;
   private bagBadge!: Phaser.GameObjects.Text;
@@ -137,6 +138,7 @@ export class HudScene extends Phaser.Scene {
   private bagTab: 'produce' | 'seeds' | 'dishes' | 'home' | 'tools' = 'produce';
   private bagSel: string | null = null;
   private hotbar!: Phaser.GameObjects.Container;
+  private trayGfx!: Phaser.GameObjects.Graphics;
   private slotGfx: Phaser.GameObjects.Graphics[] = [];
   private slotCounts: Phaser.GameObjects.Text[] = [];
   private slotIcons: Phaser.GameObjects.Image[] = [];
@@ -180,11 +182,14 @@ export class HudScene extends Phaser.Scene {
     this.isTouch = this.sys.game.device.input.touch;
     this.input.addPointer(2);
 
-    this.add.image(6, 6, 'icons', 'coin').setOrigin(0, 0);
-    this.coinText = this.add.text(20, 8, '0', style({ color: P.yellow })).setOrigin(0, 0);
-    this.add.image(6, 19, 'icons', 'heart').setOrigin(0, 0);
+    // Coins and the bond ride on their own pills, so they read against grass,
+    // paving or a night sky without an outline on every glyph.
+    this.statusGfx = this.add.graphics();
+    this.add.image(8, 6, 'icons', 'coin').setOrigin(0, 0);
+    this.coinText = this.add.text(22, 8, '0', plain({ color: '#8a5e00' })).setOrigin(0, 0);
+    this.add.image(8, 23, 'icons', 'heart').setOrigin(0, 0);
     this.repBar = this.add.graphics();
-    this.repText = this.add.text(66, 21, '0', style({ color: '#ff8fa3' })).setOrigin(0, 0);
+    this.repText = this.add.text(70, 25, '0', note({ color: '#a8456a' })).setOrigin(0, 0);
     // bag button replaces the old row of loose item icons
     {
       const g = this.add.graphics();
@@ -223,6 +228,8 @@ export class HudScene extends Phaser.Scene {
 
     // hotbar
     this.hotbar = this.add.container(0, 0);
+    this.trayGfx = this.add.graphics();
+    this.hotbar.add(this.trayGfx);
     for (let i = 0; i < 8; i++) {
       const g = this.add.graphics();
       const icon = this.add.image(i * 20 + 10, 10, 'icons', 'seed-wheat');
@@ -237,9 +244,9 @@ export class HudScene extends Phaser.Scene {
 
     // action button
     this.actionGfx = this.add.graphics();
-    this.actionLabel = this.add.text(0, 0, '', plain({ align: 'center', wordWrap: { width: 40 } })).setOrigin(0.5);
-    this.actionHint = this.add.text(0, 24, this.isTouch ? '' : '[SPACE]', style({ color: '#fff' })).setOrigin(0.5, 0);
-    const zone = this.add.zone(0, 0, 52, 52).setInteractive({ useHandCursor: true });
+    this.actionLabel = this.add.text(0, 0, '', plain({ align: 'center', wordWrap: { width: 44 } })).setOrigin(0.5);
+    this.actionHint = this.add.text(0, 27, this.isTouch ? '' : '[SPACE]', style({ color: '#fff' })).setOrigin(0.5, 0);
+    const zone = this.add.zone(0, 0, 60, 60).setInteractive({ useHandCursor: true });
     zone.on('pointerdown', () => {
       this.world.doAction();
       this.tweens.add({ targets: this.actionBtn, scale: 0.9, duration: 60, yoyo: true });
@@ -415,10 +422,12 @@ export class HudScene extends Phaser.Scene {
   private refresh(d: HudData) {
     this.last = d;
     this.coinText.setText(String(d.coins));
-    this.repBar.clear();
-    this.repBar.fillStyle(0x4a2a3f, 1).fillRect(20, 22, 44, 6);
-    this.repBar.fillStyle(0xff8fa3, 1).fillRect(21, 23, Math.round(42 * (d.reputation / 100)), 4);
     this.repText.setText(String(Math.floor(d.reputation)));
+    this.statusGfx.clear();
+    pill(this.statusGfx, 4, 4, 18 + this.coinText.width, 16, 0xfff4dc);
+    pill(this.statusGfx, 4, 21, 65 + this.repText.width, 16, 0xfff4dc);
+    this.repBar.clear();
+    meter(this.repBar, 22, 26, 44, 6, d.reputation / 100, 0xe05fa8);
     // bag badge: produce + dishes carried; a little hop when something new goes in
     let total = d.dishes;
     for (const id of SELLABLE) total += d.inventory[id] ?? 0;
@@ -429,6 +438,8 @@ export class HudScene extends Phaser.Scene {
     this.slotSeeds = CROP_IDS.filter((c) => (d.inventory[`seed:${c}`] ?? 0) > 0 || CROPS[c].unlockRep <= d.reputation);
     const n = this.slotSeeds.length;
     this.hotbar.setPosition(Math.round(this.scale.width / 2 - n * 10), this.scale.height - 24);
+    this.trayGfx.clear();
+    if (n) this.trayGfx.fillStyle(0x2d1b33, 0.4).fillRoundedRect(-4, -4, n * 20 + 8, 28, 6);
     for (let i = 0; i < 8; i++) {
       const id = this.slotSeeds[i];
       const g = this.slotGfx[i];
@@ -445,9 +456,9 @@ export class HudScene extends Phaser.Scene {
     const a = d.action;
     this.actionGfx.clear();
     const on = !!a && a.enabled;
-    this.actionGfx.fillStyle(0x4a2a3f, 1).fillCircle(0, 1, 19);
-    this.actionGfx.fillStyle(on ? 0xffd23f : 0xd9c9b8, 1).fillCircle(0, 0, 18);
-    this.actionGfx.fillStyle(0xffffff, on ? 0.5 : 0.25).fillCircle(-4, -6, 5);
+    this.actionGfx.fillStyle(0x4a2a3f, 1).fillCircle(0, 2, 22);
+    this.actionGfx.fillStyle(on ? 0xffd23f : 0xd9c9b8, 1).fillCircle(0, 0, 21);
+    this.actionGfx.fillStyle(0xffffff, on ? 0.45 : 0.2).fillCircle(-5, -7, 6);
     this.actionLabel.setText(a ? a.label : '').setColor(on ? P.outline : '#8a7a70').setFontSize(a && a.label.length > 7 ? '6px' : '8px');
     this.actionBtn.setAlpha(a ? 1 : 0.55);
     const mounts = d.mounts ?? [];
@@ -468,9 +479,12 @@ export class HudScene extends Phaser.Scene {
       const txt = `${title}${prog}`;
       this.questText.setText(txt);
       const w = Math.min(this.questText.width + 14, this.scale.width - 150);
-      panel(this.questGfx, -w, -9, w, 18, 0xfff4dc);
-      this.questText.setPosition(-w + 7, 0);
-      (this.questBox.list[2] as Phaser.GameObjects.Zone).setPosition(-w, 0).setSize(w, 18);
+      const stepped = d.quest.target > 1;
+      const h = stepped ? 24 : 18;
+      panel(this.questGfx, -w, -h / 2, w, h, 0xfff4dc);
+      this.questText.setPosition(-w + 7, stepped ? -3 : 0);
+      if (stepped) meter(this.questGfx, -w + 7, 5, w - 14, 5, d.quest.progress / d.quest.target, 0x7de8c8);
+      (this.questBox.list[2] as Phaser.GameObjects.Zone).setPosition(-w, 0).setSize(w, h);
     } else this.questText.setText('');
     // area & weather & partner
     this.areaText.setText(d.areaName + (d.special ? `  *${d.special}*` : ''));
