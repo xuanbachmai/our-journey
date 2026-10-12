@@ -27,6 +27,8 @@ export interface PosMsg {
   moving: boolean;
   outfit: Outfit;
   pet: { type: string; name: string } | null;
+  /** The driver is on a bicycle with a passenger seat and the seat is free. */
+  seat?: boolean;
 }
 
 export interface NoteRow {

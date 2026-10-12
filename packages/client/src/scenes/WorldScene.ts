@@ -237,11 +237,39 @@ export class WorldScene extends Phaser.Scene {
   }
 
   get mount(): 'horse' | 'bike' | 'car' | null {
+    if (this.pillion) return 'bike';
     return this.riding ? 'horse' : this.driving;
   }
 
   /** One button for every ride: horse, bike, car, then back on foot. */
+  /** A free seat on the partner's bicycle beats any ride of our own. */
+  get seatOffered() {
+    return this.partnerSeat && !!this.remote && this.partnerOnline && this.remoteArea === this.areaId && Math.hypot(this.remote.x - this.player.x, this.remote.y - this.player.y) < 3 * TILE;
+  }
+
+  /** Climb on behind the partner. Only ever called by the passenger's own tap. */
+  private hopOn() {
+    this.setRiding(false);
+    this.setDriving(null);
+    this.pillion = true;
+    audio.play('great');
+    this.events.emit('toast', `Hop on! Riding with ${otherPlayer(this.playerId)}.`);
+    this.state.bond('coop');
+    this.afterChange();
+    this.pushHud(true);
+  }
+
+  private hopOff(why = 'Back on your feet.') {
+    if (!this.pillion) return;
+    this.pillion = false;
+    audio.play('pop');
+    this.events.emit('toast', why);
+    this.pushHud(true);
+  }
+
   cycleMount() {
+    if (this.pillion) return this.hopOff();
+    if (this.seatOffered) return this.hopOn();
     const list = this.mounts;
     if (!list.length) {
       this.events.emit('toast', AREAS[this.areaId].outdoor ? 'Buy a horse, a bicycle or a car first.' : 'Rides wait outside.');
@@ -684,6 +712,8 @@ export class WorldScene extends Phaser.Scene {
         this.remotePet.destroy();
         this.remotePet = null;
       }
+      this.partnerSeat = !!m.seat;
+      if (this.pillion && !m.seat) this.hopOff('The seat is gone.');
       this.remoteTarget = { x: m.x, y: m.y, facing: m.facing, moving: m.moving };
     });
     on('state', (p) => {
@@ -751,6 +781,7 @@ export class WorldScene extends Phaser.Scene {
       moving: this.player.moving,
       outfit: this.state.outfit,
       pet: this.state.pet ? { type: this.state.pet.type, name: this.state.pet.name } : null,
+      seat: this.driving === 'bike' && this.state.upgradeLevel('bikeSeat') > 0 && !this.pillion,
     };
     net.send('pos', msg);
   }
@@ -989,7 +1020,7 @@ export class WorldScene extends Phaser.Scene {
       decorate: this.decorate.mode ? { item: this.decorate.item, mode: this.decorate.mode } : null,
       special: this.specialLabel,
       loveDays: this.state.daysTogether,
-      mounts: this.mounts,
+      mounts: this.seatOffered || this.pillion ? [...new Set(['bike' as const, ...this.mounts])] : this.mounts,
       mount: this.mount,
     };
     const snapshot = [
@@ -1991,7 +2022,17 @@ export class WorldScene extends Phaser.Scene {
       }
     }
     if (this.uiOpen) dx = dy = 0;
+    if (this.pillion) {
+      // our own client does the moving, so both screens agree on where we are
+      if (!this.seatOffered && this.remote) this.hopOff('You slipped off.');
+      else if (this.remote) {
+        dx = dy = 0;
+        this.player.sprite.setPosition(this.remote.x + (this.remote.facing === 'left' ? 11 : -11), this.remote.y - 2);
+        this.player.facing = this.remote.facing;
+      }
+    }
     const moved = this.player.move(dx, dy, dt);
+    if (this.pillion) this.broadcastPos();
     this.player.update();
     if (this.remote && this.partnerOnline && Math.hypot(this.remote.x - this.player.x, this.remote.y - this.player.y) < 4 * TILE) {
       this.togetherMs += dt;
@@ -2007,10 +2048,9 @@ export class WorldScene extends Phaser.Scene {
     }
     if (this.vehicle) {
       this.vehicle.setPosition(this.player.x, this.player.y + 5).setDepth(this.player.sprite.depth + 1).setScale(this.player.facing === 'left' ? -1 : 1, 1);
-      if (this.driving === 'bike' && this.state.upgradeLevel('bikeSeat') > 0 && this.remote && this.partnerOnline && Math.hypot(this.remote.x - this.player.x, this.remote.y - this.player.y) < 3 * TILE) {
-        this.remote.sprite.setPosition(this.player.x + (this.player.facing === 'left' ? 12 : -12), this.player.y - 2);
-        this.remote.sprite.setDepth(this.player.sprite.depth + 2);
-      }
+      // The passenger rides on their OWN client (see ridePillion), so there is
+      // nothing to fake here. Dragging their ghost across this screen used to
+      // show the driver a passenger who, on their own screen, had never moved.
     }
     if (moved || (!this.player.moving && this.lastMoving)) this.broadcastPos(!this.player.moving && this.lastMoving);
     this.lastMoving = this.player.moving;
@@ -2130,6 +2170,10 @@ export class WorldScene extends Phaser.Scene {
     this.pushHud(false, a);
   }
   private lastMoving = false;
+  /** True while we are riding on the back of the partner's bicycle. */
+  private pillion = false;
+  /** The partner is on a bicycle with a free passenger seat. */
+  private partnerSeat = false;
 
   // ------------------------------------------------------------ guide arrow
 
