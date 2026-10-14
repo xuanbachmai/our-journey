@@ -14,6 +14,7 @@ let game: Phaser.Game | null = null;
 let fellBack = false;
 let useTimer = false;
 const fitAfterOrientation = () => window.setTimeout(fit, 100);
+let refitTries = 0;
 
 function createGame(type: number) {
   const g = new Phaser.Game({
@@ -35,6 +36,11 @@ function createGame(type: number) {
     fit();
     window.addEventListener('resize', fit);
     window.addEventListener('orientationchange', fitAfterOrientation);
+    // coming back from the background or the bfcache gives no resize event
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) fit();
+    });
+    window.addEventListener('pageshow', fit);
   });
   return g;
 }
@@ -47,8 +53,18 @@ function fit() {
   const inset = (name: string) => parseFloat(s.getPropertyValue(name)) || 0;
   const w = window.innerWidth - inset("--sal") - inset("--sar");
   const h = window.innerHeight - inset("--sat") - inset("--sab");
-  // hidden or collapsed views report 0; keep the last good size instead of shrinking to nothing
-  if (w < 50 || h < 50) return;
+  // A page restored from the background reports a window of nothing. Keep the
+  // last good size rather than shrinking to a dot, and ask again shortly: no
+  // resize event follows when such a tab is simply brought to the front, and
+  // without this it would sit at the boot size with the scenery half drawn.
+  if (w < 50 || h < 50) {
+    if (refitTries < 25) {
+      refitTries++;
+      window.setTimeout(fit, 200);
+    }
+    return;
+  }
+  refitTries = 0;
   // Pick the zoom from the height, so the world is always about a screenful
   // tall and the art never ends up tiny on a small phone, then hold it back if
   // that would leave the view too narrow for a menu to sit in.

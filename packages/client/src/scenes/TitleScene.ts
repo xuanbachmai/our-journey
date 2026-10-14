@@ -18,6 +18,8 @@ export class TitleScene extends Phaser.Scene {
   private chosen = false;
   private pickCtx: { code: string | null; seats: Seats | null; world: WorldState | null } = { code: null, seats: null, world: null };
   private status?: Phaser.GameObjects.Text;
+  /** Where the status line lives when nothing is competing for the bottom. */
+  private statusHome = { x: 0, y: 0 };
 
   constructor() {
     super('Title');
@@ -75,6 +77,7 @@ export class TitleScene extends Phaser.Scene {
     this.add.text(W / 2, titleY + 16, 'a little farm for two', style({ color: '#ffe066' })).setOrigin(0.5);
     // errors can be a sentence long, so let the line wrap instead of running off both edges
     this.status = this.add.text(W / 2, H - 8, '', style({ color: '#fff', align: 'center', wordWrap: { width: W - 24 } })).setOrigin(0.5, 1);
+    this.statusHome = { x: W / 2, y: H - 8 };
   }
 
   private clearUi() {
@@ -84,6 +87,18 @@ export class TitleScene extends Phaser.Scene {
 
   private setStatus(t: string) {
     this.status?.setText(t);
+  }
+
+  /**
+   * The seat picker fills the bottom of the screen — two characters, their
+   * names and a Back button. A two-line status underneath used to be drawn
+   * straight over the names, so while picking it sits under the title instead.
+   */
+  private moveStatus(toTop: boolean) {
+    if (!this.status) return;
+    const { width: W, height: H } = this.scale;
+    if (toTop) this.status.setOrigin(0.5, 0).setPosition(W / 2, Math.min(H * 0.2, H - 140) + 30);
+    else this.status.setOrigin(0.5, 1).setPosition(this.statusHome.x, this.statusHome.y);
   }
 
   private async boot() {
@@ -138,6 +153,7 @@ export class TitleScene extends Phaser.Scene {
   }
 
   private showMenu(retry: boolean) {
+    this.moveStatus(false);
     this.mode = 'menu';
     this.clearUi();
     const { width: W, height: H } = this.scale;
@@ -168,7 +184,7 @@ export class TitleScene extends Phaser.Scene {
       this.setStatus(`Could not create a farm: ${net.lastError || 'no connection'}`);
       return;
     }
-    this.setStatus(`Farm created! Code ${code}`);
+    this.setStatus(`Your code is ${code} — tell it to the other one of you`);
     this.showPick(code, { xb: null, qd: null }, world);
   }
 
@@ -186,12 +202,14 @@ export class TitleScene extends Phaser.Scene {
       this.showMenu(false);
       return;
     }
-    this.setStatus(`Found farm ${code}. Who are you?`);
+    // the picker already asks who you are, under the farm's own code
+    this.setStatus('');
     this.showPick(code, w.seats, w.state);
   }
 
   private showPick(code: string | null, seats: Seats | null, world: WorldState | null) {
     this.mode = 'pick';
+    this.moveStatus(true);
     this.pickCtx = { code, seats, world };
     this.clearUi();
     const { width: W, height: H } = this.scale;
