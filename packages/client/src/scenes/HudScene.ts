@@ -1,8 +1,11 @@
 import Phaser from 'phaser';
 import {
   ACCESSORIES,
+  applyReward,
   COSTUMES,
   type Costume,
+  normaliseGiftCode,
+  type RewardLine,
   dayIndex,
   dueLabel,
   formatDuration,
@@ -2110,6 +2113,53 @@ export class HudScene extends Phaser.Scene {
     });
   }
 
+  // ---------- gift codes ----------
+
+  /** Ask for a code, spend it, then show what came out of it. */
+  private async openRedeem() {
+    const raw = await promptText({ title: 'Got a code? Type it here', placeholder: 'HAPPYBIRTHDAY', code: true, maxLength: 24, okLabel: 'Redeem' });
+    if (!raw) return;
+    const code = normaliseGiftCode(raw);
+    if (!code) return;
+    const res = await net.redeemGift(code);
+    if (!res.ok) {
+      audio.play('bad');
+      const why = res.why === 'already' ? 'This farm has already had that one.'
+        : res.why === 'expired' ? 'That code has run out of time.'
+        : res.why === 'used up' ? 'That code has been spent.'
+        : res.why === 'unknown' ? 'No code like that. Check the spelling?'
+        : res.why;
+      this.showToast(why);
+      return;
+    }
+    const st = this.world.state;
+    const lines = applyReward(st.world, res.reward);
+    st.touch();
+    this.world.refreshFromState();
+    this.world.afterChange();
+    audio.play('quest');
+    this.showGift(res.message, lines);
+  }
+
+  private showGift(message: string | null, lines: RewardLine[]) {
+    const w = 250;
+    const h = 60 + Math.max(1, lines.length) * ROW + (message ? 20 : 0);
+    const c = this.openOverlay(w, h, 'A gift!');
+    let y = -h / 2 + 32;
+    if (message) {
+      c.add(this.add.text(0, y, message, plain({ color: '#a8456a', align: 'center', wordWrap: { width: w - 24 } })).setOrigin(0.5, 0));
+      y += 22;
+    }
+    if (!lines.length) c.add(this.add.text(0, y + 6, 'Nothing in this one!', note({ color: '#6a5a60' })).setOrigin(0.5, 0));
+    lines.forEach((l, i) => {
+      const ly = y + 8 + i * ROW;
+      this.rowCard(c, -w / 2 + 12, ly - 10, w - 24, 20, { key: 'icons', frame: l.icon }, 0xf2fff8, 0xd8f5e6);
+      c.add(this.add.text(-w / 2 + 32, ly, l.text, plain()).setOrigin(0, 0.5));
+    });
+    const ok = button(this, -30, h / 2 - 24, 60, 18, 'Lovely', () => this.closeOverlay(), 0x7de8c8);
+    c.add(ok.container);
+  }
+
   // ---------- machines ----------
 
   /** "in 2h 10m", or "ready" when a batch has just finished. */
@@ -2869,6 +2919,7 @@ export class HudScene extends Phaser.Scene {
       this.openJournal('settings');
     }, 0x7de8c8);
     mk(4, 'Special days', () => void this.openSpecialDays(), 0xffe066);
+    if (net.enabled && net.pairing) mk(4.5, 'Redeem a code', () => void this.openRedeem(), 0x7de8c8);
     if (net.enabled && net.pairing) {
       const code = net.pairing.code;
       mk(5, `Farm code: ${code}`, async () => {

@@ -23,3 +23,4 @@ export * from './machines';
 export * from './hands';
 export * from './contracts';
 export * from './costumes';
+export * from './rewards';

@@ -1,5 +1,5 @@
 import { createClient, type RealtimeChannel, type SupabaseClient } from '@supabase/supabase-js';
-import type { AreaId, Outfit, PlayerId, WorldState } from '@hh/shared';
+import type { Reward, AreaId, Outfit, PlayerId, WorldState } from '@hh/shared';
 
 /**
  * Pairing + live sync through Supabase. When the site has no Supabase keys the
@@ -351,6 +351,22 @@ class Net {
 
   private emit(event: string, payload: unknown) {
     for (const h of this.handlers.get(event) ?? []) h(payload);
+  }
+
+  // ---------------- gift codes ----------------
+
+  /**
+   * Spend a gift code for this farm. The codes table is invisible to the anon
+   * key; this goes through a function on the server that can see it, so a
+   * player can spend a code they were given but cannot go looking for others.
+   */
+  async redeemGift(code: string): Promise<{ ok: true; reward: Reward; message: string | null } | { ok: false; why: string }> {
+    if (!this.client || !this.pairing) return { ok: false, why: 'you are playing on your own' };
+    const { data, error } = await this.client.rpc('redeem_gift', { p_code: code, p_farm: this.pairing.code, p_player: this.pairing.player });
+    if (error) return { ok: false, why: error.message };
+    const r = data as { ok: boolean; why?: string; reward?: Reward; message?: string | null } | null;
+    if (!r || !r.ok) return { ok: false, why: r?.why ?? 'unknown' };
+    return { ok: true, reward: (r.reward ?? {}) as Reward, message: r.message ?? null };
   }
 
   // ---------------- notes & answers ----------------
