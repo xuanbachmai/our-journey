@@ -1,20 +1,27 @@
 import Phaser from 'phaser';
 import { P } from '../art/palette';
 
-export type FontKey = 'pixelify' | 'fredoka' | 'silkscreen' | 'pressstart';
+export type FontKey = 'gothic' | 'pixelify' | 'fredoka' | 'silkscreen' | 'pressstart';
 
 export interface FontOption {
   key: FontKey;
   label: string;
   family: string;
   defaultSize: number;
+  /**
+   * The size the quiet second line is drawn at. A bitmap face holds together
+   * at its own size and falls apart below it, so it says so rather than
+   * everything assuming two pixels smaller is safe.
+   */
+  noteSize: number;
 }
 
 export const FONT_OPTIONS: Record<FontKey, FontOption> = {
-  pixelify: { key: 'pixelify', label: 'Pixel Clean', family: '"Pixelify Sans", sans-serif', defaultSize: 10 },
-  fredoka: { key: 'fredoka', label: 'Cozy Rounded', family: '"Fredoka", sans-serif', defaultSize: 10 },
-  silkscreen: { key: 'silkscreen', label: 'Compact Pixel', family: '"Silkscreen", monospace', defaultSize: 8 },
-  pressstart: { key: 'pressstart', label: 'Retro Classic', family: '"Press Start 2P", monospace', defaultSize: 8 },
+  gothic: { key: 'gothic', label: 'Bitmap Gothic', family: '"DotGothic16", sans-serif', defaultSize: 10, noteSize: 10 },
+  pixelify: { key: 'pixelify', label: 'Pixel Clean', family: '"Pixelify Sans", sans-serif', defaultSize: 12, noteSize: 10 },
+  fredoka: { key: 'fredoka', label: 'Cozy Rounded', family: '"Fredoka", sans-serif', defaultSize: 10, noteSize: 8 },
+  silkscreen: { key: 'silkscreen', label: 'Compact Pixel', family: '"Silkscreen", monospace', defaultSize: 8, noteSize: 8 },
+  pressstart: { key: 'pressstart', label: 'Retro Classic', family: '"Press Start 2P", monospace', defaultSize: 8, noteSize: 8 },
 };
 
 export function getSavedFontKey(): FontKey {
@@ -24,10 +31,10 @@ export function getSavedFontKey(): FontKey {
   } catch {
     /* ignore */
   }
-  // Cozy Rounded by default: measured against the others at the size the game
-  // actually draws, it was the only one that resolved a 2 from an 8 at 10px,
-  // and it is a shade narrower than the pixel face it replaces.
-  return 'fredoka';
+  // A bitmap gothic by default. Measured at the size the game actually draws,
+  // it is the one face that is both pixel-crisp and has real lowercase, which
+  // the rounded sans before it bought legibility by giving up.
+  return 'gothic';
 }
 
 export function saveFontKey(key: FontKey) {
@@ -99,9 +106,19 @@ export function plain(extra: Partial<Phaser.Types.GameObjects.Text.TextStyle> = 
  */
 export function note(extra: Partial<Phaser.Types.GameObjects.Text.TextStyle> = {}): Phaser.Types.GameObjects.Text.TextStyle {
   const opt = FONT_OPTIONS[getSavedFontKey()];
-  // A size down, but a weight up: at 8px the thin cut goes faint against
-  // cream, and the weight buys back the legibility without costing width.
-  return plain({ fontSize: `${Math.max(7, opt.defaultSize - 2)}px`, fontStyle: '600', padding: { x: 2, y: 2 }, ...extra });
+  // Each face names the size its quiet line survives at; a bitmap one stays
+  // put, a smooth one goes down and gains weight to hold against the cream.
+  const smooth = opt.noteSize < opt.defaultSize;
+  return plain({ fontSize: `${opt.noteSize}px`, ...(smooth ? { fontStyle: '600' } : {}), padding: { x: 2, y: 2 }, ...extra });
+}
+
+/**
+ * "1 crop", "3 crops". Every count the player reads goes through this; writing
+ * "1 crops" on the welcome screen is the sort of thing that makes a game feel
+ * unfinished even when everything behind it works.
+ */
+export function count(n: number, one: string, many = one + 's'): string {
+  return `${n} ${n === 1 ? one : many}`;
 }
 
 /** A rounded pill, for tabs and for the coin chip beside a price. */

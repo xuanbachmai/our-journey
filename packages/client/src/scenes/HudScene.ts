@@ -98,7 +98,7 @@ import { audio } from '../game/audio';
 import { net, type NoteRow } from '../game/net';
 import { eraseLocalData, MAX_PENDING_GIFTS, type AwaySummary, type ProgressEvent } from '../game/state';
 import { confirmBox, copyToClipboard, promptText } from '../ui/dom';
-import { button, FONT_OPTIONS, meter, note, pill, type FontKey, getSavedFontKey, panel, plain, refreshFontConfig, saveFontKey, style, tiny } from '../ui/text';
+import { button, count, FONT_OPTIONS, meter, note, pill, type FontKey, getSavedFontKey, panel, plain, refreshFontConfig, saveFontKey, style, tiny } from '../ui/text';
 import { TitleScene } from './TitleScene';
 import type { CookResult, HudData, WorldScene } from './WorldScene';
 
@@ -1289,7 +1289,7 @@ export class HudScene extends Phaser.Scene {
     b.setEnabled(can);
     c.add(b.container);
     // one line under the name: what the set saves while buying, the flavour once it is yours
-    const sub = !owned && price < full ? `${full}c bought apart` : sel.blurb;
+    const sub = !owned && price < full ? `${full}c if you buy the pieces` : sel.blurb;
     c.add(this.add.text(cx, top + 99, sub, note({ color: '#6a5a60', align: 'center', wordWrap: { width: pw - 4 } })).setOrigin(0.5, 0));
 
     // ---- the rack ----
@@ -1328,7 +1328,7 @@ export class HudScene extends Phaser.Scene {
         this.page = n;
         reopen();
       });
-    else c.add(this.add.text(gx + 93, h / 2 - 12, mode === 'buy' ? 'A set costs less than its pieces' : 'The first five are free', note({ color: '#6a5a60' })).setOrigin(0.5));
+    else c.add(this.add.text(gx + 93, h / 2 - 12, mode === 'buy' ? 'A set costs less than the pieces' : 'The first five are yours already', note({ color: '#6a5a60' })).setOrigin(0.5));
   }
 
   private openClothes(mode: 'buy' | 'equip', kind: ClothingKind | 'looks') {
@@ -1459,7 +1459,7 @@ export class HudScene extends Phaser.Scene {
     else if (mode === 'buy') {
       const s = st.clothingSale;
       c.add(this.add.text(gx + 93, h / 2 - 12, `Sale: ${clothingDef(s.kind, s.id).name} -30%`, plain({ color: '#d94a4a' })).setOrigin(0.5));
-    } else c.add(this.add.text(gx + 93, h / 2 - 12, 'Tap a card, then Wear', plain({ color: '#7a6a70' })).setOrigin(0.5));
+    } else c.add(this.add.text(gx + 93, h / 2 - 12, 'Pick one, then put it on', plain({ color: '#7a6a70' })).setOrigin(0.5));
   }
 
   // ---------- Cozy Corner (furniture) ----------
@@ -2078,7 +2078,7 @@ export class HudScene extends Phaser.Scene {
       b.setEnabled(st.canComplete(o));
       c.add(b.container);
     });
-    c.add(this.add.text(0, h / 2 - 9, 'New requests every day', plain({ color: '#7a6a70' })).setOrigin(0.5));
+    c.add(this.add.text(0, h / 2 - 9, 'Someone new asks every morning', plain({ color: '#7a6a70' })).setOrigin(0.5));
   }
 
 
@@ -2196,7 +2196,7 @@ export class HudScene extends Phaser.Scene {
     c.add(this.add.text(-w / 2 + 36, top + 11, `${ITEMS[def.output].name} ready: ${m.ready}`, plain()).setOrigin(0, 0.5));
     const runningLabel = m.jobs.length
       ? `${m.jobs.length} of ${st.machineSlots(id)} working, next ${this.whenDone(st.machineNextDone(id))}`
-      : `nothing working (${st.machineSlots(id)} free)`;
+      : `idle — ${st.machineSlots(id)} slot${st.machineSlots(id) === 1 ? '' : 's'} free`;
     c.add(this.add.text(-w / 2 + 36, top + 22, runningLabel, note({ color: '#7a6a70' })).setOrigin(0, 0.5));
     // one little bar per slot: how far through its batch each one is
     const slots = st.machineSlots(id);
@@ -2230,7 +2230,7 @@ export class HudScene extends Phaser.Scene {
       this.rowCard(c, -w / 2 + 8, y - 10, w - 16, 21, { key: 'icons', frame: ITEMS[item].icon });
       c.add(this.add.text(-w / 2 + 28, y - 4, `${ITEMS[item].name} x${have}`, plain()).setOrigin(0, 0.5));
       const gain = machineMargin(id, item);
-      c.add(this.add.text(-w / 2 + 28, y + 6, `+${gain}c over selling it`, note({ color: '#1f6a56' })).setOrigin(0, 0.5));
+      c.add(this.add.text(-w / 2 + 28, y + 6, `+${gain}c more than selling it`, note({ color: '#1f6a56' })).setOrigin(0, 0.5));
       const put = button(this, w / 2 - 66, y - 8, 54, 16, 'Load', () => {
         if (!st.startBatch(id, item)) return audio.play('bad');
         audio.play('pop');
@@ -2240,8 +2240,8 @@ export class HudScene extends Phaser.Scene {
       put.setEnabled(have > 0 && free > 0);
       c.add(put.container);
     });
-    if (free <= 0 && m.jobs.length) c.add(this.add.text(0, h / 2 - 8, 'Every slot is busy. Come back later.', note({ color: '#7a6a70' })).setOrigin(0.5));
-    else if (!def.accepts.some((i) => st.count(i) > 0)) c.add(this.add.text(0, h / 2 - 8, 'Nothing in the bag it can use yet.', note({ color: '#7a6a70' })).setOrigin(0.5));
+    if (free <= 0 && m.jobs.length) c.add(this.add.text(0, h / 2 - 8, 'Every slot is busy — come back later', note({ color: '#7a6a70' })).setOrigin(0.5));
+    else if (!def.accepts.some((i) => st.count(i) > 0)) c.add(this.add.text(0, h / 2 - 8, 'Nothing in the bag it can use yet', note({ color: '#7a6a70' })).setOrigin(0.5));
   }
 
   // ---------- the farm at a glance ----------
@@ -2262,7 +2262,7 @@ export class HudScene extends Phaser.Scene {
     ];
     lines.forEach((t, i) => c.add(this.add.text(-w / 2 + 14, top + i * 12, t, i === 0 ? plain() : note({ color: '#7a6a70' })).setOrigin(0, 0.5)));
 
-    c.add(this.add.text(-w / 2 + 14, top + 56, 'Worth planting (coins an hour)', plain()).setOrigin(0, 0.5));
+    c.add(this.add.text(-w / 2 + 14, top + 56, 'Best to plant right now', plain()).setOrigin(0, 0.5));
     st.cropProfit().slice(0, 4).forEach((row, i) => {
       const y = top + 72 + i * 13;
       c.add(this.add.image(-w / 2 + 20, y, 'icons', `crop-${row.crop}`));
@@ -2310,7 +2310,7 @@ export class HudScene extends Phaser.Scene {
     }
 
     if (!st.canTakeContract()) {
-      c.add(this.add.text(0, h / 2 - 8, 'Finish one before taking another', note({ color: '#7a6a70' })).setOrigin(0.5));
+      c.add(this.add.text(0, h / 2 - 8, 'Finish one before you take another', note({ color: '#7a6a70' })).setOrigin(0.5));
       return;
     }
     c.add(this.add.text(-w / 2 + 12, y - 2, 'On the board', note({ color: '#7a6a70' })).setOrigin(0, 0.5));
@@ -2334,7 +2334,7 @@ export class HudScene extends Phaser.Scene {
   private helpPage(c: Phaser.GameObjects.Container, w: number, h: number) {
     const st = this.world.state;
     const top = -h / 2 + 62;
-    c.add(this.add.text(0, top - 20, 'A week at a time. They work the mornings you are away.', note({ color: '#7a6a70' })).setOrigin(0.5));
+    c.add(this.add.text(0, top - 20, 'Paid a week at a time. They work the mornings you miss.', note({ color: '#7a6a70' })).setOrigin(0.5));
     HAND_IDS.forEach((id, i) => {
       const y = top + 10 + i * 34;
       const hand = HANDS[id];
@@ -3025,29 +3025,31 @@ export class HudScene extends Phaser.Scene {
     const mins = Math.round(a.awayMs / 60000);
     const when = mins < 60 ? `${mins} min` : mins < 60 * 48 ? `${Math.round(mins / 60)} h` : `${Math.round(mins / 1440)} days`;
     const lines: [string, string][] = [];
-    if (sales.length) lines.push(['dish-tomato_soup', `${sales.length} dishes sold, +${earned} coins`]);
-    if (left) lines.push(['dots', `${left} customers left: empty counter`]);
-    if (ripe) lines.push(['star', `${ripe} crops ready to harvest`]);
-    if (produce) lines.push(['egg', `${produce} eggs, milk, wool or honey`]);
-    if (rain) lines.push(['rain', 'It rained. The field got watered.']);
+    if (sales.length) lines.push(['dish-tomato_soup', `${count(sales.length, 'dish', 'dishes')} sold, +${earned} coins`]);
+    if (left) lines.push(['dots', `${count(left, 'customer')} left — the counter was empty`]);
+    if (ripe) lines.push(['star', `${count(ripe, 'crop')} ready to pick`]);
+    if (produce) lines.push(['egg', `${count(produce, 'thing')} waiting from the animals`]);
+    if (rain) lines.push(['rain', 'It rained, so the field watered itself']);
     // what your love did while you were away
     const say: Record<string, [string, string]> = {
-      harvest: ['crop-tomato', 'harvested %n crops'],
-      plant: ['seed-tomato', 'planted %n seeds'],
-      water: ['drop', 'watered %n plants'],
-      cook: ['dish-tomato_soup', 'cooked %n dishes'],
-      served: ['plate', 'served %n diners'],
-      fish: ['fish', 'caught %n fish'],
-      forage: ['mushroom', 'foraged %n things'],
-      gifts: ['gift', 'gave villagers %n gifts'],
-      photos: ['camera', 'took %n photos'],
-      note: ['heart', 'wrote you %n notes'],
-      hugs: ['hug', 'hugged you %n times'],
+      harvest: ['crop-tomato', 'harvested %c|crop'],
+      plant: ['seed-tomato', 'planted %c|seed'],
+      water: ['drop', 'watered %c|plant'],
+      cook: ['dish-tomato_soup', 'cooked %c|dish|dishes'],
+      served: ['plate', 'served %c|diner'],
+      fish: ['fish', 'caught %c|fish|fish'],
+      forage: ['mushroom', 'foraged %c|thing'],
+      gifts: ['gift', 'gave away %c|gift'],
+      photos: ['camera', 'took %c|photo'],
+      note: ['heart', 'wrote you %c|note'],
+      hugs: ['hug', 'hugged you %c|time'],
     };
+    // "%c|crop" or "%c|dish|dishes": the plural is named, not guessed by
+    // chopping an s off the end, which used to turn one fish into one "fis".
     if (a.partner) for (const { key, n } of a.partner.news.slice(0, 5)) if (say[key]) {
-      const t = say[key][1].replace('%n', String(n));
-      // one crop, one dish, one note
-      lines.push([say[key][0], `${a.partner.id} ${n === 1 ? t.replace(/(dishes|crops|seeds|plants|diners|things|gifts|photos|notes|times)/, (m) => (m === 'dishes' ? 'dish' : m.slice(0, -1))) : t}`]);
+      const [icon, tpl] = say[key];
+      const [text, one, many] = tpl.split('|');
+      lines.push([icon, `${a.partner.id} ${text.replace('%c', count(n, one, many))}`]);
     }
     if (!lines.length) {
       this.showToast(`Welcome back! You were away ${when}.`);

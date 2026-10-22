@@ -1,3 +1,4 @@
+import { count } from '../ui/text';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { newWorld, type WorldState } from '@hh/shared';
 import { GameState } from './state';
@@ -52,5 +53,17 @@ describe('hosted world loading', () => {
     expect(state.world.version).toBe(3);
     expect(state.world.coins).toBe(123);
     expect(state.world.players.xb.outfit.hat).toBe('none');
+  });
+});
+
+describe('counting things out loud', () => {
+  it('never writes "1 crops" or "1 fis"', () => {
+    expect(count(1, 'crop')).toBe('1 crop');
+    expect(count(3, 'crop')).toBe('3 crops');
+    expect(count(1, 'dish', 'dishes')).toBe('1 dish');
+    expect(count(2, 'dish', 'dishes')).toBe('2 dishes');
+    expect(count(1, 'fish', 'fish')).toBe('1 fish');
+    expect(count(7, 'fish', 'fish')).toBe('7 fish');
+    expect(count(0, 'customer')).toBe('0 customers');
   });
 });
