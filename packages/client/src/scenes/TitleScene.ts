@@ -72,11 +72,11 @@ export class TitleScene extends Phaser.Scene {
     this.add.image(W - 6, H - 28, 'trees', 0).setOrigin(1, 1);
     this.add.image(W - 40, H - 22, 'trees', 3).setOrigin(1, 1).setScale(0.8);
     const titleY = Math.min(H * 0.2, H - 140);
-    const title = this.add.text(W / 2, titleY, 'Our Journey', style({ fontSize: '16px', color: '#fff4dc', strokeThickness: 4 })).setOrigin(0.5);
+    const title = this.add.text(W / 2, titleY, 'Our Journey', style({ fontSize: '16px', color: '#fff4dc', strokeThickness: 2 })).setOrigin(0.5);
     this.tweens.add({ targets: title, y: title.y - 3, duration: 1200, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
-    this.add.text(W / 2, titleY + 16, 'a little farm for two', style({ color: '#ffe066' })).setOrigin(0.5);
+    this.add.text(W / 2, titleY + 17, 'a little farm for two', plain({ color: '#8a5e00' })).setOrigin(0.5);
     // errors can be a sentence long, so let the line wrap instead of running off both edges
-    this.status = this.add.text(W / 2, H - 8, '', style({ color: '#fff', align: 'center', wordWrap: { width: W - 24 } })).setOrigin(0.5, 1);
+    this.status = this.add.text(W / 2, H - 8, '', plain({ color: P.outline, align: 'center', wordWrap: { width: W - 24 } })).setOrigin(0.5, 1);
     this.statusHome = { x: W / 2, y: H - 8 };
   }
 
@@ -97,15 +97,22 @@ export class TitleScene extends Phaser.Scene {
   private moveStatus(toTop: boolean) {
     if (!this.status) return;
     const { width: W, height: H } = this.scale;
-    if (toTop) this.status.setOrigin(0.5, 0).setPosition(W / 2, Math.min(H * 0.2, H - 140) + 30);
-    else this.status.setOrigin(0.5, 1).setPosition(this.statusHome.x, this.statusHome.y);
+    if (!toTop) {
+      this.status.setOrigin(0.5, 1).setPosition(this.statusHome.x, this.statusHome.y);
+      return;
+    }
+    // Sit just above the "who are you?" line, but never ride up into the
+    // subtitle: on a short screen those two were landing on each other, which
+    // is how "Solo mode: no backend configured" ended up across the question.
+    const subtitleBottom = Math.min(H * 0.2, H - 140) + 26;
+    this.status.setOrigin(0.5, 1).setPosition(W / 2, Math.max(subtitleBottom + this.status.height, H - 112));
   }
 
   private async boot() {
     const params = new URLSearchParams(window.location.search);
     const join = params.get('join');
     if (!net.enabled) {
-      this.setStatus('Solo mode: no backend configured');
+      this.setStatus('Playing on this device only');
       this.showPick(null, null, null);
       return;
     }
@@ -225,7 +232,7 @@ export class TitleScene extends Phaser.Scene {
       spr.play(`${tex}-idle-down`);
       if (taken) spr.setTint(0x888888);
       else this.tweens.add({ targets: spr, y: y - 4, duration: 500 + i * 120, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
-      const name = this.add.text(x, y + 6, taken ? `${look.name} (taken)` : look.name, style({ color: taken ? '#aaaaaa' : look.hair })).setOrigin(0.5, 0);
+      const name = this.add.text(x, y + 6, taken ? `${look.name} (taken)` : look.name, plain({ color: taken ? '#7a7a7a' : P.outline })).setOrigin(0.5, 0);
       this.ui.push(spr, name);
       if (taken) return;
       const zone = this.add.zone(x, y - 24, 44, 60).setInteractive({ useHandCursor: true });

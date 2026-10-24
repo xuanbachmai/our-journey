@@ -914,8 +914,9 @@ export class HudScene extends Phaser.Scene {
     if (card.scene === 'first_dish' || card.scene === 's_dish') c.add(this.add.image(x - 3, y - 12, 'icons', 'dish-tomato_soup').setScale(1.5));
     if (card.scene === 'rich') c.add(this.add.image(x - 3, y - 12, 'icons', 'coin').setScale(1.5));
     if (card.scene === 'together' || card.scene === 'first_sale' || card.scene === 'orders') c.add(this.add.image(x - 3, y - 14, 'icons', 'heart').setScale(1.5));
-    c.add(this.add.text(x, y + 22, card.title, plain({ color: P.outline })).setOrigin(0.5, 0.5));
-    c.add(this.add.text(x, y + 32, card.day, plain({ color: '#7a6a70' })).setOrigin(0.5, 0.5));
+    // the frame ends at y + 36, and a line of this font is twelve pixels tall
+    c.add(this.add.text(x, y + 19, card.title, plain({ color: P.outline })).setOrigin(0.5, 0.5));
+    c.add(this.add.text(x, y + 29, card.day, plain({ color: '#6a5a60' })).setOrigin(0.5, 0.5));
   }
 
   // ---------- overlays ----------

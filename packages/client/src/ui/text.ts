@@ -63,7 +63,11 @@ export function style(extra: Partial<Phaser.Types.GameObjects.Text.TextStyle> = 
   const curKey = getSavedFontKey();
   const opt = FONT_OPTIONS[curKey];
   const size = extra.fontSize ? parseInt(String(extra.fontSize), 10) : opt.defaultSize;
-  const strokeThick = extra.strokeThickness !== undefined ? extra.strokeThickness : size > 10 ? 3 : 2;
+  // One pixel of outline and a hard shadow under it. A thick stroke is how
+  // you make text readable over a world when the face is chunky; on a thin
+  // bitmap one it closes the counters of the letters and the whole line turns
+  // to mud, which is what three pixels of it was doing here.
+  const strokeThick = extra.strokeThickness !== undefined ? extra.strokeThickness : 1;
 
   return {
     fontFamily: opt.family,
@@ -71,6 +75,7 @@ export function style(extra: Partial<Phaser.Types.GameObjects.Text.TextStyle> = 
     color: '#ffffff',
     stroke: P.outline,
     strokeThickness: strokeThick,
+    shadow: { offsetX: 1, offsetY: 1, color: P.outline, blur: 0, stroke: true, fill: true },
     resolution: 2,
     padding: { x: 4, y: 3 },
     ...extra,
@@ -79,9 +84,9 @@ export function style(extra: Partial<Phaser.Types.GameObjects.Text.TextStyle> = 
 
 /** Slot counts sit on top of an icon, so they stay small and tight. */
 export function tiny(extra: Partial<Phaser.Types.GameObjects.Text.TextStyle> = {}): Phaser.Types.GameObjects.Text.TextStyle {
-  // Weight rather than outline: a 2px stroke closes up a rounded 8px digit
-  // until a 5 and a 6 look the same. 1.5 keeps it off the icon beneath.
-  return style({ fontSize: '8px', strokeThickness: 1.5, fontStyle: '600', padding: { x: 1, y: 1 }, ...extra });
+  // A count sits on an icon, so it keeps its single pixel of outline and the
+  // shadow that comes with it, and nothing more.
+  return style({ fontSize: '8px', strokeThickness: 1, padding: { x: 1, y: 1 }, ...extra });
 }
 
 export function plain(extra: Partial<Phaser.Types.GameObjects.Text.TextStyle> = {}): Phaser.Types.GameObjects.Text.TextStyle {
