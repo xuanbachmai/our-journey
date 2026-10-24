@@ -98,14 +98,14 @@ import { audio } from '../game/audio';
 import { net, type NoteRow } from '../game/net';
 import { eraseLocalData, MAX_PENDING_GIFTS, type AwaySummary, type ProgressEvent } from '../game/state';
 import { confirmBox, copyToClipboard, promptText } from '../ui/dom';
-import { button, count, FONT_OPTIONS, meter, note, pill, type FontKey, getSavedFontKey, panel, plain, refreshFontConfig, saveFontKey, style, tiny } from '../ui/text';
+import { button, count, FONT_OPTIONS, inset, meter, note, pill, titleBar, type FontKey, getSavedFontKey, panel, plain, refreshFontConfig, saveFontKey, style, tiny } from '../ui/text';
 import { TitleScene } from './TitleScene';
 import type { CookResult, HudData, WorldScene } from './WorldScene';
 
 const JOY_R = 20;
-const ROW = 17;
+const ROW = 18;
 /** Rows that carry a name and a note underneath. */
-const ROW2 = 21;
+const ROW2 = 25;
 
 interface HelpPage {
   title: string;
@@ -451,7 +451,8 @@ export class HudScene extends Phaser.Scene {
       this.slotIcons[i].setVisible(vis);
       this.slotCounts[i].setVisible(vis);
       if (!id) continue;
-      panel(g, i * 20, 0, 20, 20, d.selectedSeed === id ? 0xffe066 : 0xfff4dc, d.selectedSeed === id ? 0xff8fcf : 0x4a2a3f);
+      // the chosen one stands proud, the rest are cut into the tray
+      (d.selectedSeed === id ? panel : inset)(g, i * 20, 0, 20, 20, d.selectedSeed === id ? 0xffe066 : 0xfff4dc, d.selectedSeed === id ? 0xff8fcf : 0x4a2a3f);
       this.slotIcons[i].setFrame(`seed-${id}`);
       this.slotCounts[i].setText(String(d.inventory[`seed:${id}`] ?? 0));
     }
@@ -559,7 +560,7 @@ export class HudScene extends Phaser.Scene {
       const sx = x0 + (i % cols) * slot;
       const sy = top + Math.floor(i / cols) * slot;
       const g = this.add.graphics();
-      panel(g, sx, sy, 24, 24, loved.includes(e.key) ? 0xffe8f4 : 0xffffff, loved.includes(e.key) ? 0xff8fcf : 0x4a2a3f);
+      inset(g, sx, sy, 24, 24, loved.includes(e.key) ? 0xffe8f4 : 0xffffff, loved.includes(e.key) ? 0xff8fcf : 0x4a2a3f);
       c.add(g);
       c.add(this.add.image(sx + 12, sy + 11, 'icons', e.icon).setScale(1.5));
       if (e.count > 1) c.add(this.add.text(sx + 25, sy + 26, String(e.count), tiny()).setOrigin(1, 1));
@@ -932,7 +933,7 @@ export class HudScene extends Phaser.Scene {
     const dim = this.add.rectangle(0, 0, W * 3, H * 3, 0x2a1a2f, 0.45).setInteractive();
     const g = this.add.graphics();
     panel(g, -w / 2, -h / 2, w, h, 0xfff4dc);
-    g.fillStyle(0xffd23f, 1).fillRect(-w / 2 + 2, -h / 2 + 2, w - 4, 14);
+    titleBar(g, -w / 2 + 2, -h / 2 + 2, w - 4, 15);
     const t = this.add.text(0, -h / 2 + 9, title, plain()).setOrigin(0.5);
     const close = button(this, w / 2 - 16, -h / 2 + 2, 14, 14, 'x', () => this.closeOverlay(), 0xff8fcf);
     const c = this.add.container(Math.round(W / 2), Math.round(H / 2), [dim, g, t, close.container]).setDepth(100);
@@ -1667,7 +1668,7 @@ export class HudScene extends Phaser.Scene {
       const sx = x0 + (i % cols) * slot;
       const sy = top + 12 + Math.floor(i / cols) * slot;
       const g = this.add.graphics();
-      panel(g, sx, sy, 24, 24, 0xffffff);
+      inset(g, sx, sy, 24, 24, 0xffffff);
       c.add(g);
       c.add(e.frame ? this.fitImage(this.add.image(sx + 12, sy + 12, 'furniture', e.frame), 20, 20, 1) : this.add.image(sx + 12, sy + 12, 'icons', e.icon).setScale(1.5));
       if (e.count > 1) c.add(this.add.text(sx + 25, sy + 26, String(e.count), tiny()).setOrigin(1, 1));
@@ -2088,14 +2089,14 @@ export class HudScene extends Phaser.Scene {
     const st = this.world.state;
     const top = -h / 2 + 44;
     MACHINE_IDS.forEach((id, i) => {
-      const y = top + i * 25;
+      const y = top + i * 27;
       const def = MACHINES[id];
       const owned = st.machineCount(id);
       const price = st.machinePrice(id);
-      this.rowCard(c, -w / 2 + 8, y - 11, w - 16, 22, { key: 'icons', frame: def.icon });
-      c.add(this.add.text(-w / 2 + 28, y - 5, def.name + (owned ? ` (${owned})` : ''), plain()).setOrigin(0, 0.5));
+      this.rowCard(c, -w / 2 + 8, y - 13, w - 16, 25, { key: 'icons', frame: def.icon });
+      c.add(this.add.text(-w / 2 + 28, y - 6, def.name + (owned ? ` (${owned})` : ''), plain()).setOrigin(0, 0.5));
       // short enough to clear the price tag on the right
-      c.add(this.add.text(-w / 2 + 28, y + 6, `Makes ${ITEMS[def.output].name.toLowerCase()}, ${formatDuration(def.minutes * 60)} a batch`, note({ color: '#6a5a60' })).setOrigin(0, 0.5));
+      c.add(this.add.text(-w / 2 + 28, y + 5, `Makes ${ITEMS[def.output].name.toLowerCase()}, ${formatDuration(def.minutes * 60)} a batch`, note({ color: '#6a5a60' })).setOrigin(0, 0.5));
       if (price === null) {
         const why = owned >= 3 ? 'full' : `${def.unlockRep} rep`;
         c.add(this.add.text(w / 2 - 34, y, why, plain({ color: '#7a6a70' })).setOrigin(0.5));
@@ -2181,7 +2182,7 @@ export class HudScene extends Phaser.Scene {
     const def = MACHINES[id];
     const w = 282;
     // only as tall as it needs to be: one row per thing it will take
-    const h = 100 + def.accepts.length * ROW2;
+    const h = 104 + def.accepts.length * ROW2;
     const m = st.machineState(id);
     const c = this.openOverlay(w, h, `${def.name}${m.count > 1 ? ` x${m.count}` : ''}`);
     const top = -h / 2 + 30;
@@ -2228,10 +2229,10 @@ export class HudScene extends Phaser.Scene {
     def.accepts.forEach((item, i) => {
       const y = top + 66 + i * ROW2;
       const have = st.count(item);
-      this.rowCard(c, -w / 2 + 8, y - 10, w - 16, 21, { key: 'icons', frame: ITEMS[item].icon });
-      c.add(this.add.text(-w / 2 + 28, y - 4, `${ITEMS[item].name} x${have}`, plain()).setOrigin(0, 0.5));
+      this.rowCard(c, -w / 2 + 8, y - 12, w - 16, 25, { key: 'icons', frame: ITEMS[item].icon });
+      c.add(this.add.text(-w / 2 + 28, y - 6, `${ITEMS[item].name} x${have}`, plain()).setOrigin(0, 0.5));
       const gain = machineMargin(id, item);
-      c.add(this.add.text(-w / 2 + 28, y + 6, `+${gain}c more than selling it`, note({ color: '#1f6a56' })).setOrigin(0, 0.5));
+      c.add(this.add.text(-w / 2 + 28, y + 5, `+${gain}c more than selling it`, note({ color: '#1f6a56' })).setOrigin(0, 0.5));
       const put = button(this, w / 2 - 66, y - 8, 54, 16, 'Load', () => {
         if (!st.startBatch(id, item)) return audio.play('bad');
         audio.play('pop');
@@ -2291,7 +2292,7 @@ export class HudScene extends Phaser.Scene {
     let y = top;
 
     for (const ct of st.activeContracts) {
-      this.rowCard(c, -w / 2 + 8, y - 14, w - 16, 31, { key: 'icons', frame: ITEMS[ct.item].icon }, 0xf2fff8, 0xd8f5e6);
+      this.rowCard(c, -w / 2 + 8, y - 15, w - 16, 34, { key: 'icons', frame: ITEMS[ct.item].icon }, 0xf2fff8, 0xd8f5e6);
       c.add(this.add.text(-w / 2 + 32, y - 8, `${ct.from}: ${ct.done}/${ct.qty} ${ITEMS[ct.item].name}`, plain()).setOrigin(0, 0.5));
       const bar = this.add.graphics();
       meter(bar, -w / 2 + 32, y + 1, w - 108, 5, ct.done / Math.max(1, ct.qty), 0xff8fcf);
@@ -2319,7 +2320,7 @@ export class HudScene extends Phaser.Scene {
     st.contractBoard.slice(0, 3).forEach((ct, i) => {
       const row = y + i * ROW2;
       if (row > h / 2 - 16) return;
-      this.rowCard(c, -w / 2 + 8, row - 10, w - 16, 21, { key: 'icons', frame: ITEMS[ct.item].icon });
+      this.rowCard(c, -w / 2 + 8, row - 12, w - 16, 25, { key: 'icons', frame: ITEMS[ct.item].icon });
       c.add(this.add.text(-w / 2 + 28, row - 4, `${ct.qty} ${ITEMS[ct.item].name} for ${ct.from}`, plain()).setOrigin(0, 0.5));
       c.add(this.add.text(-w / 2 + 28, row + 6, `${ct.reward}c  +${ct.rep} rep  ${dueLabel(ct, today)}`, note({ color: '#8a5e00' })).setOrigin(0, 0.5));
       const take = button(this, w / 2 - 62, row - 7, 50, 15, 'Take', () => {
@@ -2341,7 +2342,7 @@ export class HudScene extends Phaser.Scene {
       const hand = HANDS[id];
       const left = st.handDaysLeft(id);
       const price = st.handPrice(id);
-      this.rowCard(c, -w / 2 + 8, y - 14, w - 16, 29, { key: 'icons', frame: hand.icon }, left ? 0xf2fff8 : 0xfffaf0, left ? 0xd8f5e6 : 0xf3e7d4);
+      this.rowCard(c, -w / 2 + 8, y - 15, w - 16, 32, { key: 'icons', frame: hand.icon }, left ? 0xf2fff8 : 0xfffaf0, left ? 0xd8f5e6 : 0xf3e7d4);
       c.add(this.add.text(-w / 2 + 32, y - 5, hand.name, plain()).setOrigin(0, 0.5));
       c.add(this.add.text(-w / 2 + 32, y + 6, left ? `${hand.desc} — ${left} day${left === 1 ? '' : 's'} left` : hand.desc, note({ color: left ? '#1f6a56' : '#6a5a60' })).setOrigin(0, 0.5));
       if (price === null) {
@@ -2423,7 +2424,7 @@ export class HudScene extends Phaser.Scene {
       const e = entries[i];
       const g = this.add.graphics();
       const sel = !!e && e.key === this.bagSel;
-      panel(g, sx, sy, 24, 24, sel ? 0xffe066 : e ? 0xffffff : 0xefe4d2, sel ? 0xff8fcf : e ? 0x4a2a3f : 0xd9c9b8);
+      inset(g, sx, sy, 24, 24, sel ? 0xffe066 : e ? 0xffffff : 0xefe4d2, sel ? 0xff8fcf : e ? 0x4a2a3f : 0xd9c9b8);
       c.add(g);
       if (!e) continue;
       c.add(this.bagIcon(tab, e.key, e.icon, sx + 12, sy + 12, 20));

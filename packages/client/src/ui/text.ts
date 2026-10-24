@@ -153,6 +153,12 @@ export function meter(g: Phaser.GameObjects.Graphics, x: number, y: number, w: n
 }
 
 /** Rounded pixel panel: outline + fill + light top edge. */
+/**
+ * The window frame everything is built from: a dark outline, the fill, then a
+ * pixel of light down the top and left and a pixel of shade down the bottom
+ * and right. Those last two are the whole trick — they are what makes a flat
+ * rectangle read as a raised panel rather than a coloured box.
+ */
 export function panel(g: Phaser.GameObjects.Graphics, x: number, y: number, w: number, h: number, fill = 0xfff4dc, outline = 0x4a2a3f) {
   g.fillStyle(outline, 1);
   g.fillRect(x + 1, y, w - 2, h);
@@ -160,8 +166,48 @@ export function panel(g: Phaser.GameObjects.Graphics, x: number, y: number, w: n
   g.fillStyle(fill, 1);
   g.fillRect(x + 2, y + 1, w - 4, h - 2);
   g.fillRect(x + 1, y + 2, w - 2, h - 4);
-  g.fillStyle(0xffffff, 0.6);
+  // lit from the top left
+  g.fillStyle(0xffffff, 0.55);
   g.fillRect(x + 2, y + 1, w - 4, 1);
+  g.fillRect(x + 1, y + 2, 1, h - 4);
+  // and shaded away from it
+  g.fillStyle(0x000000, 0.14);
+  g.fillRect(x + 2, y + h - 2, w - 4, 1);
+  g.fillRect(x + w - 2, y + 2, 1, h - 4);
+}
+
+/**
+ * The same frame turned inside out: shade at the top left, light at the
+ * bottom right, so the thing looks cut into the panel. For anything that
+ * holds something — a seed slot, an item square, a portrait.
+ */
+export function inset(g: Phaser.GameObjects.Graphics, x: number, y: number, w: number, h: number, fill = 0xe8dcc8, outline = 0x4a2a3f) {
+  g.fillStyle(outline, 1);
+  g.fillRect(x + 1, y, w - 2, h);
+  g.fillRect(x, y + 1, w, h - 2);
+  g.fillStyle(fill, 1);
+  g.fillRect(x + 2, y + 1, w - 4, h - 2);
+  g.fillRect(x + 1, y + 2, w - 2, h - 4);
+  g.fillStyle(0x000000, 0.2);
+  g.fillRect(x + 2, y + 1, w - 4, 1);
+  g.fillRect(x + 1, y + 2, 1, h - 4);
+  g.fillStyle(0xffffff, 0.45);
+  g.fillRect(x + 2, y + h - 2, w - 4, 1);
+  g.fillRect(x + w - 2, y + 2, 1, h - 4);
+}
+
+/** A title bar: the panel's fill, lighter at the top, with a line under it. */
+export function titleBar(g: Phaser.GameObjects.Graphics, x: number, y: number, w: number, h: number, fill = 0xffd23f, outline = 0x4a2a3f) {
+  g.fillStyle(fill, 1);
+  g.fillRect(x, y, w, h);
+  g.fillStyle(0xffffff, 0.35);
+  g.fillRect(x, y, w, Math.max(1, Math.floor(h / 3)));
+  g.fillStyle(0xffffff, 0.5);
+  g.fillRect(x, y, w, 1);
+  g.fillStyle(0x000000, 0.18);
+  g.fillRect(x, y + h - 2, w, 1);
+  g.fillStyle(outline, 1);
+  g.fillRect(x, y + h - 1, w, 1);
 }
 
 export interface Button {
@@ -181,12 +227,15 @@ export function button(
   color = 0xffd23f,
 ): Button {
   const g = scene.add.graphics();
-  const draw = (c: number) => {
+  // pressing it turns the bevel inside out and drops the label a pixel, which
+  // is the whole of what makes a button feel like it went down
+  const draw = (down: boolean) => {
     g.clear();
-    panel(g, 0, 0, w, h, c);
+    (down ? inset : panel)(g, 0, 0, w, h, color);
+    t?.setPosition(w / 2, h / 2 + (down ? 1 : 0));
   };
-  draw(color);
   const t = scene.add.text(w / 2, h / 2, label, plain()).setOrigin(0.5);
+  draw(false);
   // A thumb is wider than the button looks. The tap area is grown to at least
   // 22x20 game pixels (44pt on a phone) without changing what is drawn.
   const zw = Math.max(w, 22);
@@ -196,8 +245,8 @@ export function button(
   let enabled = true;
   zone.on('pointerdown', () => {
     if (!enabled) return;
-    draw(0xffffff);
-    scene.time.delayedCall(80, () => draw(color));
+    draw(true);
+    scene.time.delayedCall(90, () => draw(false));
     onClick();
   });
   return {
