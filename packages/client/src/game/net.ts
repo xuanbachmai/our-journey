@@ -59,8 +59,12 @@ export function isRealConfig(url: string, key: string): boolean {
 type Handler = (payload: unknown) => void;
 
 const PAIR_KEY = 'oj-pairing';
+const PENDING_KEY = 'oj-pending-world';
 const DEVICE_KEY = 'oj-device';
+const LOCAL_WORLDS_KEY = 'oj-worlds-local';
 const ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+
+export const MAX_WORLD_PLAYERS = 2;
 
 function uuid() {
   return crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -72,12 +76,34 @@ export function makeCode() {
   return s;
 }
 
-class Net {
-  readonly enabled: boolean;
+export function seatCount(seats: Seats | null | undefined): number {
+  if (!seats) return 0;
+  return (seats.xb ? 1 : 0) + (seats.qd ? 1 : 0);
+}
+
+/** True when all 2 seats in the world are already claimed by other devices. */
+export function isWorldFullForDevice(seats: Seats | null | undefined, deviceId: string): boolean {
+  if (!seats) return false;
+  const xbOther = !!seats.xb && seats.xb.device !== deviceId;
+  const qdOther = !!seats.qd && seats.qd.device !== deviceId;
+  return xbOther && qdOther;
+}
+
+interface StoredWorld {
+  state: WorldState;
+  version: number;
+  seats: Seats;
+}
+
+export class Net {
+  readonly enabled: boolean = true;
+  readonly cloudEnabled: boolean;
   readonly client: SupabaseClient | null;
   readonly deviceId: string;
   pairing: Pairing | null = null;
+  pendingCode: string | null = null;
   private channel: RealtimeChannel | null = null;
+  private bc: BroadcastChannel | null = null;
   private url = '';
   private key = '';
   private handlers = new Map<string, Handler[]>();
@@ -91,8 +117,8 @@ class Net {
   constructor() {
     const url = String(import.meta.env.VITE_SUPABASE_URL ?? '').trim();
     const key = String(import.meta.env.VITE_SUPABASE_ANON_KEY ?? '').trim();
-    this.enabled = isRealConfig(url, key);
-    this.client = this.enabled ? createClient(url, key, { auth: { persistSession: true } }) : null;
+    this.cloudEnabled = isRealConfig(url, key);
+    this.client = this.cloudEnabled ? createClient(url, key, { auth: { persistSession: true } }) : null;
     this.url = url;
     this.key = key;
     let dev = '';
@@ -104,15 +130,23 @@ class Net {
       }
       const p = localStorage.getItem(PAIR_KEY);
       if (p) this.pairing = JSON.parse(p) as Pairing;
+      const pend = localStorage.getItem(PENDING_KEY);
+      if (pend) this.pendingCode = pend;
     } catch {
       dev = dev || uuid();
     }
     this.deviceId = dev;
   }
 
+  /** Returns the single world code this device is currently bound to (if any). */
+  get boundWorldCode(): string | null {
+    return this.pairing?.code ?? this.pendingCode;
+  }
+
   /** Forgets the pairing and this device's id, for 'erase my data'. */
   forgetDevice() {
     this.setPairing(null);
+    this.setPendingCode(null);
     try {
       localStorage.removeItem(DEVICE_KEY);
     } catch {
@@ -131,100 +165,212 @@ class Net {
     }
   }
 
+  private setPendingCode(code: string | null) {
+    this.pendingCode = code;
+    try {
+      if (code) localStorage.setItem(PENDING_KEY, code);
+      else localStorage.removeItem(PENDING_KEY);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  private loadLocalWorlds(): Record<string, StoredWorld> {
+    try {
+      const raw = localStorage.getItem(LOCAL_WORLDS_KEY);
+      return raw ? (JSON.parse(raw) as Record<string, StoredWorld>) : {};
+    } catch {
+      return {};
+    }
+  }
+
+  private saveLocalWorlds(all: Record<string, StoredWorld>) {
+    try {
+      localStorage.setItem(LOCAL_WORLDS_KEY, JSON.stringify(all));
+    } catch {
+      /* ignore */
+    }
+  }
+
+  private saveLocalWorld(code: string, w: StoredWorld) {
+    const all = this.loadLocalWorlds();
+    all[code] = w;
+    this.saveLocalWorlds(all);
+  }
+
   // ---------------- worlds ----------------
 
   async createWorld(state: WorldState): Promise<string | null> {
-    if (!this.client) return null;
-    for (let attempt = 0; attempt < 5; attempt++) {
-      const code = makeCode();
-      const { error } = await this.client.from('worlds').insert({ code, state, version: 1, seats: { xb: null, qd: null } });
-      if (!error) return code;
-      if (!/duplicate|unique/i.test(error.message)) {
-        this.lastError = error.message;
-        return null;
+    // Enforce 1 world per device: cannot create a new world if already bound to one
+    const bound = this.boundWorldCode;
+    if (bound) {
+      this.lastError = `This device already has a world (${bound}). Delete it first to create a new one.`;
+      return null;
+    }
+
+    const initialSeats: Seats = { xb: null, qd: null };
+    if (this.client) {
+      for (let attempt = 0; attempt < 5; attempt++) {
+        const code = makeCode();
+        const { error } = await this.client.from('worlds').insert({ code, state, version: 1, seats: initialSeats });
+        if (!error) {
+          this.saveLocalWorld(code, { state, version: 1, seats: initialSeats });
+          this.setPendingCode(code);
+          return code;
+        }
+        if (!/duplicate|unique/i.test(error.message)) {
+          this.lastError = error.message;
+          break;
+        }
       }
     }
+
+    // Local / BroadcastChannel fallback so world codes always work even without a cloud backend
+    const all = this.loadLocalWorlds();
+    for (let attempt = 0; attempt < 10; attempt++) {
+      const code = makeCode();
+      if (!all[code]) {
+        this.saveLocalWorld(code, { state, version: 1, seats: initialSeats });
+        this.setPendingCode(code);
+        return code;
+      }
+    }
+    this.lastError = 'Could not generate a unique world code.';
     return null;
   }
 
-  async fetchWorld(code: string): Promise<{ state: WorldState; version: number; seats: Seats } | null> {
-    if (!this.client) return null;
-    const { data, error } = await this.client.from('worlds').select('state, version, seats').eq('code', code).maybeSingle();
-    if (error) {
-      this.lastError = error.message;
-      return null;
+  async fetchWorld(rawCode: string): Promise<{ state: WorldState; version: number; seats: Seats } | null> {
+    const code = rawCode.trim().toUpperCase();
+    if (!code) return null;
+    if (this.client) {
+      const { data, error } = await this.client.from('worlds').select('state, version, seats').eq('code', code).maybeSingle();
+      if (!error && data) {
+        const w = { state: data.state as WorldState, version: data.version as number, seats: data.seats as Seats };
+        this.saveLocalWorld(code, w);
+        return w;
+      }
+      if (error) this.lastError = error.message;
     }
-    if (!data) return null;
-    return { state: data.state as WorldState, version: data.version as number, seats: data.seats as Seats };
+    const local = this.loadLocalWorlds()[code];
+    if (!local) return null;
+    return { state: local.state, version: local.version, seats: local.seats };
   }
 
-  /** Claim a character seat for this device. Fails if someone else holds it. */
-  async claimSeat(code: string, player: PlayerId): Promise<'ok' | 'taken' | 'error'> {
-    if (!this.client) return 'error';
+  /**
+   * Claim a character seat for this device (max 2 seats per world: xb & qd, and max 1 world per device).
+   */
+  async claimSeat(rawCode: string, player: PlayerId): Promise<'ok' | 'taken' | 'full' | 'locked' | 'error'> {
+    const code = rawCode.trim().toUpperCase();
+    const bound = this.boundWorldCode;
+    if (bound && bound !== code) {
+      this.lastError = `This device is locked to world ${bound}. Delete that world first.`;
+      return 'locked';
+    }
+
     const uid = await this.userId();
     for (let attempt = 0; attempt < 3; attempt++) {
       const w = await this.fetchWorld(code);
-      if (!w) return 'error';
-      const seat = w.seats[player];
-      if (seat && seat.device !== this.deviceId && !(uid && seat.user === uid)) return 'taken';
-      const seats: Seats = { ...w.seats, [player]: { device: this.deviceId, ...(uid ? { user: uid } : seat?.user ? { user: seat.user } : {}) } };
-      const { data, error } = await this.client.from('worlds').update({ seats, version: w.version + 1 }).eq('code', code).eq('version', w.version).select('code').maybeSingle();
-      if (error) {
-        this.lastError = error.message;
+      if (!w) {
+        this.lastError = 'World not found.';
         return 'error';
       }
-      if (!data) continue;
+      if (isWorldFullForDevice(w.seats, this.deviceId)) {
+        this.lastError = 'This world is full (max 2 players).';
+        return 'full';
+      }
+      const seat = w.seats[player];
+      if (seat && seat.device !== this.deviceId && !(uid && seat.user === uid)) {
+        this.lastError = 'That character seat is already taken by your partner.';
+        return 'taken';
+      }
+      const other: PlayerId = player === 'xb' ? 'qd' : 'xb';
+      const cleanedOther = w.seats[other]?.device === this.deviceId ? null : w.seats[other];
+      const seats: Seats = {
+        ...w.seats,
+        [other]: cleanedOther,
+        [player]: { device: this.deviceId, ...(uid ? { user: uid } : seat?.user ? { user: seat.user } : {}) },
+      };
+
+      if (this.client) {
+        const { data, error } = await this.client.from('worlds').update({ seats, version: w.version + 1 }).eq('code', code).eq('version', w.version).select('code').maybeSingle();
+        if (error) {
+          this.lastError = error.message;
+          return 'error';
+        }
+        if (!data) continue;
+      }
+
+      this.saveLocalWorld(code, { state: w.state, version: w.version + 1, seats });
+      this.setPendingCode(null);
       this.setPairing({ code, player });
       return 'ok';
     }
-    this.lastError = 'The farm changed while claiming the seat. Please try again.';
+    this.lastError = 'The world changed while claiming the seat. Please try again.';
     return 'error';
   }
 
-  /** Release this device's seat and forget the pairing. */
-  async leaveFarm(): Promise<void> {
+  /**
+   * Delete the current world bound to this device so the device can create or join a new world.
+   */
+  async deleteWorld(): Promise<boolean> {
+    const code = this.boundWorldCode;
     const p = this.pairing;
-    await this.flushScheduledSave();
+    this.cancelScheduledSave();
     this.setPairing(null);
+    this.setPendingCode(null);
     await this.disconnect();
-    if (!this.client || !p) return;
-    for (let attempt = 0; attempt < 3; attempt++) {
-      const w = await this.fetchWorld(p.code);
-      if (!w) return;
-      // Do not let an old phone clear a seat that has since been restored elsewhere.
-      if (w.seats[p.player]?.device !== this.deviceId) return;
-      const seats: Seats = { ...w.seats, [p.player]: null };
-      const { data, error } = await this.client.from('worlds').update({ seats, version: w.version + 1 }).eq('code', p.code).eq('version', w.version).select('code').maybeSingle();
-      if (error) {
-        this.lastError = error.message;
-        return;
-      }
-      if (data) return;
+
+    if (code) {
+      const all = this.loadLocalWorlds();
+      delete all[code];
+      this.saveLocalWorlds(all);
     }
+
+    if (this.client && code) {
+      // Try deleting the world row; if RLS only permits update, free the seat/world
+      const { error } = await this.client.from('worlds').delete().eq('code', code);
+      if (error && p) {
+        const w = await this.fetchWorld(code);
+        if (w && w.seats[p.player]?.device === this.deviceId) {
+          const seats: Seats = { ...w.seats, [p.player]: null };
+          await this.client.from('worlds').update({ seats, version: w.version + 1 }).eq('code', code);
+        }
+      }
+    }
+    return true;
+  }
+
+  /** Release this device's seat and delete the world binding on this device. */
+  async leaveFarm(): Promise<void> {
+    await this.deleteWorld();
   }
 
   /** Creator can free the partner's seat (lost phone). */
   async resetPartnerSeat(): Promise<boolean> {
     const p = this.pairing;
-    if (!this.client || !p) return false;
+    if (!p) return false;
     const other: PlayerId = p.player === 'xb' ? 'qd' : 'xb';
     for (let attempt = 0; attempt < 3; attempt++) {
       const w = await this.fetchWorld(p.code);
       if (!w) return false;
       const seats: Seats = { ...w.seats, [other]: null };
-      const { data, error } = await this.client.from('worlds').update({ seats, version: w.version + 1 }).eq('code', p.code).eq('version', w.version).select('code').maybeSingle();
-      if (error) {
-        this.lastError = error.message;
-        return false;
+      if (this.client) {
+        const { data, error } = await this.client.from('worlds').update({ seats, version: w.version + 1 }).eq('code', p.code).eq('version', w.version).select('code').maybeSingle();
+        if (error) {
+          this.lastError = error.message;
+          return false;
+        }
+        if (!data) continue;
       }
-      if (data) return true;
+      this.saveLocalWorld(p.code, { state: w.state, version: w.version + 1, seats });
+      return true;
     }
     return false;
   }
 
   /** Debounced save. The freshest copy (higher changeCounter) wins. */
   scheduleSave(state: WorldState, delayMs = 1500) {
-    if (!this.client || !this.pairing) return;
+    if (!this.pairing) return;
     this.pendingSave = state;
     if (this.saveTimer !== null) return;
     this.saveTimer = window.setTimeout(() => {
@@ -250,8 +396,18 @@ class Net {
   }
 
   async saveNow(state: WorldState): Promise<void> {
-    if (!this.client || !this.pairing) return;
+    if (!this.pairing) return;
     const code = this.pairing.code;
+    const all = this.loadLocalWorlds();
+    const existingLocal = all[code];
+    if (!existingLocal || existingLocal.state.changeCounter <= state.changeCounter) {
+      this.saveLocalWorld(code, {
+        state,
+        version: (existingLocal?.version ?? 1) + 1,
+        seats: existingLocal?.seats ?? { xb: null, qd: null, [this.pairing.player]: { device: this.deviceId } },
+      });
+    }
+    if (!this.client) return;
     const { data } = await this.client.from('worlds').select('state').eq('code', code).maybeSingle();
     const remote = data?.state as WorldState | undefined;
     // Simulation timestamps advance even when no player does anything. They must
@@ -264,12 +420,10 @@ class Net {
   // ---------------- realtime ----------------
 
   /**
-   * One quick request, so the title screen can tell a sleeping or missing
-   * project from a working one instead of offering pairing that only errors.
-   * Any answer at all means the server is up; 5xx or no answer means it is not.
+   * One quick request when Supabase is configured; local world mode is always reachable.
    */
   async reachable(timeoutMs = 6000): Promise<boolean> {
-    if (!this.enabled) return false;
+    if (!this.cloudEnabled) return true;
     const c = new AbortController();
     const timer = setTimeout(() => c.abort(), timeoutMs);
     try {
@@ -283,13 +437,39 @@ class Net {
   }
 
   async connect(player: PlayerId): Promise<boolean> {
-    if (!this.client || !this.pairing) return false;
+    if (!this.pairing) return false;
     const generation = ++this.channelGeneration;
+    const code = this.pairing.code;
+
+    if (!this.client) {
+      if (this.bc) {
+        this.bc.close();
+        this.bc = null;
+      }
+      if (typeof BroadcastChannel !== 'undefined') {
+        const bc = new BroadcastChannel(`oj-world:${code}`);
+        this.bc = bc;
+        bc.onmessage = (ev) => {
+          const msg = ev.data as { event?: string; payload?: unknown; player?: PlayerId } | null;
+          if (!msg || !msg.event) return;
+          if (msg.event === '__presence' && msg.player) {
+            this.online.add(msg.player);
+            this.onPresence?.(this.online);
+            return;
+          }
+          this.emit(msg.event, msg.payload);
+        };
+        this.online.add(player);
+        bc.postMessage({ event: '__presence', player });
+        this.onPresence?.(this.online);
+      }
+      return true;
+    }
+
     const previous = this.channel;
     this.channel = null;
     if (previous) await this.client.removeChannel(previous);
     if (generation !== this.channelGeneration || !this.pairing) return false;
-    const code = this.pairing.code;
     const ch = this.client.channel(`world:${code}`, { config: { presence: { key: player }, broadcast: { self: false } } });
     this.channel = ch;
     ch.on('presence', { event: 'sync' }, () => {
@@ -324,6 +504,10 @@ class Net {
 
   async disconnect() {
     this.channelGeneration++;
+    if (this.bc) {
+      this.bc.close();
+      this.bc = null;
+    }
     const channel = this.channel;
     this.channel = null;
     if (channel && this.client) await this.client.removeChannel(channel);
@@ -332,6 +516,9 @@ class Net {
   }
 
   send(event: string, payload: unknown) {
+    if (this.bc) {
+      this.bc.postMessage({ event, payload });
+    }
     void this.channel?.send({ type: 'broadcast', event, payload });
   }
 

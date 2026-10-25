@@ -2,15 +2,32 @@ import Phaser from 'phaser';
 import { newWorld, PLAYER_IDS, type PlayerId, type WorldState } from '@hh/shared';
 import { buildCharacterTexture, LOOKS } from '../art/characters';
 import { P } from '../art/palette';
-import { net, type Seats } from '../game/net';
-import { confirmBox, promptText } from '../ui/dom';
-import { button, FONT_OPTIONS, type FontKey, getSavedFontKey, plain, refreshFontConfig, saveFontKey, style, type Button } from '../ui/text';
+import { isWorldFullForDevice, MAX_WORLD_PLAYERS, net, seatCount, type Seats } from '../game/net';
+import { eraseLocalData } from '../game/state';
+import { confirmBox, copyToClipboard, promptText } from '../ui/dom';
+import {
+  button,
+  FONT_OPTIONS,
+  type FontKey,
+  getSavedFontKey,
+  note,
+  panel,
+  pill,
+  plain,
+  refreshFontConfig,
+  saveFontKey,
+  style,
+  type Button,
+} from '../ui/text';
 
-type Mode = 'loading' | 'menu' | 'pick';
+type Mode = 'loading' | 'menu' | 'pick' | 'bound';
 
 /**
- * Title + pairing. Online: New farm / Join a farm with a 6-letter code, sticky per device.
- * Solo mode when no backend is configured.
+ * Title + World Manager.
+ * - Create World generates a unique 6-character code for that world.
+ * - Max 2 people (xb & qd) can join a world.
+ * - Sticky 1-world-per-device rule: a device can only create or join 1 world
+ *   and sticks with it until the user explicitly deletes that world on the device.
  */
 export class TitleScene extends Phaser.Scene {
   private mode: Mode = 'loading';
@@ -28,8 +45,6 @@ export class TitleScene extends Phaser.Scene {
   create() {
     this.chosen = false;
     this.drawBackdrop();
-    // redraw on rotate, but only while the title is actually showing; a stale listener
-    // used to restart the title behind the game whenever the phone was rotated
     const onResize = () => {
       if (this.scene.isActive() && !this.chosen) this.scene.restart();
     };
@@ -71,13 +86,12 @@ export class TitleScene extends Phaser.Scene {
     this.add.image(6, H - 30, 'trees', 2).setOrigin(0, 1);
     this.add.image(W - 6, H - 28, 'trees', 0).setOrigin(1, 1);
     this.add.image(W - 40, H - 22, 'trees', 3).setOrigin(1, 1).setScale(0.8);
-    const titleY = Math.min(H * 0.2, H - 140);
+    const titleY = Math.min(H * 0.16, H - 180);
     const title = this.add.text(W / 2, titleY, 'Our Journey', style({ fontSize: '18px', color: '#fff4dc', strokeThickness: 3 })).setOrigin(0.5);
     this.tweens.add({ targets: title, y: title.y - 3, duration: 1200, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
-    this.add.text(W / 2, titleY + 18, 'a little farm for two', plain({ color: '#7a4b00', stroke: '#fff4dc', strokeThickness: 2.5 })).setOrigin(0.5);
-    // errors can be a sentence long, so let the line wrap instead of running off both edges
-    this.status = this.add.text(W / 2, H - 8, '', plain({ color: P.outline, stroke: '#fff4dc', strokeThickness: 2.5, align: 'center', wordWrap: { width: W - 24 } })).setOrigin(0.5, 1);
-    this.statusHome = { x: W / 2, y: H - 8 };
+    this.add.text(W / 2, titleY + 18, 'a little world for two', plain({ color: '#7a4b00', stroke: '#fff4dc', strokeThickness: 2.5 })).setOrigin(0.5);
+    this.status = this.add.text(W / 2, H - 6, '', plain({ color: P.outline, stroke: '#fff4dc', strokeThickness: 2.5, align: 'center', wordWrap: { width: W - 24 } })).setOrigin(0.5, 1);
+    this.statusHome = { x: W / 2, y: H - 6 };
 
     const fontKey = getSavedFontKey();
     const fontOpt = FONT_OPTIONS[fontKey];
@@ -99,11 +113,6 @@ export class TitleScene extends Phaser.Scene {
     this.status?.setText(t);
   }
 
-  /**
-   * The seat picker fills the bottom of the screen — two characters, their
-   * names and a Back button. A two-line status underneath used to be drawn
-   * straight over the names, so while picking it sits under the title instead.
-   */
   private moveStatus(toTop: boolean) {
     if (!this.status) return;
     const { width: W, height: H } = this.scale;
@@ -111,115 +120,247 @@ export class TitleScene extends Phaser.Scene {
       this.status.setOrigin(0.5, 1).setPosition(this.statusHome.x, this.statusHome.y);
       return;
     }
-    // Sit just above the "who are you?" line, but never ride up into the
-    // subtitle: on a short screen those two were landing on each other, which
-    // is how "Solo mode: no backend configured" ended up across the question.
-    const subtitleBottom = Math.min(H * 0.2, H - 140) + 26;
-    this.status.setOrigin(0.5, 1).setPosition(W / 2, Math.max(subtitleBottom + this.status.height, H - 112));
+    const subtitleBottom = Math.min(H * 0.16, H - 180) + 26;
+    this.status.setOrigin(0.5, 1).setPosition(W / 2, Math.max(subtitleBottom + this.status.height, H - 144));
   }
 
   private async boot() {
     const params = new URLSearchParams(window.location.search);
-    const join = params.get('join');
-    if (!net.enabled) {
-      this.setStatus('Playing on this device only');
-      this.showPick(null, null, null);
-      return;
-    }
-    // A paused, deleted or unreachable project would let the menu offer pairing
-    // that only ever errors, so ask the server once before showing it.
-    this.setStatus('Waking up the farm...');
-    if (!(await net.reachable())) {
-      this.setStatus('The farm server is asleep. Play solo, or try again in a minute.');
-      this.showMenu(true);
-      return;
-    }
-    // returning from a magic link?
-    if (window.location.hash.includes('access_token') || params.get('code')) {
-      this.setStatus('Restoring your seat...');
-      try {
-        await net.restoreFromUser();
-      } catch {
-        /* ignore */
+    const join = params.get('join')?.trim().toUpperCase() || null;
+
+    if (net.cloudEnabled) {
+      this.setStatus('Connecting to world server...');
+      if (!(await net.reachable())) {
+        this.setStatus('Cloud server unreachable — running in local world mode.');
       }
-      history.replaceState(null, '', window.location.pathname);
+      if (window.location.hash.includes('access_token') || params.get('code')) {
+        this.setStatus('Restoring your seat...');
+        try {
+          await net.restoreFromUser();
+        } catch {
+          /* ignore */
+        }
+        history.replaceState(null, '', window.location.pathname);
+      }
     }
-    if (join && !net.pairing) {
+
+    // If URL has ?join=CODE
+    if (join) {
       history.replaceState(null, '', window.location.pathname);
-      await this.joinWithCode(join.toUpperCase());
-      return;
+      const bound = net.boundWorldCode;
+      if (bound && bound !== join) {
+        this.setStatus(`Locked to World ${bound} (1 world per device). Delete it first to join ${join}.`);
+      } else {
+        await this.joinWithCode(join);
+        return;
+      }
     }
+
+    // 1. Device already has a claimed world & seat -> stick with this world!
     if (net.pairing) {
-      this.setStatus(`Farm ${net.pairing.code}. Loading...`);
-      const w = await net.fetchWorld(net.pairing.code);
+      const { code, player } = net.pairing;
+      this.setStatus(`Loading World ${code}...`);
+      const w = await net.fetchWorld(code);
       if (!w) {
-        this.setStatus('Could not reach the farm. Check your connection.');
-        this.showMenu(true);
+        // World was deleted remotely or missing locally; recreate local entry from fresh/saved state so it stays bound
+        const fallbackWorld = newWorld(Date.now());
+        const seats: Seats = { xb: null, qd: null, [player]: { device: net.deviceId } };
+        this.setStatus('');
+        this.showBoundWorld(code, player, seats, fallbackWorld);
         return;
       }
-      const seat = w.seats[net.pairing.player];
+      const seat = w.seats[player];
       if (!seat || seat.device !== net.deviceId) {
-        // our seat was reset on another device; re-pick
-        this.showPick(net.pairing.code, w.seats, w.state);
+        if (isWorldFullForDevice(w.seats, net.deviceId)) {
+          this.setStatus(`World ${code} is full (${MAX_WORLD_PLAYERS}/${MAX_WORLD_PLAYERS} players). Delete to create a new world.`);
+          this.showBoundWorld(code, player, w.seats, w.state, true);
+          return;
+        }
+        this.setStatus('');
+        this.showPick(code, w.seats, w.state);
         return;
       }
-      this.start(net.pairing.player, w.state);
+      this.setStatus('');
+      this.showBoundWorld(code, player, w.seats, w.state);
       return;
     }
+
+    // 2. Device created a world (pendingCode) and still needs to pick a character seat
+    if (net.pendingCode) {
+      const code = net.pendingCode;
+      const w = await net.fetchWorld(code);
+      if (w) {
+        this.setStatus(`World ${code} created! Pick your character to lock in your seat.`);
+        this.showPick(code, w.seats, w.state);
+        return;
+      }
+    }
+
+    // 3. No world bound to this device yet -> show Create World / Join World menu
     this.showMenu(false);
   }
 
+  /**
+   * Shown when this device has NO active world yet.
+   * Offers 'Create World' (generates a unique 6-letter code) and 'Join World (Code)'.
+   */
   private showMenu(retry: boolean) {
     this.moveStatus(false);
     this.mode = 'menu';
     this.clearUi();
     const { width: W, height: H } = this.scale;
-    const y0 = H - 96;
-    const bw = 130;
-    const mk = (i: number, label: string, fn: () => void, color?: number): Button => {
-      const b = button(this, W / 2 - bw / 2, y0 + i * 22, bw, 18, label, fn, color);
+
+    const cardW = 250;
+    const cardH = 112;
+    const cy = H / 2 + 22;
+    const g = this.add.graphics();
+    panel(g, W / 2 - cardW / 2, cy - cardH / 2, cardW, cardH, 0xfff4dc);
+    this.ui.push(g);
+
+    const header = this.add
+      .text(W / 2, cy - cardH / 2 + 14, 'Start Your World', plain({ color: '#3b2133' }))
+      .setOrigin(0.5);
+    this.ui.push(header);
+
+    const bw = 180;
+    const mk = (yOff: number, label: string, fn: () => void, color?: number): Button => {
+      const b = button(this, W / 2 - bw / 2, cy + yOff, bw, 20, label, fn, color);
       this.ui.push(b.container);
       return b;
     };
-    if (retry) mk(-1, 'Try again', () => this.scene.restart(), 0xffd23f);
-    mk(0, 'New farm', () => void this.newFarm(), 0x7de8c8);
-    mk(1, 'Join a farm', () => void this.joinPrompt());
-    mk(2, 'Play solo', () => this.showPick(null, null, null), 0xe8dcc8);
-    // after an error the status line explains what happened, so the hint would only collide with it
-    if (!retry) {
-      const hint = this.add.text(W / 2, y0 + 70, 'One of you creates the farm, the other joins with the code', plain({ color: P.outline, align: 'center', wordWrap: { width: W - 40 } })).setOrigin(0.5, 0);
-      this.ui.push(hint);
-      this.setStatus('');
+
+    if (retry) mk(-52, 'Try again', () => this.scene.restart(), 0xffd23f);
+    mk(-24, '+ Create World (New Code)', () => void this.newFarm(), 0x7de8c8);
+    mk(2, 'Join World with Code', () => void this.joinPrompt(), 0xffe066);
+
+    const ruleText = this.add
+      .text(
+        W / 2,
+        cy + 36,
+        `Max ${MAX_WORLD_PLAYERS} players per world  ·  1 world per device`,
+        note({ color: '#6a5560', align: 'center' }),
+      )
+      .setOrigin(0.5);
+    this.ui.push(ruleText);
+  }
+
+  /**
+   * Shown when this device is ALREADY bound to a world.
+   * The user cannot create or join another world unless they delete this world first.
+   */
+  private showBoundWorld(code: string, player: PlayerId, seats: Seats, world: WorldState, fullLocked = false) {
+    this.moveStatus(false);
+    this.mode = 'bound';
+    this.clearUi();
+    const { width: W, height: H } = this.scale;
+
+    const cardW = 286;
+    const cardH = 128;
+    const cy = H / 2 + 20;
+    const left = W / 2 - cardW / 2;
+    const top = cy - cardH / 2;
+
+    const g = this.add.graphics();
+    panel(g, left, top, cardW, cardH, 0xfff4dc);
+    pill(g, left + 10, top + 8, cardW - 20, 20, 0xfff8dc, 0xd8b45e);
+    this.ui.push(g);
+
+    const joined = Math.max(1, seatCount(seats));
+    this.ui.push(
+      this.add
+        .text(left + 18, top + 18, `World Code: ${code}`, plain({ color: '#3b2133' }))
+        .setOrigin(0, 0.5),
+      this.add
+        .text(left + cardW - 18, top + 18, `Players: ${joined}/${MAX_WORLD_PLAYERS}`, plain({ color: '#1e6f3d' }))
+        .setOrigin(1, 0.5),
+    );
+
+    const look = LOOKS[player];
+    const tex = buildCharacterTexture(this, look, world.players[player]?.outfit);
+    const spr = this.add.sprite(left + 38, top + 76, tex, 0).setOrigin(0.5, 1).setScale(2.2);
+    spr.play(`${tex}-idle-down`);
+    this.ui.push(spr);
+
+    this.ui.push(
+      this.add
+        .text(left + 68, top + 44, `Character: ${look.name} (${player})`, plain({ color: '#3b2133' }))
+        .setOrigin(0, 0.5),
+      this.add
+        .text(left + 68, top + 58, 'Locked to 1 world on this device', note({ color: '#6a5560' }))
+        .setOrigin(0, 0.5),
+      this.add
+        .text(left + 68, top + 70, 'Share the code so your partner can join!', note({ color: '#9a5b00' }))
+        .setOrigin(0, 0.5),
+    );
+
+    if (!fullLocked) {
+      const enterBtn = button(this, left + 10, top + 84, cardW - 20, 19, `Enter World (${code})`, () => {
+        this.start(player, world);
+      }, 0x7de8c8);
+      this.ui.push(enterBtn.container);
     }
+
+    const halfW = Math.floor((cardW - 26) / 2);
+    const copyBtn = button(this, left + 10, top + 106, halfW, 16, `Copy Code (${code})`, async () => {
+      const link = `${window.location.origin}${window.location.pathname}?join=${code}`;
+      const ok = await copyToClipboard(link);
+      this.setStatus(ok ? `Copied invite link for World ${code}!` : `World Code: ${code}`);
+    }, 0xffe066);
+
+    const delBtn = button(this, left + 16 + halfW, top + 106, halfW, 16, 'Delete World', async () => {
+      if (await TitleScene.deleteWorld()) {
+        this.setStatus('World deleted. You can now create or join a new world.');
+        this.showMenu(false);
+      }
+    }, 0xff6b6b);
+
+    this.ui.push(copyBtn.container, delBtn.container);
   }
 
   private async newFarm() {
-    this.setStatus('Creating your farm...');
+    if (net.boundWorldCode) {
+      this.setStatus(`Locked to World ${net.boundWorldCode}. Delete it first to create a new world.`);
+      return;
+    }
+    this.setStatus('Creating your world...');
     const world = newWorld(Date.now());
     const code = await net.createWorld(world);
     if (!code) {
-      this.setStatus(`Could not create a farm: ${net.lastError || 'no connection'}`);
+      this.setStatus(`Could not create world: ${net.lastError || 'no connection'}`);
       return;
     }
-    this.setStatus(`Your code is ${code} — tell it to the other one of you`);
+    this.setStatus(`Created World ${code} (max ${MAX_WORLD_PLAYERS} players) — pick your character!`);
     this.showPick(code, { xb: null, qd: null }, world);
   }
 
   private async joinPrompt() {
-    const code = await promptText({ title: 'Enter the 6-letter farm code', placeholder: 'ABC123', code: true, maxLength: 6, okLabel: 'Join' });
+    if (net.boundWorldCode) {
+      this.setStatus(`Locked to World ${net.boundWorldCode}. Delete it first to join another world.`);
+      return;
+    }
+    const code = await promptText({ title: 'Enter the 6-letter World Code (max 2 players)', placeholder: 'ABC123', code: true, maxLength: 6, okLabel: 'Join World' });
     if (!code) return;
-    await this.joinWithCode(code);
+    await this.joinWithCode(code.trim().toUpperCase());
   }
 
-  private async joinWithCode(code: string) {
-    this.setStatus('Looking for the farm...');
+  private async joinWithCode(rawCode: string) {
+    const code = rawCode.trim().toUpperCase();
+    if (net.boundWorldCode && net.boundWorldCode !== code) {
+      this.setStatus(`Locked to World ${net.boundWorldCode}. Delete that world first.`);
+      return;
+    }
+    this.setStatus(`Looking for World ${code}...`);
     const w = await net.fetchWorld(code);
     if (!w) {
-      this.setStatus('No farm with that code. Check the letters.');
+      this.setStatus(`No world found with code "${code}". Check the 6 letters.`);
       this.showMenu(false);
       return;
     }
-    // the picker already asks who you are, under the farm's own code
+    if (isWorldFullForDevice(w.seats, net.deviceId)) {
+      this.setStatus(`World ${code} is full (${MAX_WORLD_PLAYERS}/${MAX_WORLD_PLAYERS} players max).`);
+      this.showMenu(false);
+      return;
+    }
     this.setStatus('');
     this.showPick(code, w.seats, w.state);
   }
@@ -230,10 +371,36 @@ export class TitleScene extends Phaser.Scene {
     this.pickCtx = { code, seats, world };
     this.clearUi();
     const { width: W, height: H } = this.scale;
-    this.ui.push(this.add.text(W / 2, H - 102, code ? `Farm ${code}: who are you?` : 'who are you today?', plain({ color: P.outline, stroke: '#fff4dc', strokeThickness: 2.5 })).setOrigin(0.5));
+
+    const cardW = 264;
+    const cardH = 122;
+    const cy = H / 2 + 22;
+    const left = W / 2 - cardW / 2;
+    const top = cy - cardH / 2;
+
+    const g = this.add.graphics();
+    panel(g, left, top, cardW, cardH, 0xfff4dc);
+    pill(g, left + 10, top + 8, cardW - 20, 18, 0xfff8dc, 0xd8b45e);
+    this.ui.push(g);
+
+    const joined = seatCount(seats);
+    this.ui.push(
+      this.add
+        .text(
+          W / 2,
+          top + 17,
+          code ? `World ${code}  ·  Players: ${joined}/${MAX_WORLD_PLAYERS}` : 'Choose Your Character',
+          plain({ color: '#3b2133' }),
+        )
+        .setOrigin(0.5),
+      this.add
+        .text(W / 2, top + 34, 'Pick your seat (1 seat per player, max 2 players):', note({ color: '#6a5560' }))
+        .setOrigin(0.5),
+    );
+
     PLAYER_IDS.forEach((id, i) => {
-      const x = W / 2 + (i === 0 ? -34 : 34);
-      const y = H - 44;
+      const x = W / 2 + (i === 0 ? -48 : 48);
+      const y = top + 84;
       const look = LOOKS[id];
       const seat = seats?.[id];
       const taken = !!seat && seat.device !== net.deviceId;
@@ -242,22 +409,50 @@ export class TitleScene extends Phaser.Scene {
       spr.play(`${tex}-idle-down`);
       if (taken) spr.setTint(0x888888);
       else this.tweens.add({ targets: spr, y: y - 4, duration: 500 + i * 120, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
-      const name = this.add.text(x, y + 6, taken ? `${look.name} (taken)` : look.name, plain({ color: taken ? '#6a6a6a' : P.outline, stroke: '#fff4dc', strokeThickness: 2.5 })).setOrigin(0.5, 0);
+      const name = this.add
+        .text(x, y + 4, taken ? `${look.name} (Taken)` : `${look.name} (${id})`, plain({ color: taken ? '#8a7a80' : '#3b2133' }))
+        .setOrigin(0.5, 0);
       this.ui.push(spr, name);
       if (taken) return;
-      const zone = this.add.zone(x, y - 24, 44, 60).setInteractive({ useHandCursor: true });
+      const zone = this.add.zone(x, y - 20, 64, 56).setInteractive({ useHandCursor: true });
       zone.on('pointerover', () => spr.setTint(0xffffcc));
       zone.on('pointerout', () => spr.clearTint());
       zone.on('pointerdown', () => void this.choose(id, spr));
       this.ui.push(zone);
     });
+
     if (code) {
-      const back = button(this, 6, H - 24, 60, 16, 'Back', () => this.showMenu(false), 0xe8dcc8);
-      this.ui.push(back.container);
-    } else if (net.enabled) {
-      const back = button(this, 6, H - 24, 60, 16, 'Back', () => this.showMenu(false), 0xe8dcc8);
-      this.ui.push(back.container);
+      const copyBtn = button(this, left + 10, top + cardH - 22, 114, 16, `Copy Code: ${code}`, async () => {
+        const link = `${window.location.origin}${window.location.pathname}?join=${code}`;
+        const ok = await copyToClipboard(link);
+        this.setStatus(ok ? `Copied code ${code}!` : `World Code: ${code}`);
+      }, 0xffe066);
+      this.ui.push(copyBtn.container);
+
+      const isBoundCreator = net.boundWorldCode === code;
+      const backBtn = button(
+        this,
+        left + cardW - 124,
+        top + cardH - 22,
+        114,
+        16,
+        isBoundCreator ? 'Delete World' : 'Cancel',
+        async () => {
+          if (isBoundCreator) {
+            if (await TitleScene.deleteWorld()) {
+              this.setStatus('World deleted.');
+              this.showMenu(false);
+            }
+          } else {
+            this.setStatus('');
+            this.showMenu(false);
+          }
+        },
+        isBoundCreator ? 0xff6b6b : 0xe8dcc8,
+      );
+      this.ui.push(backBtn.container);
     }
+
     this.input.keyboard?.once('keydown-ONE', () => void this.choose('xb'));
     this.input.keyboard?.once('keydown-TWO', () => void this.choose('qd'));
   }
@@ -267,14 +462,21 @@ export class TitleScene extends Phaser.Scene {
     this.chosen = true;
     if (spr) this.tweens.add({ targets: spr, scale: 2.4, duration: 120, yoyo: true });
     const { code, world } = this.pickCtx;
-    if (code && net.enabled) {
+    if (code) {
       this.setStatus('Claiming your seat...');
       const r = await net.claimSeat(code, id);
       if (r !== 'ok') {
         this.chosen = false;
-        this.setStatus(r === 'taken' ? 'That character is already taken on another phone.' : `Could not join: ${net.lastError}`);
+        this.setStatus(
+          r === 'taken'
+            ? 'That character seat is already taken by the other player.'
+            : r === 'full'
+              ? `This world is full (${MAX_WORLD_PLAYERS}/${MAX_WORLD_PLAYERS} players max).`
+              : `Could not join: ${net.lastError}`,
+        );
         const w = await net.fetchWorld(code);
-        if (w) this.showPick(code, w.seats, w.state);
+        if (w && !isWorldFullForDevice(w.seats, net.deviceId)) this.showPick(code, w.seats, w.state);
+        else this.showMenu(false);
         return;
       }
       if (!net.pairing || !world) return;
@@ -295,11 +497,24 @@ export class TitleScene extends Phaser.Scene {
     });
   }
 
-  /** Used by the settings panel. */
-  static async leaveFarm(): Promise<boolean> {
-    const ok = await confirmBox('Leave this farm? Your device will be unpaired. The farm itself stays.', 'Leave', 'Stay');
+  /**
+   * Delete the world bound to this device so the user can create or join a new world.
+   */
+  static async deleteWorld(): Promise<boolean> {
+    const code = net.boundWorldCode;
+    const ok = await confirmBox(
+      `Delete World ${code ?? ''}? Each device can only have 1 world at a time. Deleting this world will remove it so you can create or join a new world.`,
+      'Delete World',
+      'Keep World',
+    );
     if (!ok) return false;
-    await net.leaveFarm();
+    await net.deleteWorld();
+    eraseLocalData();
     return true;
+  }
+
+  /** Alias kept for compatibility with HUD settings calls. */
+  static async leaveFarm(): Promise<boolean> {
+    return TitleScene.deleteWorld();
   }
 }

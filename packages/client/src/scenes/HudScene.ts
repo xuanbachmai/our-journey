@@ -2999,64 +2999,57 @@ export class HudScene extends Phaser.Scene {
       this.openJournal('settings');
     }, 0x7de8c8);
     mk('Special days', () => void this.openSpecialDays(), 0xffe066);
-    if (net.enabled && net.pairing) mk('Redeem a code', () => void this.openRedeem(), 0x7de8c8);
-    if (net.enabled && net.pairing) {
+    if (net.cloudEnabled && net.pairing) mk('Redeem a code', () => void this.openRedeem(), 0x7de8c8);
+    if (net.pairing) {
       const code = net.pairing.code;
-      mk(`Farm code: ${code}`, async () => {
+      mk(`World code: ${code}`, async () => {
         const link = `${window.location.origin}${window.location.pathname}?join=${code}`;
         const ok = await copyToClipboard(link);
-        this.showToast(ok ? 'Invite link copied!' : `Code: ${code}`);
+        this.showToast(ok ? `Copied World ${code} invite link!` : `World Code: ${code}`);
       }, 0x7de8c8);
-      mk('Keep my seat (email)', async () => {
-        const cur = await net.userEmail();
-        if (cur) {
-          this.showToast(`Seat linked to ${cur}`);
-          return;
-        }
-        const email = await promptText({ title: 'Your email, so a new phone can restore this farm', placeholder: 'you@example.com', type: 'email', okLabel: 'Send link' });
-        if (!email) return;
-        this.showToast((await net.linkEmail(email)) ? 'Check your inbox and tap the link' : `Could not send: ${net.lastError}`);
-      });
+      if (net.cloudEnabled) {
+        mk('Keep my seat (email)', async () => {
+          const cur = await net.userEmail();
+          if (cur) {
+            this.showToast(`Seat linked to ${cur}`);
+            return;
+          }
+          const email = await promptText({ title: 'Your email, so a new phone can restore this world', placeholder: 'you@example.com', type: 'email', okLabel: 'Send link' });
+          if (!email) return;
+          this.showToast((await net.linkEmail(email)) ? 'Check your inbox and tap the link' : `Could not send: ${net.lastError}`);
+        });
+      }
       mk('Reset partner seat', async () => {
-        if (!(await confirmBox(`Free ${otherPlayer(this.world.playerId)}'s seat so they can pair from a new phone?`, 'Reset', 'Cancel'))) return;
+        if (!(await confirmBox(`Free ${otherPlayer(this.world.playerId)}'s seat so they can join from a new device?`, 'Reset', 'Cancel'))) return;
         this.showToast((await net.resetPartnerSeat()) ? 'Seat freed. Share the code again.' : 'Could not reset');
       });
-      mk('Leave this farm', async () => {
-        if (await TitleScene.leaveFarm()) {
-          st.save();
-          this.closeOverlay();
-          this.scene.stop('World');
-          this.scene.start('Title');
-          this.scene.stop();
-        }
-      }, 0xff8fcf);
-      mk('Back to title', () => {
-        st.save();
-        void net.disconnect();
-        this.closeOverlay();
-        this.scene.stop('World');
-        this.scene.start('Title');
-        this.scene.stop();
-      });
-    } else {
-      mk('Back to title', () => {
-        st.save();
-        void net.disconnect();
-        this.closeOverlay();
-        this.scene.stop('World');
-        this.scene.start('Title');
-        this.scene.stop();
-      });
-      c.add(this.add.text(-w / 2 + 12, rowY(8) + 8, net.enabled ? 'Solo mode. Pair up from the title.' : 'Solo mode: no backend configured.', note({ color: '#7a6a70' })).setOrigin(0, 0.5));
     }
-    // app stores ask for a way to erase your data; it is handy on a shared phone too
-    mk('Erase this phone', async () => {
-      if (!(await confirmBox('Erase the save, notes and pairing stored on this phone? The farm itself stays online.', 'Erase', 'Keep'))) return;
-      eraseLocalData();
-      net.forgetDevice();
-      window.location.reload();
+    mk('Back to title', () => {
+      st.save();
+      void net.disconnect();
+      this.closeOverlay();
+      this.scene.stop('World');
+      this.scene.start('Title');
+      this.scene.stop();
+    });
+    mk('Delete world', async () => {
+      if (await TitleScene.deleteWorld()) {
+        this.closeOverlay();
+        this.scene.stop('World');
+        this.scene.start('Title');
+        this.scene.stop();
+      }
     }, 0xff6b6b);
-    c.add(this.add.text(0, h / 2 - 9, 'Our Journey 1.0', note({ color: '#7a6a70' })).setOrigin(0.5));
+    c.add(
+      this.add
+        .text(
+          0,
+          h / 2 - 9,
+          net.pairing ? `World ${net.pairing.code}  ·  Max 2 players  ·  1 world per device` : 'Our Journey 1.0',
+          note({ color: '#7a6a70' }),
+        )
+        .setOrigin(0.5),
+    );
   }
 
   private async openSpecialDays() {
