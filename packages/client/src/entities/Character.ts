@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { CHAR_H } from '../art/characters';
 import { TILE } from '../art/tiles';
 import { P } from '../art/palette';
+import { plain } from '../ui/text';
 
 export type Facing = 'down' | 'up' | 'left' | 'right';
 
@@ -36,10 +37,10 @@ export class Character {
   ) {
     this.texKey = texKey;
     // a soft contact shadow so the character sits on the ground, not above it
-    this.shadow = scene.add.ellipse(x, y, 13, 5, 0x2a1a2f, 0.22).setOrigin(0.5, 0.5);
+    this.shadow = scene.add.ellipse(x, y, 13, 5, 0x2a1a2f, 0.24).setOrigin(0.5, 0.5);
     this.sprite = scene.add.sprite(x, y, texKey, 0).setOrigin(0.5, 1);
     this.label = scene.add
-      .text(x, y - CHAR_H - 3, name, { fontFamily: '"Press Start 2P"', fontSize: '8px', color: '#ffffff', stroke: P.outline, strokeThickness: 3, resolution: 1 })
+      .text(x, y - CHAR_H - 2, name, plain({ color: '#ffffff', stroke: P.outline, strokeThickness: 2.5 }))
       .setOrigin(0.5, 1);
     this.playIdle();
   }
@@ -177,7 +178,7 @@ export class Character {
     let w = 14;
     let t: Phaser.GameObjects.Text | undefined;
     if (text) {
-      t = this.scene.add.text(0, 0, text, { fontFamily: '"Press Start 2P"', fontSize: '8px', color: P.outline, resolution: 1, wordWrap: { width: 120 } }).setOrigin(0.5, 1);
+      t = this.scene.add.text(0, 0, text, plain({ color: P.outline, wordWrap: { width: 120 } })).setOrigin(0.5, 1);
       w = t.width + 12;
     }
     const hgt = t ? t.height + 8 : 16;

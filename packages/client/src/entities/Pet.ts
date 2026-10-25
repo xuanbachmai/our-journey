@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import type { PetId } from '@hh/shared';
 import { CHAR_H } from '../art/characters';
 import { P } from '../art/palette';
+import { plain } from '../ui/text';
 
 export interface Followable {
   x: number;
@@ -26,7 +27,7 @@ export class Pet {
   ) {
     this.sprite = scene.add.sprite(x, y, 'critters', `${kind}0`).setOrigin(0.5, 1);
     this.label = scene.add
-      .text(x, y - 14, name, { fontFamily: '"Press Start 2P"', fontSize: '8px', color: '#ffe066', stroke: P.outline, strokeThickness: 3, resolution: 1 })
+      .text(x, y - 14, name, plain({ color: '#ffe066', stroke: P.outline, strokeThickness: 2.5 }))
       .setOrigin(0.5, 1);
   }
 
