@@ -4,7 +4,7 @@ import { buildCharacterTexture, LOOKS } from '../art/characters';
 import { P } from '../art/palette';
 import { net, type Seats } from '../game/net';
 import { confirmBox, promptText } from '../ui/dom';
-import { button, plain, style, type Button } from '../ui/text';
+import { button, FONT_OPTIONS, type FontKey, getSavedFontKey, plain, refreshFontConfig, saveFontKey, style, type Button } from '../ui/text';
 
 type Mode = 'loading' | 'menu' | 'pick';
 
@@ -72,12 +72,22 @@ export class TitleScene extends Phaser.Scene {
     this.add.image(W - 6, H - 28, 'trees', 0).setOrigin(1, 1);
     this.add.image(W - 40, H - 22, 'trees', 3).setOrigin(1, 1).setScale(0.8);
     const titleY = Math.min(H * 0.2, H - 140);
-    const title = this.add.text(W / 2, titleY, 'Our Journey', style({ fontSize: '16px', color: '#fff4dc', strokeThickness: 2 })).setOrigin(0.5);
+    const title = this.add.text(W / 2, titleY, 'Our Journey', style({ fontSize: '18px', color: '#fff4dc', strokeThickness: 3 })).setOrigin(0.5);
     this.tweens.add({ targets: title, y: title.y - 3, duration: 1200, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
-    this.add.text(W / 2, titleY + 17, 'a little farm for two', plain({ color: '#8a5e00' })).setOrigin(0.5);
+    this.add.text(W / 2, titleY + 18, 'a little farm for two', plain({ color: '#7a4b00', stroke: '#fff4dc', strokeThickness: 2.5 })).setOrigin(0.5);
     // errors can be a sentence long, so let the line wrap instead of running off both edges
-    this.status = this.add.text(W / 2, H - 8, '', plain({ color: P.outline, align: 'center', wordWrap: { width: W - 24 } })).setOrigin(0.5, 1);
+    this.status = this.add.text(W / 2, H - 8, '', plain({ color: P.outline, stroke: '#fff4dc', strokeThickness: 2.5, align: 'center', wordWrap: { width: W - 24 } })).setOrigin(0.5, 1);
     this.statusHome = { x: W / 2, y: H - 8 };
+
+    const fontKey = getSavedFontKey();
+    const fontOpt = FONT_OPTIONS[fontKey];
+    button(this, W - 98, 6, 92, 15, `Font: ${fontOpt.label.split(' ')[0]}`, () => {
+      const keys = Object.keys(FONT_OPTIONS) as FontKey[];
+      const nextKey = keys[(keys.indexOf(fontKey) + 1) % keys.length];
+      saveFontKey(nextKey);
+      refreshFontConfig();
+      this.scene.restart();
+    }, 0xfff4dc);
   }
 
   private clearUi() {
@@ -220,7 +230,7 @@ export class TitleScene extends Phaser.Scene {
     this.pickCtx = { code, seats, world };
     this.clearUi();
     const { width: W, height: H } = this.scale;
-    this.ui.push(this.add.text(W / 2, H - 102, code ? `Farm ${code}: who are you?` : 'who are you today?', plain({ color: P.outline })).setOrigin(0.5));
+    this.ui.push(this.add.text(W / 2, H - 102, code ? `Farm ${code}: who are you?` : 'who are you today?', plain({ color: P.outline, stroke: '#fff4dc', strokeThickness: 2.5 })).setOrigin(0.5));
     PLAYER_IDS.forEach((id, i) => {
       const x = W / 2 + (i === 0 ? -34 : 34);
       const y = H - 44;
@@ -232,7 +242,7 @@ export class TitleScene extends Phaser.Scene {
       spr.play(`${tex}-idle-down`);
       if (taken) spr.setTint(0x888888);
       else this.tweens.add({ targets: spr, y: y - 4, duration: 500 + i * 120, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
-      const name = this.add.text(x, y + 6, taken ? `${look.name} (taken)` : look.name, plain({ color: taken ? '#7a7a7a' : P.outline })).setOrigin(0.5, 0);
+      const name = this.add.text(x, y + 6, taken ? `${look.name} (taken)` : look.name, plain({ color: taken ? '#6a6a6a' : P.outline, stroke: '#fff4dc', strokeThickness: 2.5 })).setOrigin(0.5, 0);
       this.ui.push(spr, name);
       if (taken) return;
       const zone = this.add.zone(x, y - 24, 44, 60).setInteractive({ useHandCursor: true });

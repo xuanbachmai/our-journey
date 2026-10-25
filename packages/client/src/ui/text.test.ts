@@ -11,12 +11,12 @@ beforeEach(() => {
 });
 
 describe('font configuration and text helpers', () => {
-  it('defaults to gothic (DotGothic16) and cycles through every font back to gothic', () => {
-    expect(getSavedFontKey()).toBe('gothic');
-    expect(getFontFamily()).toContain('DotGothic16');
+  it('defaults to fredoka (Cozy Rounded) and cycles through every font back to fredoka', () => {
+    expect(getSavedFontKey()).toBe('fredoka');
+    expect(getFontFamily()).toContain('Fredoka');
 
     const keys = Object.keys(FONT_OPTIONS) as FontKey[];
-    expect(keys).toEqual(['gothic', 'pixelify', 'fredoka', 'silkscreen', 'pressstart']);
+    expect(keys).toEqual(['fredoka', 'pixelify', 'gothic', 'silkscreen', 'pressstart']);
 
     let cur = getSavedFontKey();
     for (let i = 0; i < keys.length; i++) {
@@ -25,24 +25,26 @@ describe('font configuration and text helpers', () => {
       refreshFontConfig();
       cur = getSavedFontKey();
     }
-    expect(cur).toBe('gothic');
+    expect(cur).toBe('fredoka');
   });
 
-  it('falls back to gothic when localStorage holds an unknown font key', () => {
-    localStorage.setItem('oj-font-key', 'nonexistent');
-    expect(getSavedFontKey()).toBe('gothic');
+  it('falls back to fredoka when localStorage holds an unknown font key', () => {
+    localStorage.setItem('oj-font-key-v2', 'nonexistent');
+    expect(getSavedFontKey()).toBe('fredoka');
   });
 
-  it('uses each font option defaultSize and noteSize appropriately', () => {
-    saveFontKey('gothic');
-    expect(style().fontSize).toBe('10px');
-    expect(plain().fontSize).toBe('10px');
-    expect(note().fontSize).toBe('10px');
-
+  it('uses 4x resolution and each font option defaultSize and noteSize appropriately', () => {
     saveFontKey('fredoka');
+    expect(style().fontSize).toBe('10px');
+    expect(style().resolution).toBe(4);
     expect(plain().fontSize).toBe('10px');
+    expect(plain().resolution).toBe(4);
     expect(note().fontSize).toBe('8px');
     expect(note().fontStyle).toBe('600');
+
+    saveFontKey('gothic');
+    expect(style().fontSize).toBe('10px');
+    expect(note().fontSize).toBe('9px');
   });
 
   it('formats singular and plural counts cleanly', () => {

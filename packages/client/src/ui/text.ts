@@ -14,32 +14,69 @@ export interface FontOption {
    * everything assuming two pixels smaller is safe.
    */
   noteSize: number;
+  weight?: string;
 }
 
 export const FONT_OPTIONS: Record<FontKey, FontOption> = {
-  gothic: { key: 'gothic', label: 'Bitmap Gothic', family: '"DotGothic16", sans-serif', defaultSize: 10, noteSize: 10 },
-  pixelify: { key: 'pixelify', label: 'Pixel Clean', family: '"Pixelify Sans", sans-serif', defaultSize: 12, noteSize: 10 },
-  fredoka: { key: 'fredoka', label: 'Cozy Rounded', family: '"Fredoka", sans-serif', defaultSize: 10, noteSize: 8 },
+  fredoka: { key: 'fredoka', label: 'Cozy Rounded', family: '"Fredoka", sans-serif', defaultSize: 10, noteSize: 8, weight: '600' },
+  pixelify: { key: 'pixelify', label: 'Pixel Clean', family: '"Pixelify Sans", sans-serif', defaultSize: 11, noteSize: 9, weight: '600' },
+  gothic: { key: 'gothic', label: 'Bitmap Gothic', family: '"DotGothic16", sans-serif', defaultSize: 10, noteSize: 9 },
   silkscreen: { key: 'silkscreen', label: 'Compact Pixel', family: '"Silkscreen", monospace', defaultSize: 8, noteSize: 8 },
   pressstart: { key: 'pressstart', label: 'Retro Classic', family: '"Press Start 2P", monospace', defaultSize: 8, noteSize: 8 },
 };
 
+const FONT_STORAGE_KEY = 'oj-font-key-v2';
+const TEXT_RES = 4;
+
+/**
+ * Ensure every Phaser Text texture uses LINEAR filtering in WebGL so 4x
+ * supersampled glyphs map smoothly onto the high-DPI framebuffer while pixel-art
+ * sprites keep NEAREST filtering.
+ */
+function ensureCrispTextFilter() {
+  const Proto = (Phaser as unknown as {
+    GameObjects?: {
+      Text?: {
+        prototype?: {
+          updateText?: () => unknown;
+          __crispPatched?: boolean;
+        };
+      };
+    };
+  })?.GameObjects?.Text?.prototype;
+  if (!Proto?.updateText || Proto.__crispPatched) return;
+  Proto.__crispPatched = true;
+  const origUpdate = Proto.updateText;
+  Proto.updateText = function (this: Phaser.GameObjects.Text) {
+    const res = origUpdate.call(this);
+    if (this.frame?.source) {
+      this.frame.source.scaleMode = 0;
+      const gl = (this.renderer as Phaser.Renderer.WebGL.WebGLRenderer | undefined)?.gl;
+      const glTex = this.frame.source.glTexture?.webGLTexture;
+      if (gl && glTex) {
+        gl.bindTexture(gl.TEXTURE_2D, glTex);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      }
+    }
+    return res;
+  };
+}
+ensureCrispTextFilter();
+
 export function getSavedFontKey(): FontKey {
   try {
-    const k = localStorage.getItem('oj-font-key') as FontKey;
+    const k = localStorage.getItem(FONT_STORAGE_KEY) as FontKey;
     if (k && FONT_OPTIONS[k]) return k;
   } catch {
     /* ignore */
   }
-  // A bitmap gothic by default. Measured at the size the game actually draws,
-  // it is the one face that is both pixel-crisp and has real lowercase, which
-  // the rounded sans before it bought legibility by giving up.
-  return 'gothic';
+  return 'fredoka';
 }
 
 export function saveFontKey(key: FontKey) {
   try {
-    if (FONT_OPTIONS[key]) localStorage.setItem('oj-font-key', key);
+    if (FONT_OPTIONS[key]) localStorage.setItem(FONT_STORAGE_KEY, key);
   } catch {
     /* ignore */
   }
@@ -63,20 +100,17 @@ export function style(extra: Partial<Phaser.Types.GameObjects.Text.TextStyle> = 
   const curKey = getSavedFontKey();
   const opt = FONT_OPTIONS[curKey];
   const size = extra.fontSize ? parseInt(String(extra.fontSize), 10) : opt.defaultSize;
-  // One pixel of outline and a hard shadow under it. A thick stroke is how
-  // you make text readable over a world when the face is chunky; on a thin
-  // bitmap one it closes the counters of the letters and the whole line turns
-  // to mud, which is what three pixels of it was doing here.
-  const strokeThick = extra.strokeThickness !== undefined ? extra.strokeThickness : 1;
+  const strokeThick = extra.strokeThickness !== undefined ? extra.strokeThickness : 2.5;
 
   return {
     fontFamily: opt.family,
     fontSize: `${size}px`,
+    ...(opt.weight ? { fontStyle: opt.weight } : {}),
     color: '#ffffff',
     stroke: P.outline,
     strokeThickness: strokeThick,
-    shadow: { offsetX: 1, offsetY: 1, color: P.outline, blur: 0, stroke: true, fill: true },
-    resolution: 2,
+    shadow: { offsetX: 0, offsetY: 2, color: P.outline, blur: 0, stroke: true, fill: false },
+    resolution: TEXT_RES,
     padding: { x: 4, y: 3 },
     ...extra,
   };
@@ -84,9 +118,7 @@ export function style(extra: Partial<Phaser.Types.GameObjects.Text.TextStyle> = 
 
 /** Slot counts sit on top of an icon, so they stay small and tight. */
 export function tiny(extra: Partial<Phaser.Types.GameObjects.Text.TextStyle> = {}): Phaser.Types.GameObjects.Text.TextStyle {
-  // A count sits on an icon, so it keeps its single pixel of outline and the
-  // shadow that comes with it, and nothing more.
-  return style({ fontSize: '8px', strokeThickness: 1, padding: { x: 1, y: 1 }, ...extra });
+  return style({ fontSize: '8px', strokeThickness: 2, padding: { x: 2, y: 1 }, ...extra });
 }
 
 export function plain(extra: Partial<Phaser.Types.GameObjects.Text.TextStyle> = {}): Phaser.Types.GameObjects.Text.TextStyle {
@@ -97,8 +129,9 @@ export function plain(extra: Partial<Phaser.Types.GameObjects.Text.TextStyle> = 
   return {
     fontFamily: opt.family,
     fontSize: `${size}px`,
+    ...(opt.weight ? { fontStyle: opt.weight } : {}),
     color: P.outline,
-    resolution: 2,
+    resolution: TEXT_RES,
     padding: { x: 4, y: 3 },
     ...extra,
   };
@@ -106,13 +139,10 @@ export function plain(extra: Partial<Phaser.Types.GameObjects.Text.TextStyle> = 
 
 /**
  * The second line of a row inside a panel: a size down from plain, same dark
- * ink, no outline. (tiny() is for counts that sit on top of a sprite and needs
- * its stroke; inside a panel that stroke turns small text into a smudge.)
+ * ink, no outline.
  */
 export function note(extra: Partial<Phaser.Types.GameObjects.Text.TextStyle> = {}): Phaser.Types.GameObjects.Text.TextStyle {
   const opt = FONT_OPTIONS[getSavedFontKey()];
-  // Each face names the size its quiet line survives at; a bitmap one stays
-  // put, a smooth one goes down and gains weight to hold against the cream.
   const smooth = opt.noteSize < opt.defaultSize;
   return plain({ fontSize: `${opt.noteSize}px`, ...(smooth ? { fontStyle: '600' } : {}), padding: { x: 2, y: 2 }, ...extra });
 }
