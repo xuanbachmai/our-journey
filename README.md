@@ -2,7 +2,7 @@
 
 Our Journey is a cute pixel-art farm, kitchen and little world for two: **xb** and **qd**.
 
-**Play it: https://our-journey-client.vercel.app** (add it to your phone home screen for a full-screen app)
+**Play it: https://our-journey-kappa.vercel.app** (add it to your phone home screen for a full-screen app)
 Version 1.0 is the private couple's version. See [PLAN.md](PLAN.md) for the design and roadmap.
 
 ## Run it locally
@@ -27,7 +27,7 @@ Without a backend the game runs in **solo mode**, saved on the device.
 The two of you share one farm through a small hosted backend (Supabase, free tier).
 
 1. Create a project at [supabase.com](https://supabase.com) (free).
-2. In the Supabase dashboard open **SQL Editor**, paste the contents of `supabase/schema.sql`, run it once.
+2. In the Supabase dashboard open **SQL Editor**, paste the contents of `supabase/schema.sql` (and `supabase/gift-codes.sql` if using gift codes), and run them once.
 3. In **Project Settings → API** copy the *Project URL* and the *anon public* key.
 4. In Vercel (Project → Settings → Environment Variables) add:
    - `VITE_SUPABASE_URL` = the project URL

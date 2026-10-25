@@ -13,6 +13,7 @@ export class BootScene extends Phaser.Scene {
     try {
       await Promise.race([
         Promise.all([
+          document.fonts.load('10px "DotGothic16"'),
           document.fonts.load('10px "Pixelify Sans"'),
           document.fonts.load('10px "Fredoka"'),
           document.fonts.load('8px "Silkscreen"'),

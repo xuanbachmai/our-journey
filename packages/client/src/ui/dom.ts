@@ -18,7 +18,7 @@ export interface PromptOptions {
 import { getFontFamily } from './text';
 
 const STYLE = `
-.hh-dim{position:fixed;inset:0;background:rgba(42,26,47,.55);display:flex;align-items:center;justify-content:center;z-index:50;font-family:'Pixelify Sans','Fredoka','Press Start 2P',sans-serif}
+.hh-dim{position:fixed;inset:0;background:rgba(42,26,47,.55);display:flex;align-items:center;justify-content:center;z-index:50;font-family:'DotGothic16','Pixelify Sans','Fredoka','Press Start 2P',sans-serif}
 .hh-box{background:#fff4dc;border:3px solid #4a2a3f;box-shadow:0 4px 0 #4a2a3f;padding:16px;width:min(92vw,420px);color:#4a2a3f;border-radius:4px}
 .hh-title{font-size:14px;font-weight:600;margin:0 0 12px;line-height:1.5}
 .hh-input{width:100%;box-sizing:border-box;font-family:inherit;font-size:14px;padding:10px 12px;border:2px solid #4a2a3f;background:#fff;color:#4a2a3f;outline:none;border-radius:3px}
@@ -42,6 +42,7 @@ export function promptText(opts: PromptOptions): Promise<string | null> {
   return new Promise((resolve) => {
     const dim = document.createElement('div');
     dim.className = 'hh-dim';
+    dim.style.fontFamily = getFontFamily();
     const box = document.createElement('div');
     box.className = 'hh-box';
     const title = document.createElement('p');
@@ -92,6 +93,7 @@ export function confirmBox(title: string, okLabel = 'Yes', cancelLabel = 'No'): 
   return new Promise((resolve) => {
     const dim = document.createElement('div');
     dim.className = 'hh-dim';
+    dim.style.fontFamily = getFontFamily();
     const box = document.createElement('div');
     box.className = 'hh-box';
     const t = document.createElement('p');

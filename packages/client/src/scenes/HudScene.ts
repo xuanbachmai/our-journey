@@ -494,7 +494,7 @@ export class HudScene extends Phaser.Scene {
     this.areaText.setText(d.areaName + (d.special ? `  *${d.special}*` : ''));
     this.weatherIcon.setFrame(d.weather === 'rain' ? 'rain' : d.weather === 'cloudy' ? 'cloud' : 'sun');
     this.weatherIcon.setVisible(AREAS[d.area].outdoor);
-    this.weatherIcon.setPosition(Math.round(this.scale.width / 2) + 20 - Math.round(this.areaText.width / 2) - 10, 32);
+    this.weatherIcon.setPosition(this.scale.width - 8 - this.areaText.width - 10, 32);
     if (d.partner) {
       this.partnerText.setText(d.partner.online ? `${d.partner.id} is ${d.partner.area === d.area ? 'here' : d.partner.area ? `at ${AREAS[d.partner.area].name}` : 'online'}` : `${d.partner.id} is away`).setColor(d.partner.online ? '#7de8c8' : '#d9c9b8');
     } else this.partnerText.setText(d.online ? '' : 'solo');
@@ -2888,48 +2888,50 @@ export class HudScene extends Phaser.Scene {
     const st = this.world.state;
     const d = st.data;
     const col = (i: number) => -w / 2 + 12 + (i % 2) * 142;
-    const rowY = (i: number) => top + 2 + Math.floor(i / 2) * 20;
-    const mk = (i: number, label: string, fn: () => void, color = 0xe8dcc8) => {
-      const b = button(this, col(i), rowY(i), 134, 16, label, fn, color);
+    const rowY = (i: number) => top + Math.floor(i / 2) * 19;
+    let slot = 0;
+    const mk = (label: string, fn: () => void, color = 0xe8dcc8) => {
+      const i = slot++;
+      const b = button(this, col(i), rowY(i), 134, 15, label, fn, color);
       c.add(b.container);
       return b;
     };
-    mk(0, `Sound: ${d.soundOn ? 'on' : 'off'}`, () => {
+    mk(`Sound: ${d.soundOn ? 'on' : 'off'}`, () => {
       d.soundOn = !d.soundOn;
       audio.sfxOn = d.soundOn;
       st.save();
       this.openJournal('settings');
     });
-    mk(1, `Music: ${d.musicOn ? 'on' : 'off'}`, () => {
+    mk(`Music: ${d.musicOn ? 'on' : 'off'}`, () => {
       d.musicOn = !d.musicOn;
       audio.setMusic(d.musicOn);
       st.save();
       this.openJournal('settings');
     });
-    mk(2, `Guide arrow: ${d.guideOn ? 'on' : 'off'}`, () => {
+    mk(`Guide arrow: ${d.guideOn ? 'on' : 'off'}`, () => {
       d.guideOn = !d.guideOn;
       st.save();
       this.openJournal('settings');
     });
     const fontKey = getSavedFontKey();
     const fontOpt = FONT_OPTIONS[fontKey];
-    mk(3, `Font: ${fontOpt.label}`, () => {
-      const keys: FontKey[] = ['pixelify', 'fredoka', 'silkscreen', 'pressstart'];
+    mk(`Font: ${fontOpt.label}`, () => {
+      const keys = Object.keys(FONT_OPTIONS) as FontKey[];
       const nextKey = keys[(keys.indexOf(fontKey) + 1) % keys.length];
       saveFontKey(nextKey);
       refreshFontConfig();
       this.openJournal('settings');
     }, 0x7de8c8);
-    mk(4, 'Special days', () => void this.openSpecialDays(), 0xffe066);
-    if (net.enabled && net.pairing) mk(4.5, 'Redeem a code', () => void this.openRedeem(), 0x7de8c8);
+    mk('Special days', () => void this.openSpecialDays(), 0xffe066);
+    if (net.enabled && net.pairing) mk('Redeem a code', () => void this.openRedeem(), 0x7de8c8);
     if (net.enabled && net.pairing) {
       const code = net.pairing.code;
-      mk(5, `Farm code: ${code}`, async () => {
+      mk(`Farm code: ${code}`, async () => {
         const link = `${window.location.origin}${window.location.pathname}?join=${code}`;
         const ok = await copyToClipboard(link);
         this.showToast(ok ? 'Invite link copied!' : `Code: ${code}`);
       }, 0x7de8c8);
-      mk(6, 'Keep my seat (email)', async () => {
+      mk('Keep my seat (email)', async () => {
         const cur = await net.userEmail();
         if (cur) {
           this.showToast(`Seat linked to ${cur}`);
@@ -2939,11 +2941,11 @@ export class HudScene extends Phaser.Scene {
         if (!email) return;
         this.showToast((await net.linkEmail(email)) ? 'Check your inbox and tap the link' : `Could not send: ${net.lastError}`);
       });
-      mk(7, 'Reset partner seat', async () => {
+      mk('Reset partner seat', async () => {
         if (!(await confirmBox(`Free ${otherPlayer(this.world.playerId)}'s seat so they can pair from a new phone?`, 'Reset', 'Cancel'))) return;
         this.showToast((await net.resetPartnerSeat()) ? 'Seat freed. Share the code again.' : 'Could not reset');
       });
-      mk(8, 'Leave this farm', async () => {
+      mk('Leave this farm', async () => {
         if (await TitleScene.leaveFarm()) {
           st.save();
           this.closeOverlay();
@@ -2952,7 +2954,7 @@ export class HudScene extends Phaser.Scene {
           this.scene.stop();
         }
       }, 0xff8fcf);
-      mk(9, 'Back to title', () => {
+      mk('Back to title', () => {
         st.save();
         void net.disconnect();
         this.closeOverlay();
@@ -2961,7 +2963,7 @@ export class HudScene extends Phaser.Scene {
         this.scene.stop();
       });
     } else {
-      mk(5, 'Back to title', () => {
+      mk('Back to title', () => {
         st.save();
         void net.disconnect();
         this.closeOverlay();
@@ -2969,10 +2971,10 @@ export class HudScene extends Phaser.Scene {
         this.scene.start('Title');
         this.scene.stop();
       });
-      c.add(this.add.text(-w / 2 + 12, rowY(7) + 8, net.enabled ? 'Solo mode. Pair up from the title.' : 'Solo mode: no backend configured.', plain({ color: '#7a6a70' })).setOrigin(0, 0.5));
+      c.add(this.add.text(-w / 2 + 12, rowY(8) + 8, net.enabled ? 'Solo mode. Pair up from the title.' : 'Solo mode: no backend configured.', plain({ color: '#7a6a70' })).setOrigin(0, 0.5));
     }
     // app stores ask for a way to erase your data; it is handy on a shared phone too
-    mk(net.enabled && net.pairing ? 10 : 6, 'Erase this phone', async () => {
+    mk('Erase this phone', async () => {
       if (!(await confirmBox('Erase the save, notes and pairing stored on this phone? The farm itself stays online.', 'Erase', 'Keep'))) return;
       eraseLocalData();
       net.forgetDevice();
