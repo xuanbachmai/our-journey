@@ -36,9 +36,15 @@ export interface SpecialDay {
   day: number;
 }
 
+/** xb & qd share the same birthday: 25/11 */
+export const OUR_BIRTHDAY: SpecialDay = { label: 'xb & qd birthday', day: 25, month: 11 };
+
 export function isSpecialDay(days: SpecialDay[], ms: number): SpecialDay | null {
   const d = new Date(ms);
-  return days.find((s) => s.month === d.getMonth() + 1 && s.day === d.getDate()) ?? null;
+  const found = days.find((s) => s.month === d.getMonth() + 1 && s.day === d.getDate());
+  if (found) return found;
+  if (d.getMonth() + 1 === OUR_BIRTHDAY.month && d.getDate() === OUR_BIRTHDAY.day) return OUR_BIRTHDAY;
+  return null;
 }
 
 // ---------- Daily question ----------

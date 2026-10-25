@@ -3059,7 +3059,9 @@ export class HudScene extends Phaser.Scene {
     const c = this.openOverlay(w, h, 'Special days');
     const top = -h / 2 + 32;
     const days = st.world.specialDays;
-    if (!days.length) c.add(this.add.text(0, top + 20, 'Add birthdays and your anniversary', plain({ color: '#7a6a70' })).setOrigin(0.5));
+    if (!days.some((d) => d.day === 25 && d.month === 11)) {
+      days.unshift({ label: 'xb & qd birthday', day: 25, month: 11 });
+    }
     days.slice(0, 4).forEach((sd, i) => {
       const y = top + i * 22;
       this.rowCard(c, -w / 2 + 10, y - 10, w - 20, 20, { key: 'icons', frame: 'gift' }, 0xfffdf9, 0xffe8f4);
@@ -3072,12 +3074,12 @@ export class HudScene extends Phaser.Scene {
       c.add(del.container);
     });
     const add = button(this, -w / 2 + 10, h / 2 - 24, 110, 16, 'Add a day', async () => {
-      const label = await promptText({ title: 'What is the occasion? (e.g. qd birthday)', placeholder: 'qd birthday', maxLength: 24 });
+      const label = await promptText({ title: 'What is the occasion? (e.g. Anniversary)', placeholder: 'Our anniversary', maxLength: 24 });
       if (!label) return;
-      const date = await promptText({ title: 'Date as DD/MM', placeholder: '24/12', maxLength: 5 });
+      const date = await promptText({ title: 'Date as DD/MM', placeholder: '25/11', maxLength: 5 });
       if (!date) return;
       const m = date.match(/^(\d{1,2})[\/.-](\d{1,2})$/);
-      if (!m) return this.showToast('Use DD/MM, like 24/12');
+      if (!m) return this.showToast('Use DD/MM, like 25/11');
       st.world.specialDays.push({ label, day: Number(m[1]), month: Number(m[2]) });
       st.touch();
       audio.play('quest');

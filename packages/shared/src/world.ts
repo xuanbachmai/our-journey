@@ -135,7 +135,7 @@ export function newWorld(now: number, seed = (Math.random() * 1e9) | 0): WorldSt
     contractDay: -1,
     hands: {},
     discovered: ['farm'],
-    specialDays: [],
+    specialDays: [{ label: 'xb & qd birthday', day: 25, month: 11 }],
     postcards: [],
     stats: {},
     questsClaimed: [],

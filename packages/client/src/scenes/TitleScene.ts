@@ -283,13 +283,13 @@ export class TitleScene extends Phaser.Scene {
 
     this.ui.push(
       this.add
-        .text(left + 68, top + 44, `Character: ${look.name} (${player})`, plain({ color: '#3b2133' }))
+        .text(left + 68, top + 44, `Playing as: ${look.name}`, plain({ color: '#3b2133' }))
         .setOrigin(0, 0.5),
       this.add
-        .text(left + 68, top + 58, 'Locked to 1 world on this device', note({ color: '#6a5560' }))
+        .text(left + 68, top + 58, 'Our shared world on this device', note({ color: '#6a5560' }))
         .setOrigin(0, 0.5),
       this.add
-        .text(left + 68, top + 70, 'Share the code so your partner can join!', note({ color: '#9a5b00' }))
+        .text(left + 68, top + 70, 'Share the code so the other one can join!', note({ color: '#9a5b00' }))
         .setOrigin(0, 0.5),
     );
 
@@ -329,7 +329,7 @@ export class TitleScene extends Phaser.Scene {
       this.setStatus(`Could not create world: ${net.lastError || 'no connection'}`);
       return;
     }
-    this.setStatus(`Created World ${code} (max ${MAX_WORLD_PLAYERS} players) — pick your character!`);
+    this.setStatus(`Your world code is ${code} — share it with each other!`);
     this.showPick(code, { xb: null, qd: null }, world);
   }
 
@@ -338,7 +338,7 @@ export class TitleScene extends Phaser.Scene {
       this.setStatus(`Locked to World ${net.boundWorldCode}. Delete it first to join another world.`);
       return;
     }
-    const code = await promptText({ title: 'Enter the 6-letter World Code (max 2 players)', placeholder: 'ABC123', code: true, maxLength: 6, okLabel: 'Join World' });
+    const code = await promptText({ title: 'Enter the 6-letter World Code', placeholder: 'ABC123', code: true, maxLength: 6, okLabel: 'Join World' });
     if (!code) return;
     await this.joinWithCode(code.trim().toUpperCase());
   }
@@ -357,7 +357,7 @@ export class TitleScene extends Phaser.Scene {
       return;
     }
     if (isWorldFullForDevice(w.seats, net.deviceId)) {
-      this.setStatus(`World ${code} is full (${MAX_WORLD_PLAYERS}/${MAX_WORLD_PLAYERS} players max).`);
+      this.setStatus(`World ${code} already has both xb & qd.`);
       this.showMenu(false);
       return;
     }
@@ -389,12 +389,12 @@ export class TitleScene extends Phaser.Scene {
         .text(
           W / 2,
           top + 17,
-          code ? `World ${code}  ·  Players: ${joined}/${MAX_WORLD_PLAYERS}` : 'Choose Your Character',
+          code ? `World ${code}  ·  ${joined}/${MAX_WORLD_PLAYERS} joined` : 'Who are you?',
           plain({ color: '#3b2133' }),
         )
         .setOrigin(0.5),
       this.add
-        .text(W / 2, top + 34, 'Pick your seat (1 seat per player, max 2 players):', note({ color: '#6a5560' }))
+        .text(W / 2, top + 34, 'Who are you today?', note({ color: '#6a5560' }))
         .setOrigin(0.5),
     );
 
@@ -410,7 +410,7 @@ export class TitleScene extends Phaser.Scene {
       if (taken) spr.setTint(0x888888);
       else this.tweens.add({ targets: spr, y: y - 4, duration: 500 + i * 120, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
       const name = this.add
-        .text(x, y + 4, taken ? `${look.name} (Taken)` : `${look.name} (${id})`, plain({ color: taken ? '#8a7a80' : '#3b2133' }))
+        .text(x, y + 4, taken ? `${look.name} (taken)` : look.name, plain({ color: taken ? '#8a7a80' : '#3b2133' }))
         .setOrigin(0.5, 0);
       this.ui.push(spr, name);
       if (taken) return;
