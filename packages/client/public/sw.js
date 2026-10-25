@@ -6,7 +6,7 @@
  * itself is fetched fresh when possible so updates arrive, with the cached
  * copy as a fallback. Supabase and the keep-alive are never cached.
  */
-const CACHE = 'our-journey-v5';
+const CACHE = 'our-journey-v6';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './apple-touch-icon.png', './favicon.png'];
 
 self.addEventListener('install', (e) => {

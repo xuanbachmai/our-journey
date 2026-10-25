@@ -188,17 +188,17 @@ export class HudScene extends Phaser.Scene {
     // Coins and the bond ride on their own pills, so they read against grass,
     // paving or a night sky without an outline on every glyph.
     this.statusGfx = this.add.graphics();
-    this.add.image(8, 6, 'icons', 'coin').setOrigin(0, 0);
-    this.coinText = this.add.text(22, 8, '0', plain({ color: '#8a5e00' })).setOrigin(0, 0);
-    this.add.image(8, 23, 'icons', 'heart').setOrigin(0, 0);
+    this.add.image(13, 12, 'icons', 'coin').setOrigin(0.5, 0.5);
+    this.coinText = this.add.text(22, 12, '0', plain({ color: '#8a5e00' })).setOrigin(0, 0.5);
+    this.add.image(13, 30, 'icons', 'heart').setOrigin(0.5, 0.5);
     this.repBar = this.add.graphics();
-    this.repText = this.add.text(70, 25, '0', note({ color: '#a8456a' })).setOrigin(0, 0);
+    this.repText = this.add.text(69, 30, '0', note({ color: '#a8456a' })).setOrigin(0, 0.5);
     // bag button replaces the old row of loose item icons
     {
       const g = this.add.graphics();
       panel(g, -12, -12, 24, 24, 0xfff4dc);
-      const icon = this.add.image(0, -1, 'icons', 'bag').setScale(1.5);
-      this.bagBadge = this.add.text(13, 13, '0', style()).setOrigin(1, 1);
+      const icon = this.add.image(0, -1, 'icons', 'bag').setScale(1.4);
+      this.bagBadge = this.add.text(10, 10, '0', tiny()).setOrigin(1, 1);
       const z = this.add.zone(0, 0, 26, 26).setInteractive({ useHandCursor: true });
       z.on('pointerdown', () => {
         audio.play('open');
@@ -235,8 +235,8 @@ export class HudScene extends Phaser.Scene {
     this.hotbar.add(this.trayGfx);
     for (let i = 0; i < 8; i++) {
       const g = this.add.graphics();
-      const icon = this.add.image(i * 20 + 10, 10, 'icons', 'seed-wheat');
-      const count = this.add.text(i * 20 + 19, 19, '0', tiny()).setOrigin(1, 1);
+      const icon = this.add.image(i * 20 + 10, 9, 'icons', 'seed-wheat');
+      const count = this.add.text(i * 20 + 18, 18, '0', tiny()).setOrigin(1, 1);
       const zone = this.add.zone(i * 20 + 10, 10, 20, 20).setInteractive();
       zone.on('pointerdown', () => this.slotSeeds[i] && this.world.selectSeed(this.slotSeeds[i]));
       this.slotGfx.push(g);
@@ -391,8 +391,17 @@ export class HudScene extends Phaser.Scene {
     return b.container;
   }
 
+  private lastStatusKey = '';
+  private lastHotbarKey = '';
+  private lastActionKey = '';
+  private lastQuestKey = '';
+
   private layout() {
     const { width: W, height: H } = this.scale;
+    this.lastStatusKey = '';
+    this.lastHotbarKey = '';
+    this.lastActionKey = '';
+    this.lastQuestKey = '';
     this.hotbar.setPosition(Math.round(W / 2 - 80), H - 24);
     this.actionBtn.setPosition(W - 30, H - 32);
     this.hint.setPosition(W / 2, H - 30);
@@ -402,9 +411,9 @@ export class HudScene extends Phaser.Scene {
     this.questBox.setPosition(W - 72, 12);
     this.emoteBtn.setPosition(W - 30, H - 78);
     this.rideBtn.setPosition(W - 58, H - 78);
-    this.bagBtn.setPosition(18, 46);
-    this.decorBtn.setPosition(6, 64);
-    this.decorStop.setPosition(6, 64);
+    this.bagBtn.setPosition(16, 53);
+    this.decorBtn.setPosition(4, 68);
+    this.decorStop.setPosition(4, 68);
     this.areaText.setOrigin(1, 0).setPosition(W - 8, 26);
     this.partnerText.setOrigin(1, 0).setPosition(W - 8, 38);
     this.weatherIcon.setPosition(W - 8 - this.areaText.width - 10, 32);
@@ -424,13 +433,17 @@ export class HudScene extends Phaser.Scene {
 
   private refresh(d: HudData) {
     this.last = d;
-    this.coinText.setText(String(d.coins));
-    this.repText.setText(String(Math.floor(d.reputation)));
-    this.statusGfx.clear();
-    pill(this.statusGfx, 4, 4, 18 + this.coinText.width, 16, 0xfff4dc);
-    pill(this.statusGfx, 4, 21, 65 + this.repText.width, 16, 0xfff4dc);
-    this.repBar.clear();
-    meter(this.repBar, 22, 26, 44, 6, d.reputation / 100, 0xe05fa8);
+    const statusKey = `${d.coins}|${Math.round(d.reputation * 10)}`;
+    if (statusKey !== this.lastStatusKey) {
+      this.lastStatusKey = statusKey;
+      this.coinText.setText(String(d.coins));
+      this.repText.setText(String(Math.floor(d.reputation)));
+      this.statusGfx.clear();
+      pill(this.statusGfx, 4, 4, Math.max(44, 24 + this.coinText.width), 16, 0xfff4dc);
+      pill(this.statusGfx, 4, 22, Math.max(82, 74 + this.repText.width), 16, 0xfff4dc);
+      this.repBar.clear();
+      meter(this.repBar, 22, 27, 44, 6, d.reputation / 100, 0xe05fa8);
+    }
     // bag badge: produce + dishes carried; a little hop when something new goes in
     let total = d.dishes;
     for (const id of SELLABLE) total += d.inventory[id] ?? 0;
@@ -440,31 +453,39 @@ export class HudScene extends Phaser.Scene {
     // hotbar: only crops you own seeds of or that are unlocked
     this.slotSeeds = CROP_IDS.filter((c) => (d.inventory[`seed:${c}`] ?? 0) > 0 || CROPS[c].unlockRep <= d.reputation);
     const n = this.slotSeeds.length;
-    this.hotbar.setPosition(Math.round(this.scale.width / 2 - n * 10), this.scale.height - 24);
-    this.trayGfx.clear();
-    if (n) this.trayGfx.fillStyle(0x2d1b33, 0.4).fillRoundedRect(-4, -4, n * 20 + 8, 28, 6);
-    for (let i = 0; i < 8; i++) {
-      const id = this.slotSeeds[i];
-      const g = this.slotGfx[i];
-      g.clear();
-      const vis = !!id;
-      this.slotIcons[i].setVisible(vis);
-      this.slotCounts[i].setVisible(vis);
-      if (!id) continue;
-      // the chosen one stands proud, the rest are cut into the tray
-      (d.selectedSeed === id ? panel : inset)(g, i * 20, 0, 20, 20, d.selectedSeed === id ? 0xffe066 : 0xfff4dc, d.selectedSeed === id ? 0xff8fcf : 0x4a2a3f);
-      this.slotIcons[i].setFrame(`seed-${id}`);
-      this.slotCounts[i].setText(String(d.inventory[`seed:${id}`] ?? 0));
+    const hotbarKey = `${this.scale.width}|${d.selectedSeed}|${this.slotSeeds.map((s) => `${s}:${d.inventory[`seed:${s}`] ?? 0}`).join(',')}`;
+    if (hotbarKey !== this.lastHotbarKey) {
+      this.lastHotbarKey = hotbarKey;
+      this.hotbar.setPosition(Math.round(this.scale.width / 2 - n * 10), this.scale.height - 24);
+      this.trayGfx.clear();
+      if (n) this.trayGfx.fillStyle(0x2d1b33, 0.4).fillRoundedRect(-4, -4, n * 20 + 8, 28, 6);
+      for (let i = 0; i < 8; i++) {
+        const id = this.slotSeeds[i];
+        const g = this.slotGfx[i];
+        g.clear();
+        const vis = !!id;
+        this.slotIcons[i].setVisible(vis);
+        this.slotCounts[i].setVisible(vis);
+        if (!id) continue;
+        // the chosen one stands proud, the rest are cut into the tray
+        (d.selectedSeed === id ? panel : inset)(g, i * 20, 0, 20, 20, d.selectedSeed === id ? 0xffe066 : 0xfff4dc, d.selectedSeed === id ? 0xff8fcf : 0x4a2a3f);
+        this.slotIcons[i].setFrame(`seed-${id}`);
+        this.slotCounts[i].setText(String(d.inventory[`seed:${id}`] ?? 0));
+      }
     }
     // action
     const a = d.action;
-    this.actionGfx.clear();
     const on = !!a && a.enabled;
-    this.actionGfx.fillStyle(0x4a2a3f, 1).fillCircle(0, 2, 22);
-    this.actionGfx.fillStyle(on ? 0xffd23f : 0xd9c9b8, 1).fillCircle(0, 0, 21);
-    this.actionGfx.fillStyle(0xffffff, on ? 0.45 : 0.2).fillCircle(-5, -7, 6);
-    this.actionLabel.setText(a ? a.label : '').setColor(on ? P.outline : '#8a7a70').setFontSize(a && a.label.length > 7 ? '6px' : '8px');
-    this.actionBtn.setAlpha(a ? 1 : 0.55);
+    const actionKey = `${a?.label ?? ''}|${on}|${!!a}`;
+    if (actionKey !== this.lastActionKey) {
+      this.lastActionKey = actionKey;
+      this.actionGfx.clear();
+      this.actionGfx.fillStyle(0x4a2a3f, 1).fillCircle(0, 2, 22);
+      this.actionGfx.fillStyle(on ? 0xffd23f : 0xd9c9b8, 1).fillCircle(0, 0, 21);
+      this.actionGfx.fillStyle(0xffffff, on ? 0.45 : 0.2).fillCircle(-5, -7, 6);
+      this.actionLabel.setText(a ? a.label : '').setColor(on ? P.outline : '#8a7a70').setFontSize(a && a.label.length > 7 ? '6px' : '8px');
+      this.actionBtn.setAlpha(a ? 1 : 0.55);
+    }
     const mounts = d.mounts ?? [];
     this.rideBtn.setVisible(mounts.length > 0 && !d.decorate);
     if (mounts.length) {
@@ -473,23 +494,27 @@ export class HudScene extends Phaser.Scene {
       this.rideIcon.setAlpha(next ? 1 : 0.5);
     }
     // quest ticker
-    this.questGfx.clear();
-    if (d.quest) {
-      // fit between the coins on the left and the three buttons on the right
-      const prog = d.quest.target > 1 ? ` ${d.quest.progress}/${d.quest.target}` : '';
-      const maxChars = Math.max(8, Math.floor((this.scale.width - 150) / 8));
-      let title = d.quest.title;
-      if (title.length + prog.length > maxChars) title = `${title.slice(0, Math.max(3, maxChars - prog.length - 1))}…`;
-      const txt = `${title}${prog}`;
-      this.questText.setText(txt);
-      const w = Math.min(this.questText.width + 14, this.scale.width - 150);
-      const stepped = d.quest.target > 1;
-      const h = stepped ? 24 : 18;
-      panel(this.questGfx, -w, -h / 2, w, h, 0xfff4dc);
-      this.questText.setPosition(-w + 7, stepped ? -3 : 0);
-      if (stepped) meter(this.questGfx, -w + 7, 5, w - 14, 5, d.quest.progress / d.quest.target, 0x7de8c8);
-      (this.questBox.list[2] as Phaser.GameObjects.Zone).setPosition(-w, 0).setSize(w, h);
-    } else this.questText.setText('');
+    const questKey = d.quest ? `${this.scale.width}|${d.quest.title}|${d.quest.progress}/${d.quest.target}` : '';
+    if (questKey !== this.lastQuestKey) {
+      this.lastQuestKey = questKey;
+      this.questGfx.clear();
+      if (d.quest) {
+        // fit between the coins on the left and the three buttons on the right
+        const prog = d.quest.target > 1 ? ` ${d.quest.progress}/${d.quest.target}` : '';
+        const maxChars = Math.max(8, Math.floor((this.scale.width - 150) / 8));
+        let title = d.quest.title;
+        if (title.length + prog.length > maxChars) title = `${title.slice(0, Math.max(3, maxChars - prog.length - 1))}…`;
+        const txt = `${title}${prog}`;
+        this.questText.setText(txt);
+        const w = Math.min(this.questText.width + 14, this.scale.width - 150);
+        const stepped = d.quest.target > 1;
+        const h = stepped ? 24 : 18;
+        panel(this.questGfx, -w, -h / 2, w, h, 0xfff4dc);
+        this.questText.setPosition(-w + 7, stepped ? -3 : 0);
+        if (stepped) meter(this.questGfx, -w + 7, 5, w - 14, 5, d.quest.progress / d.quest.target, 0x7de8c8);
+        (this.questBox.list[2] as Phaser.GameObjects.Zone).setPosition(-w, 0).setSize(w, h);
+      } else this.questText.setText('');
+    }
     // area & weather & partner
     this.areaText.setText(d.areaName + (d.special ? `  *${d.special}*` : ''));
     this.weatherIcon.setFrame(d.weather === 'rain' ? 'rain' : d.weather === 'cloudy' ? 'cloud' : 'sun');
@@ -563,7 +588,7 @@ export class HudScene extends Phaser.Scene {
       inset(g, sx, sy, 24, 24, loved.includes(e.key) ? 0xffe8f4 : 0xffffff, loved.includes(e.key) ? 0xff8fcf : 0x4a2a3f);
       c.add(g);
       c.add(this.add.image(sx + 12, sy + 11, 'icons', e.icon).setScale(1.5));
-      if (e.count > 1) c.add(this.add.text(sx + 25, sy + 26, String(e.count), tiny()).setOrigin(1, 1));
+      if (e.count > 1) c.add(this.add.text(sx + 22, sy + 22, String(e.count), tiny()).setOrigin(1, 1));
       if (loved.includes(e.key)) c.add(this.add.image(sx + 5, sy + 5, 'icons', 'heart').setScale(0.6));
       const z = this.add.zone(sx + 12, sy + 12, 24, 24).setInteractive({ useHandCursor: true });
       z.on('pointerdown', () => {
@@ -691,7 +716,7 @@ export class HudScene extends Phaser.Scene {
         panel(g, sx, sy, 29, 29, sel ? 0xffe066 : times ? 0xffffff : 0xefe4d2, sel ? 0xff8fcf : 0x4a2a3f);
         c.add(g);
         c.add(this.add.image(sx + 14.5, sy + 13.5, 'icons', `dish-${id}`).setScale(1.6).setAlpha(times ? 1 : 0.3));
-        if (best) c.add(this.add.text(sx + 27, sy + 28, GRADE_NAMES[best - 1], style({ color: ['#cfcfd9', '#ffffff', '#7de8c8', '#ffe066'][best - 1] })).setOrigin(1, 1));
+        if (best) c.add(this.add.text(sx + 26, sy + 26, GRADE_NAMES[best - 1], tiny({ color: ['#cfcfd9', '#ffffff', '#7de8c8', '#ffe066'][best - 1] })).setOrigin(1, 1));
         const z = this.add.zone(sx + 14.5, sy + 14.5, 29, 29).setInteractive({ useHandCursor: true });
         z.on('pointerdown', () => {
           this.bookSel = id;
@@ -750,10 +775,11 @@ export class HudScene extends Phaser.Scene {
     const g = this.add.graphics();
     panel(g, -w / 2, -h / 2 - 2, w, h, 0xfff4dc);
     t.setY(-h / 2 + 8);
-    const tagW = name.length * 8 + 12;
+    const tagText = this.add.text(0, -h / 2 - 5, name, plain()).setOrigin(0.5);
+    const tagW = Math.max(36, tagText.width + 14);
+    tagText.setX(-w / 2 + 6 + tagW / 2);
     const tag = this.add.graphics();
     panel(tag, -w / 2 + 6, -h / 2 - 12, tagW, 14, 0xffd23f);
-    const tagText = this.add.text(-w / 2 + 6 + tagW / 2, -h / 2 - 5, name, plain()).setOrigin(0.5);
     const arrow = this.add.text(w / 2 - 10, h / 2 - 10, '▼', plain({ color: '#b07a00' })).setOrigin(0.5);
     this.tweens.add({ targets: arrow, y: arrow.y + 2, duration: 400, yoyo: true, repeat: -1 });
     const zone = this.add.zone(0, 0, w, h).setInteractive();
@@ -917,7 +943,7 @@ export class HudScene extends Phaser.Scene {
     if (card.scene === 'together' || card.scene === 'first_sale' || card.scene === 'orders') c.add(this.add.image(x - 3, y - 14, 'icons', 'heart').setScale(1.5));
     // the frame ends at y + 36, and a line of this font is twelve pixels tall
     c.add(this.add.text(x, y + 19, card.title, plain({ color: P.outline })).setOrigin(0.5, 0.5));
-    c.add(this.add.text(x, y + 29, card.day, plain({ color: '#6a5a60' })).setOrigin(0.5, 0.5));
+    c.add(this.add.text(x, y + 29, card.day, note({ color: '#6a5a60' })).setOrigin(0.5, 0.5));
   }
 
   // ---------- overlays ----------
@@ -1044,7 +1070,7 @@ export class HudScene extends Phaser.Scene {
       c.add(this.add.text(-w / 2 + 24, y, open ? def.name : `${def.name} (rep ${def.unlockRep})`, plain({ color: open ? P.outline : '#9a8a90' })).setOrigin(0, 0.5));
       if (!open) return;
       c.add(this.add.text(-w / 2 + 104, y, `${def.seedPrice}c`, plain({ color: '#b07a00' })).setOrigin(0, 0.5));
-      c.add(this.add.text(-w / 2 + 136, y, `grows ${this.growText(id)}`, plain({ color: '#7a6a70' })).setOrigin(0, 0.5));
+      c.add(this.add.text(-w / 2 + 136, y, `grows ${this.growText(id)}`, note({ color: '#7a6a70' })).setOrigin(0, 0.5));
       const buy = button(this, w / 2 - 66, y - 7, 28, 14, 'x1', () => this.buySeed(id, 1, reopen));
       const buy5 = button(this, w / 2 - 36, y - 7, 28, 14, 'x5', () => this.buySeed(id, 5, reopen));
       buy.setEnabled(st.coins >= def.seedPrice);
@@ -1099,7 +1125,7 @@ export class HudScene extends Phaser.Scene {
       const isTool = (TOOL_IDS as string[]).includes(id);
       const lvlText = isTool ? ` (${TOOL_TIERS[lvl]})` : def.prices.length > 1 ? ` ${lvl}/${def.prices.length}` : lvl ? ' (owned)' : '';
       c.add(this.add.text(-w / 2 + 24, y - 5, `${def.name}${lvlText}`, plain()).setOrigin(0, 0.5));
-      c.add(this.add.text(-w / 2 + 24, y + 5, def.desc, plain({ color: '#7a6a70' })).setOrigin(0, 0.5));
+      c.add(this.add.text(-w / 2 + 24, y + 5, def.desc, note({ color: '#7a6a70' })).setOrigin(0, 0.5));
       if (price !== null) {
         const locked = def.requires && st.upgradeLevel(def.requires) === 0;
         this.priceTag(c, w / 2 - 62, y, price, !locked && st.coins >= price);
@@ -1155,7 +1181,7 @@ export class HudScene extends Phaser.Scene {
       }, 0x7de8c8);
       c.add(all.container);
     }
-    c.add(this.add.text(w / 2 - 8, h / 2 - 12, 'prices change daily', plain({ color: '#7a6a70' })).setOrigin(1, 0.5));
+    c.add(this.add.text(w / 2 - 8, h / 2 - 12, 'prices change daily', note({ color: '#7a6a70' })).setOrigin(1, 0.5));
     this.pager(c, w, h, this.page, Math.max(1, Math.ceil(owned.length / 6)), (p) => {
       this.page = p;
       reopen();
@@ -1185,7 +1211,7 @@ export class HudScene extends Phaser.Scene {
         const b = BOOKS[id];
         c.add(this.add.image(-w / 2 + 14, y, 'icons', 'book'));
         c.add(this.add.text(-w / 2 + 24, y - 5, b.name + (st.hasBook(id) ? ' (owned)' : ''), plain()).setOrigin(0, 0.5));
-        c.add(this.add.text(-w / 2 + 24, y + 5, b.desc, plain({ color: '#7a6a70' })).setOrigin(0, 0.5));
+        c.add(this.add.text(-w / 2 + 24, y + 5, b.desc, note({ color: '#7a6a70' })).setOrigin(0, 0.5));
         if (!st.hasBook(id)) {
           this.priceTag(c, w / 2 - 62, y, b.price, st.coins >= b.price);
           const btn = button(this, w / 2 - 58, y - 7, 44, 14, 'Buy', () => {
@@ -1200,7 +1226,7 @@ export class HudScene extends Phaser.Scene {
           c.add(btn.container);
         }
       });
-      c.add(this.add.text(-w / 2 + 8, top + 44, 'Restaurant & bag', plain({ color: '#7a6a70' })).setOrigin(0, 0.5));
+      c.add(this.add.text(-w / 2 + 8, top + 44, 'Restaurant & bag', note({ color: '#7a6a70' })).setOrigin(0, 0.5));
       const ids = UPGRADE_IDS.filter((u) => UPGRADES[u].shop === 'store');
       ids.forEach((id, i) => {
         const y = top + 60 + i * 18;
@@ -1209,7 +1235,7 @@ export class HudScene extends Phaser.Scene {
         const price = st.upgradePrice(id);
         c.add(this.add.image(-w / 2 + 14, y, 'icons', def.icon));
         c.add(this.add.text(-w / 2 + 24, y - 5, `${def.name}${def.prices.length > 1 ? ` ${lvl}/${def.prices.length}` : lvl ? ' (owned)' : ''}`, plain()).setOrigin(0, 0.5));
-        c.add(this.add.text(-w / 2 + 24, y + 5, def.desc, plain({ color: '#7a6a70' })).setOrigin(0, 0.5));
+        c.add(this.add.text(-w / 2 + 24, y + 5, def.desc, note({ color: '#7a6a70' })).setOrigin(0, 0.5));
         if (price !== null) {
           this.priceTag(c, w / 2 - 62, y, price, st.coins >= price);
           const btn = button(this, w / 2 - 58, y - 7, 44, 14, 'Buy', () => {
@@ -1389,7 +1415,7 @@ export class HudScene extends Phaser.Scene {
       c.add(turn);
       const sale = mode === 'buy' && st.isOnSale(kind, sel);
       const { price, unlockRep } = st.clothingPrice(kind, sel);
-      if (sale) c.add(this.add.text(pxl + 4, top + 4, 'SALE -30%', plain({ color: '#d94a4a' })).setOrigin(0, 0));
+      if (sale) c.add(this.add.text(pxl + 4, top + 4, 'SALE -30%', note({ color: '#d94a4a' })).setOrigin(0, 0));
       c.add(this.add.text(cx, top + 93, def.name, plain()).setOrigin(0.5));
       const owned = st.owns(kind, sel);
       const wearing = worn === sel;
@@ -1443,7 +1469,7 @@ export class HudScene extends Phaser.Scene {
       const img = this.add.image(x + cw / 2, y + chh / 2 + 1, buildCharacterTexture(this, look, trial(id)), 0);
       if (locked) img.setAlpha(0.35);
       c.add(img);
-      if (mode === 'buy' && st.isOnSale(kind, id)) c.add(this.add.text(x + 2, y + 1, '%', plain({ color: '#d94a4a' })).setOrigin(0, 0));
+      if (mode === 'buy' && st.isOnSale(kind, id)) c.add(this.add.text(x + 2, y + 1, '%', note({ color: '#d94a4a' })).setOrigin(0, 0));
       if (mode === 'buy' && owned) c.add(this.add.image(x + cw - 6, y + 6, 'icons', 'heart').setScale(0.6));
       const z = this.add.zone(x + cw / 2, y + chh / 2, cw, chh).setInteractive({ useHandCursor: true });
       z.on('pointerdown', () => {
@@ -1460,8 +1486,8 @@ export class HudScene extends Phaser.Scene {
       });
     else if (mode === 'buy') {
       const s = st.clothingSale;
-      c.add(this.add.text(gx + 93, h / 2 - 12, `Sale: ${clothingDef(s.kind, s.id).name} -30%`, plain({ color: '#d94a4a' })).setOrigin(0.5));
-    } else c.add(this.add.text(gx + 93, h / 2 - 12, 'Pick one, then put it on', plain({ color: '#7a6a70' })).setOrigin(0.5));
+      c.add(this.add.text(gx + 93, h / 2 - 12, `Sale: ${clothingDef(s.kind, s.id).name} -30%`, note({ color: '#d94a4a' })).setOrigin(0.5));
+    } else c.add(this.add.text(gx + 93, h / 2 - 12, 'Pick one, then put it on', note({ color: '#7a6a70' })).setOrigin(0.5));
   }
 
   // ---------- Cozy Corner (furniture) ----------
@@ -1497,10 +1523,10 @@ export class HudScene extends Phaser.Scene {
     const def = FURNITURE[sel];
     const open = def.unlockRep <= st.reputation;
     c.add(this.fitImage(this.add.image(cx, top + 66, 'furniture', sel).setOrigin(0.5, 1), pw - 12, 58, 2.5).setAlpha(open ? 1 : 0.4));
-    if (sel === sale) c.add(this.add.text(pxl + 4, top + 4, 'SALE -30%', plain({ color: '#d94a4a' })).setOrigin(0, 0));
+    if (sel === sale) c.add(this.add.text(pxl + 4, top + 4, 'SALE -30%', note({ color: '#d94a4a' })).setOrigin(0, 0));
     c.add(this.add.text(cx, top + 82, def.name, plain()).setOrigin(0.5));
     const owned = st.furnitureOwned(sel) + st.world.furniturePlaced.filter((p) => p.id === sel).length;
-    c.add(this.add.text(cx, top + 93, `+${def.cozy} cozy${def.wall ? ', wall' : ''}`, plain({ color: '#7a6a70' })).setOrigin(0.5));
+    c.add(this.add.text(cx, top + 93, `+${def.cozy} cozy${def.wall ? ', wall' : ''}`, note({ color: '#7a6a70' })).setOrigin(0.5));
     const price = st.furniturePrice(sel);
     const b = button(this, pxl + 6, top + 102, pw - 12, 16, open ? `Buy ${price}c` : `Rep ${def.unlockRep}`, () => {
       if (!st.buyFurniture(sel)) return audio.play('bad');
@@ -1525,7 +1551,7 @@ export class HudScene extends Phaser.Scene {
       panel(cg, x, y, cs, cs, id === sel ? 0xffe066 : 0xffffff, id === sel ? 0xff8fcf : 0x4a2a3f);
       c.add(cg);
       c.add(this.fitImage(this.add.image(x + cs / 2, y + cs / 2, 'furniture', id), cs - 5, cs - 5, 1).setAlpha(isOpen ? 1 : 0.35));
-      if (id === sale) c.add(this.add.text(x + 2, y + 1, '%', plain({ color: '#d94a4a' })).setOrigin(0, 0));
+      if (id === sale) c.add(this.add.text(x + 2, y + 1, '%', note({ color: '#d94a4a' })).setOrigin(0, 0));
       const have = st.furnitureOwned(id);
       if (have) c.add(this.add.text(x + cs - 2, y + cs - 1, `x${have}`, tiny()).setOrigin(1, 1));
       const z = this.add.zone(x + cs / 2, y + cs / 2, cs, cs).setInteractive({ useHandCursor: true });
@@ -1536,7 +1562,7 @@ export class HudScene extends Phaser.Scene {
       });
       c.add(z);
     });
-    c.add(this.add.text(gx + 90, h / 2 - 12, `Sale: ${FURNITURE[sale].name} -30%`, plain({ color: '#d94a4a' })).setOrigin(0.5));
+    c.add(this.add.text(gx + 90, h / 2 - 12, `Sale: ${FURNITURE[sale].name} -30%`, note({ color: '#d94a4a' })).setOrigin(0.5));
   }
 
   // ---------- us two: bond, photos, gifts ----------
@@ -1588,13 +1614,13 @@ export class HudScene extends Phaser.Scene {
     });
     if (who.length === 2) c.add(this.add.image(ix + iw * 0.6, groundY - 30 * s, 'icons', 'heart').setScale(s));
     c.add(this.add.text(x, y + ph / 2 - 13 * s, spot.name, plain({ color: P.outline })).setOrigin(0.5).setScale(Math.max(0.6, s)));
-    if (s >= 1) c.add(this.add.text(x, y + ph / 2 - 5, p.day, plain({ color: '#9a8a90' })).setOrigin(0.5));
+    if (s >= 1) c.add(this.add.text(x, y + ph / 2 - 5, p.day, note({ color: '#9a8a90' })).setOrigin(0.5));
   }
 
   private showPhoto(p: Photo) {
     const c = this.openOverlay(160, 138, p.together ? 'A photo of us!' : 'Click!');
     this.drawPhoto(c, p, 0, 4, 1);
-    c.add(this.add.text(0, 62, 'Saved in the Book', plain({ color: '#7a6a70' })).setOrigin(0.5));
+    c.add(this.add.text(0, 62, 'Saved in the Book', note({ color: '#7a6a70' })).setOrigin(0.5));
   }
 
   /** Unwrap gifts from your partner, one at a time. */
@@ -1671,7 +1697,7 @@ export class HudScene extends Phaser.Scene {
       inset(g, sx, sy, 24, 24, 0xffffff);
       c.add(g);
       c.add(e.frame ? this.fitImage(this.add.image(sx + 12, sy + 12, 'furniture', e.frame), 20, 20, 1) : this.add.image(sx + 12, sy + 12, 'icons', e.icon).setScale(1.5));
-      if (e.count > 1) c.add(this.add.text(sx + 25, sy + 26, String(e.count), tiny()).setOrigin(1, 1));
+      if (e.count > 1) c.add(this.add.text(sx + 22, sy + 22, String(e.count), tiny()).setOrigin(1, 1));
       const z = this.add.zone(sx + 12, sy + 12, 24, 24).setInteractive({ useHandCursor: true });
       z.on('pointerdown', async () => {
         const name = this.giftInfo(e.key).name;
@@ -1813,7 +1839,7 @@ export class HudScene extends Phaser.Scene {
     const top = -h / 2 + 46;
     if (tab === 'build') {
       const pages = this.upgradeList(c, w, h, 'petshop', () => this.openPetshop('build'));
-      if (pages < 2) c.add(this.add.text(0, h / 2 - 12, 'New pens show up right away', plain({ color: '#7a6a70' })).setOrigin(0.5));
+      if (pages < 2) c.add(this.add.text(0, h / 2 - 12, 'New pens show up right away', note({ color: '#7a6a70' })).setOrigin(0.5));
       return;
     }
     if (tab === 'pets') {
@@ -1822,7 +1848,7 @@ export class HudScene extends Phaser.Scene {
         const def = PETS[id];
         c.add(this.add.image(-w / 2 + 14, y, 'icons', def.icon));
         c.add(this.add.text(-w / 2 + 24, y - 5, def.name, plain()).setOrigin(0, 0.5));
-        c.add(this.add.text(-w / 2 + 24, y + 5, `follows you, finds gifts`, plain({ color: '#7a6a70' })).setOrigin(0, 0.5));
+        c.add(this.add.text(-w / 2 + 24, y + 5, `follows you, finds gifts`, note({ color: '#7a6a70' })).setOrigin(0, 0.5));
         this.priceTag(c, w / 2 - 66, y, def.price, st.coins >= def.price);
         const b = button(this, w / 2 - 62, y - 7, 50, 14, st.pet?.type === id ? 'Mine' : 'Adopt', async () => {
           if (st.coins < def.price) return audio.play('bad');
@@ -1839,7 +1865,7 @@ export class HudScene extends Phaser.Scene {
         b.setEnabled(st.coins >= def.price && st.pet?.type !== id);
         c.add(b.container);
       });
-      c.add(this.add.text(0, h / 2 - 12, st.pet ? `${st.pet.name} loves you ${st.pet.affection}%` : 'One pet per person. Pet it daily!', plain({ color: '#7a6a70' })).setOrigin(0.5));
+      c.add(this.add.text(0, h / 2 - 12, st.pet ? `${st.pet.name} loves you ${st.pet.affection}%` : 'One pet per person. Pet it daily!', note({ color: '#7a6a70' })).setOrigin(0.5));
       return;
     }
 
@@ -1860,7 +1886,7 @@ export class HudScene extends Phaser.Scene {
     const n = st.animalCount(sel);
     const max = st.animalMax(sel);
     c.add(this.add.text(cx, pt + 55, `${def.name}  ${n}/${max}`, plain()).setOrigin(0.5));
-    c.add(this.add.text(cx, pt + 67, def.product ? `${ITEMS[def.product].name} ${def.intervalMin}m` : 'Ride it outdoors', plain({ color: '#7a6a70' })).setOrigin(0.5));
+    c.add(this.add.text(cx, pt + 67, def.product ? `${ITEMS[def.product].name} ${def.intervalMin}m` : 'Ride it outdoors', note({ color: '#7a6a70' })).setOrigin(0.5));
     const price = st.animalPrice(sel);
     const locked = def.requires && st.upgradeLevel(def.requires) === 0;
     let label = price === null ? 'Full' : `Buy ${price}c`;
@@ -1879,7 +1905,7 @@ export class HudScene extends Phaser.Scene {
     }, locked ? 0xe8dcc8 : 0x7de8c8);
     b.setEnabled(!!locked || (price !== null && st.canBuyAnimal(sel)));
     c.add(b.container);
-    c.add(this.add.text(cx, pt + 98, def.blurb, plain({ color: '#7a6a70', wordWrap: { width: pw - 8 }, align: 'center' })).setOrigin(0.5, 0));
+    c.add(this.add.text(cx, pt + 98, def.blurb, note({ color: '#7a6a70', wordWrap: { width: pw - 8 }, align: 'center' })).setOrigin(0.5, 0));
 
     const gx = pxl + pw + 8;
     const cs = 42;
@@ -1893,7 +1919,7 @@ export class HudScene extends Phaser.Scene {
       c.add(cg);
       const img = id === 'bee' ? this.add.image(x + cs / 2, y + cs / 2 - 4, 'icons', 'honey').setScale(2) : this.fitImage(this.add.image(x + cs / 2, y + cs / 2 - 3, 'critters', `${id}0`), cs - 8, cs - 16, 2);
       c.add(img.setAlpha(isLocked ? 0.4 : 1));
-      c.add(this.add.text(x + cs / 2, y + cs - 7, `${st.animalCount(id)}/${st.animalMax(id)}`, plain({ color: '#7a6a70' })).setOrigin(0.5));
+      c.add(this.add.text(x + cs / 2, y + cs - 7, `${st.animalCount(id)}/${st.animalMax(id)}`, note({ color: '#7a6a70' })).setOrigin(0.5));
       const z = this.add.zone(x + cs / 2, y + cs / 2, cs, cs).setInteractive({ useHandCursor: true });
       z.on('pointerdown', () => {
         this.shopSel = id;
@@ -1936,7 +1962,7 @@ export class HudScene extends Phaser.Scene {
         b.setEnabled(free > 0);
         c.add(b.container);
       });
-      if (dishes.length > 7) c.add(this.add.text(0, row(7), `+${dishes.length - 7} more`, plain({ color: '#7a6a70' })).setOrigin(0.5));
+      if (dishes.length > 7) c.add(this.add.text(0, row(7), `+${dishes.length - 7} more`, note({ color: '#7a6a70' })).setOrigin(0.5));
     } else {
       st.world.counter.forEach((s, i) => {
         const y = row(i);
@@ -1959,7 +1985,7 @@ export class HudScene extends Phaser.Scene {
         } else c.add(this.add.text(-w / 2 + 30, y, 'empty slot', plain({ color: '#7a6a70' })).setOrigin(0, 0.5));
       });
     }
-    c.add(this.add.text(0, h / 2 - 9, 'Sells while you are away', plain({ color: '#7a6a70' })).setOrigin(0.5));
+    c.add(this.add.text(0, h / 2 - 9, 'Sells while you are away', note({ color: '#7a6a70' })).setOrigin(0.5));
   }
 
   // ---------- recipes ----------
@@ -1986,11 +2012,11 @@ export class HudScene extends Phaser.Scene {
         const need = r.ingredients[id] ?? 0;
         const have = st.count(id);
         c.add(this.add.image(x + 6, y + 6, 'icons', ITEMS[id].icon));
-        c.add(this.add.text(x + 13, y + 6, `${have}/${need}`, plain({ color: have >= need ? '#3f9a5f' : '#d94a4a' })).setOrigin(0, 0.5));
+        c.add(this.add.text(x + 13, y + 6, `${have}/${need}`, note({ color: have >= need ? '#3f9a5f' : '#d94a4a' })).setOrigin(0, 0.5));
         x += 38;
       }
       c.add(this.add.text(w / 2 - (coop ? 110 : 66), y - 5, `${r.basePrice}c`, plain({ color: '#b07a00' })).setOrigin(1, 0.5));
-      c.add(this.add.text(w / 2 - (coop ? 110 : 66), y + 5, `${r.steps.length} steps`, plain({ color: '#7a6a70' })).setOrigin(1, 0.5));
+      c.add(this.add.text(w / 2 - (coop ? 110 : 66), y + 5, `${r.steps.length} steps`, note({ color: '#7a6a70' })).setOrigin(1, 0.5));
       const ok = canCook(r, st.world.inventory) && st.world.dishes.length < st.dishCap;
       const b = button(this, w / 2 - 60, y - 7, 44, 14, 'Cook', () => {
         this.closeOverlay();
@@ -2039,7 +2065,7 @@ export class HudScene extends Phaser.Scene {
     c.add(this.add.text(-30, -14, RECIPES[r.recipe].name, plain()).setOrigin(0, 0.5));
     c.add(this.add.text(-30, 2, `Grade ${grade}`, style({ fontSize: '12px', color: ['#9a8a90', '#ffffff', '#7de8c8', '#ffe066'][r.grade] })).setOrigin(0, 0.5));
     c.add(this.add.text(-30, 18, `worth ${r.price}c`, plain({ color: '#b07a00' })).setOrigin(0, 0.5));
-    c.add(this.add.text(0, h / 2 - 10, r.coop ? 'A dish made by both of you' : 'Serve it, sell it, or fill an order', plain({ color: '#7a6a70' })).setOrigin(0.5));
+    c.add(this.add.text(0, h / 2 - 10, r.coop ? 'A dish made by both of you' : 'Serve it, sell it, or fill an order', note({ color: '#7a6a70' })).setOrigin(0.5));
     if (r.grade === 3 || r.coop) {
       for (let i = 0; i < 6; i++) {
         const s = this.add.image(Phaser.Math.Between(-100, 100), Phaser.Math.Between(-40, 40), 'icons', r.coop ? 'heart' : 'star').setScale(0.8);
@@ -2072,8 +2098,8 @@ export class HudScene extends Phaser.Scene {
       const name = o.dish ? RECIPES[o.dish].name : ITEMS[o.item as ItemId].name;
       c.add(this.add.image(-w / 2 + 22, y + 2, 'icons', icon).setScale(1.5));
       c.add(this.add.text(-w / 2 + 36, y - 4, `${o.from} wants ${o.qty} ${name}`, plain()).setOrigin(0, 0.5));
-      c.add(this.add.text(-w / 2 + 36, y + 8, `reward ${o.reward}c  +${o.rep} rep`, plain({ color: '#b07a00' })).setOrigin(0, 0.5));
-      c.add(this.add.text(-w / 2 + 36, y + 20, `you have ${st.orderHave(o)}`, plain({ color: st.canComplete(o) ? '#3f9a5f' : '#7a6a70' })).setOrigin(0, 0.5));
+      c.add(this.add.text(-w / 2 + 36, y + 8, `reward ${o.reward}c  +${o.rep} rep`, note({ color: '#b07a00' })).setOrigin(0, 0.5));
+      c.add(this.add.text(-w / 2 + 36, y + 19, `you have ${st.orderHave(o)}`, note({ color: st.canComplete(o) ? '#3f9a5f' : '#7a6a70' })).setOrigin(0, 0.5));
       const b = button(this, w / 2 - 70, y - 2, 56, 16, 'Deliver', () => {
         const done = st.completeOrder(i);
         if (done) {
@@ -2086,7 +2112,7 @@ export class HudScene extends Phaser.Scene {
       b.setEnabled(st.canComplete(o));
       c.add(b.container);
     });
-    c.add(this.add.text(0, h / 2 - 9, 'Someone new asks every morning', plain({ color: '#7a6a70' })).setOrigin(0.5));
+    c.add(this.add.text(0, h / 2 - 9, 'Someone new asks every morning', note({ color: '#7a6a70' })).setOrigin(0.5));
   }
 
 
@@ -2446,7 +2472,7 @@ export class HudScene extends Phaser.Scene {
       c.add(g);
       if (!e) continue;
       c.add(this.bagIcon(tab, e.key, e.icon, sx + 12, sy + 12, 20));
-      if (e.count > 1) c.add(this.add.text(sx + 25, sy + 26, String(e.count), tiny()).setOrigin(1, 1));
+      if (e.count > 1) c.add(this.add.text(sx + 22, sy + 22, String(e.count), tiny()).setOrigin(1, 1));
       const z = this.add.zone(sx + 12, sy + 12, 24, 24).setInteractive({ useHandCursor: true });
       z.on('pointerdown', () => {
         audio.play('blip');
@@ -2508,8 +2534,8 @@ export class HudScene extends Phaser.Scene {
       if (this.last?.area === 'home') action = ['Place', () => { this.closeOverlay(); this.world.startDecorate(id, 'place'); }];
       else hint = 'Place it inside your home';
     }
-    c.add(this.add.text(tx, dy + 21, cut(info, 30), plain({ color: '#b07a00' })).setOrigin(0, 0.5));
-    if (hint) c.add(this.add.text(tx, dy + 33, cut(hint, 30), plain({ color: '#7a6a70' })).setOrigin(0, 0.5));
+    c.add(this.add.text(tx, dy + 21, cut(info, 34), note({ color: '#b07a00' })).setOrigin(0, 0.5));
+    if (hint) c.add(this.add.text(tx, dy + 32, cut(hint, 34), note({ color: '#7a6a70' })).setOrigin(0, 0.5));
     if (action) {
       const b = button(this, w / 2 - 58, dy + 12, 48, 16, action[0], action[1], 0x7de8c8);
       c.add(b.container);

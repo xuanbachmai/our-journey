@@ -59,47 +59,41 @@ function sameBaseColor(a: Uint8ClampedArray, i: number, j: number): boolean {
 }
 
 /**
- * Pass 1: Pro Pixel Art Shading
+ * Pass 1: Pro Pixel Art Shading (Zero-Allocation Fast Path)
  * - Selective Outlining (Sel-Out) tinted by adjacent material color + directional sun edge lighting
  * - Top-left specular rim highlight & bottom-right ambient occlusion relief
  * - Smooth vertical lustre gradient & subtle 2x2 ordered Bayer micro-texture on flat fills
  */
 export function shadePixelArt(data: Uint8ClampedArray, w: number, h: number, frames: FrameRect[]) {
   const src = new Uint8ClampedArray(data);
-  const idx = (x: number, y: number) => (y * w + x) * 4;
+  const stride = w * 4;
 
-  for (const f of frames) {
+  for (let fi = 0; fi < frames.length; fi++) {
+    const f = frames[fi];
     const x0 = Math.max(0, f.x);
     const y0 = Math.max(0, f.y);
     const x1 = Math.min(w, f.x + f.w);
     const y1 = Math.min(h, f.y + f.h);
 
     for (let y = y0; y < y1; y++) {
+      const rowOff = y * stride;
       for (let x = x0; x < x1; x++) {
-        const i = idx(x, y);
+        const i = rowOff + (x << 2);
         const r = src[i];
         const g = src[i + 1];
         const b = src[i + 2];
         const a = src[i + 3];
         if (a < 200) continue;
 
-        // 1. Selective Outlining (Sel-Out)
+        // 1. Selective Outlining (Sel-Out) — unrolled 4-neighbor check (zero allocations)
         if (isOutline(r, g, b, a)) {
           let sumR = 0;
           let sumG = 0;
           let sumB = 0;
           let count = 0;
-          const dirs = [
-            [-1, 0],
-            [1, 0],
-            [0, -1],
-            [0, 1],
-          ];
-          for (const [dx, dy] of dirs) {
-            const nx = x + dx;
-            const ny = y + dy;
-            if (nx < x0 || nx >= x1 || ny < y0 || ny >= y1) continue;
-            const ni = idx(nx, ny);
+
+          if (x > x0) {
+            const ni = i - 4;
             const na = src[ni + 3];
             if (na > 200 && !isOutline(src[ni], src[ni + 1], src[ni + 2], na)) {
               sumR += src[ni];
@@ -108,21 +102,50 @@ export function shadePixelArt(data: Uint8ClampedArray, w: number, h: number, fra
               count++;
             }
           }
+          if (x + 1 < x1) {
+            const ni = i + 4;
+            const na = src[ni + 3];
+            if (na > 200 && !isOutline(src[ni], src[ni + 1], src[ni + 2], na)) {
+              sumR += src[ni];
+              sumG += src[ni + 1];
+              sumB += src[ni + 2];
+              count++;
+            }
+          }
+          if (y > y0) {
+            const ni = i - stride;
+            const na = src[ni + 3];
+            if (na > 200 && !isOutline(src[ni], src[ni + 1], src[ni + 2], na)) {
+              sumR += src[ni];
+              sumG += src[ni + 1];
+              sumB += src[ni + 2];
+              count++;
+            }
+          }
+          if (y + 1 < y1) {
+            const ni = i + stride;
+            const na = src[ni + 3];
+            if (na > 200 && !isOutline(src[ni], src[ni + 1], src[ni + 2], na)) {
+              sumR += src[ni];
+              sumG += src[ni + 1];
+              sumB += src[ni + 2];
+              count++;
+            }
+          }
+
           let nr = r;
           let ng = g;
           let nb = b;
           if (count > 0) {
-            const avgR = sumR / count;
-            const avgG = sumG / count;
-            const avgB = sumB / count;
-            nr = r * 0.56 + avgR * 0.52 * 0.44;
-            ng = g * 0.56 + avgG * 0.5 * 0.44;
-            nb = b * 0.56 + avgB * 0.56 * 0.44;
+            const inv = 1 / count;
+            nr = r * 0.56 + sumR * inv * 0.2288;
+            ng = g * 0.56 + sumG * inv * 0.22;
+            nb = b * 0.56 + sumB * inv * 0.2464;
           }
-          const topTrans = y === y0 || src[idx(x, y - 1) + 3] < 50;
-          const leftTrans = x === x0 || src[idx(x - 1, y) + 3] < 50;
-          const botTrans = y === y1 - 1 || src[idx(x, y + 1) + 3] < 50;
-          const rightTrans = x === x1 - 1 || src[idx(x + 1, y) + 3] < 50;
+          const topTrans = y === y0 || src[i - stride + 3] < 50;
+          const leftTrans = x === x0 || src[i - 4 + 3] < 50;
+          const botTrans = y === y1 - 1 || src[i + stride + 3] < 50;
+          const rightTrans = x === x1 - 1 || src[i + 4 + 3] < 50;
           const sunShift = (topTrans ? 10 : 0) + (leftTrans ? 6 : 0) - (botTrans ? 9 : 0) - (rightTrans ? 5 : 0);
           data[i] = clampByte(nr + sunShift);
           data[i + 1] = clampByte(ng + sunShift);
@@ -134,14 +157,14 @@ export function shadePixelArt(data: Uint8ClampedArray, w: number, h: number, fra
 
         // 2. Interior Material Region Span Analysis
         let yTop = y;
-        while (yTop > y0 && sameBaseColor(src, i, idx(x, yTop - 1))) yTop--;
+        while (yTop > y0 && sameBaseColor(src, i, (yTop - 1) * stride + (x << 2))) yTop--;
         let yBot = y;
-        while (yBot < y1 - 1 && sameBaseColor(src, i, idx(x, yBot + 1))) yBot++;
+        while (yBot < y1 - 1 && sameBaseColor(src, i, (yBot + 1) * stride + (x << 2))) yBot++;
 
         let xLeft = x;
-        while (xLeft > x0 && sameBaseColor(src, i, idx(xLeft - 1, y))) xLeft--;
+        while (xLeft > x0 && sameBaseColor(src, i, rowOff + ((xLeft - 1) << 2))) xLeft--;
         let xRight = x;
-        while (xRight < x1 - 1 && sameBaseColor(src, i, idx(xRight + 1, y))) xRight++;
+        while (xRight < x1 - 1 && sameBaseColor(src, i, rowOff + ((xRight + 1) << 2))) xRight++;
 
         const vSpan = yBot - yTop + 1;
         const hSpan = xRight - xLeft + 1;
@@ -151,7 +174,6 @@ export function shadePixelArt(data: Uint8ClampedArray, w: number, h: number, fra
         let dg = 0;
         let db = 0;
 
-        // Smooth vertical lustre gradient across the material span
         if (vSpan >= 3) {
           const t = (y - yTop) / (vSpan - 1);
           const grad = (0.45 - t) * 18;
@@ -160,7 +182,6 @@ export function shadePixelArt(data: Uint8ClampedArray, w: number, h: number, fra
           db += grad * 0.85;
         }
 
-        // Top-left directional sun rim highlight & bottom-right ambient occlusion
         if (y === yTop && vSpan >= 2) {
           dr += 13;
           dg += 12;
@@ -181,7 +202,6 @@ export function shadePixelArt(data: Uint8ClampedArray, w: number, h: number, fra
           db -= 6;
         }
 
-        // Delicate 2x2 ordered Bayer micro-texture on larger flat surfaces
         if (vSpan >= 3 && hSpan >= 3) {
           const dither = BAYER2[y & 1][x & 1];
           dr += dither;
@@ -220,10 +240,12 @@ function writeBlend(
   const a1 = src[i1 + 3];
   const a2 = src[i2 + 3];
   if (a1 < 32 && a2 < 32) {
-    dst[di] = 0;
-    dst[di + 1] = 0;
-    dst[di + 2] = 0;
-    dst[di + 3] = 0;
+    // Outer corner of an opaque silhouette against two transparent edges:
+    // feather alpha slightly instead of a hard 0 cut so curves look silky smooth
+    dst[di] = src[pIdx];
+    dst[di + 1] = src[pIdx + 1];
+    dst[di + 2] = src[pIdx + 2];
+    dst[di + 3] = (src[pIdx + 3] * 0.22) | 0;
     return;
   }
   const mr = (src[i1] + src[i2]) * 0.5;
@@ -246,7 +268,7 @@ function writeBlend(
 }
 
 /**
- * Pass 2: Frame-Clamped Color-Aware EPX / Scale2x + Sub-Pixel Corner Anti-Aliasing
+ * Pass 2: Zero-Allocation Frame-Clamped Color-Aware EPX / Scale2x + Sub-Pixel Anti-Aliasing
  * Executed twice (1x -> 2x -> 4x) for smooth 4x HD contours and diagonal edges.
  */
 export function upscaleEPX2x(
@@ -260,53 +282,69 @@ export function upscaleEPX2x(
   const outH = h * 2;
   const dst = new Uint8ClampedArray(outW * outH * 4);
 
-  for (const f of frames) {
+  for (let fi = 0; fi < frames.length; fi++) {
+    const f = frames[fi];
     const fx = f.x;
     const fy = f.y;
     const fw = f.w;
     const fh = f.h;
+    const fxMax = fx + fw - 1;
+    const fyMax = fy + fh - 1;
 
-    const getIdx = (x: number, y: number): number => {
-      let cx = x;
-      let cy = y;
-      if (wrapSeamless) {
-        cx = fx + (((x - fx) % fw) + fw) % fw;
-        cy = fy + (((y - fy) % fh) + fh) % fh;
-      } else {
-        if (cx < fx) cx = fx;
-        else if (cx >= fx + fw) cx = fx + fw - 1;
-        if (cy < fy) cy = fy;
-        else if (cy >= fy + fh) cy = fy + fh - 1;
-      }
-      return (cy * w + cx) * 4;
-    };
+    for (let y = fy; y <= fyMax; y++) {
+      const ym1 = y > fy ? y - 1 : wrapSeamless ? fyMax : fy;
+      const yp1 = y < fyMax ? y + 1 : wrapSeamless ? fy : fyMax;
+      const rowP = y * w;
+      const rowT = ym1 * w;
+      const rowB = yp1 * w;
+      const oy = y * 2;
+      const outRow0 = oy * outW;
+      const outRow1 = (oy + 1) * outW;
 
-    for (let y = fy; y < fy + fh; y++) {
-      for (let x = fx; x < fx + fw; x++) {
-        const P = getIdx(x, y);
-        const T = getIdx(x, y - 1);
-        const B = getIdx(x, y + 1);
-        const L = getIdx(x - 1, y);
-        const R = getIdx(x + 1, y);
-        const TL = getIdx(x - 1, y - 1);
-        const TR = getIdx(x + 1, y - 1);
-        const BL = getIdx(x - 1, y + 1);
-        const BR = getIdx(x + 1, y + 1);
+      for (let x = fx; x <= fxMax; x++) {
+        const xm1 = x > fx ? x - 1 : wrapSeamless ? fxMax : fx;
+        const xp1 = x < fxMax ? x + 1 : wrapSeamless ? fx : fxMax;
+
+        const P = (rowP + x) << 2;
+        const T = (rowT + x) << 2;
+        const B = (rowB + x) << 2;
+        const L = (rowP + xm1) << 2;
+        const R = (rowP + xp1) << 2;
+        const TL = (rowT + xm1) << 2;
+        const TR = (rowT + xp1) << 2;
+        const BL = (rowB + xm1) << 2;
+        const BR = (rowB + xp1) << 2;
 
         const ox = x * 2;
-        const oy = y * 2;
-        const d0 = (oy * outW + ox) * 4;
-        const d1 = (oy * outW + ox + 1) * 4;
-        const d2 = ((oy + 1) * outW + ox) * 4;
-        const d3 = ((oy + 1) * outW + ox + 1) * 4;
+        const d0 = (outRow0 + ox) << 2;
+        const d1 = d0 + 4;
+        const d2 = (outRow1 + ox) << 2;
+        const d3 = d2 + 4;
 
-        // Default all 4 subpixels to P
-        for (const d of [d0, d1, d2, d3]) {
-          dst[d] = src[P];
-          dst[d + 1] = src[P + 1];
-          dst[d + 2] = src[P + 2];
-          dst[d + 3] = src[P + 3];
-        }
+        const pr = src[P];
+        const pg = src[P + 1];
+        const pb = src[P + 2];
+        const pa = src[P + 3];
+
+        dst[d0] = pr;
+        dst[d0 + 1] = pg;
+        dst[d0 + 2] = pb;
+        dst[d0 + 3] = pa;
+
+        dst[d1] = pr;
+        dst[d1 + 1] = pg;
+        dst[d1 + 2] = pb;
+        dst[d1 + 3] = pa;
+
+        dst[d2] = pr;
+        dst[d2 + 1] = pg;
+        dst[d2 + 2] = pb;
+        dst[d2 + 3] = pa;
+
+        dst[d3] = pr;
+        dst[d3 + 1] = pg;
+        dst[d3 + 2] = pb;
+        dst[d3 + 3] = pa;
 
         const simLT = similarPixel(src, L, T);
         const simTR = similarPixel(src, T, R);
@@ -316,7 +354,7 @@ export function upscaleEPX2x(
         // Top-Left subpixel (d0)
         if (simLT && !simTR && !simLB) {
           writeBlend(dst, d0, src, L, T, P, 0.85);
-        } else if (src[P + 3] > 200 && src[L + 3] > 200 && src[T + 3] > 200 && !similarPixel(src, P, TL)) {
+        } else if (pa > 200 && src[L + 3] > 200 && src[T + 3] > 200 && !similarPixel(src, P, TL)) {
           if (similarPixel(src, L, TL) && similarPixel(src, T, TL)) {
             writeBlend(dst, d0, src, L, T, P, 0.35);
           }
@@ -325,7 +363,7 @@ export function upscaleEPX2x(
         // Top-Right subpixel (d1)
         if (simTR && !simLT && !simBR) {
           writeBlend(dst, d1, src, R, T, P, 0.85);
-        } else if (src[P + 3] > 200 && src[R + 3] > 200 && src[T + 3] > 200 && !similarPixel(src, P, TR)) {
+        } else if (pa > 200 && src[R + 3] > 200 && src[T + 3] > 200 && !similarPixel(src, P, TR)) {
           if (similarPixel(src, R, TR) && similarPixel(src, T, TR)) {
             writeBlend(dst, d1, src, R, T, P, 0.35);
           }
@@ -334,7 +372,7 @@ export function upscaleEPX2x(
         // Bottom-Left subpixel (d2)
         if (simLB && !simLT && !simBR) {
           writeBlend(dst, d2, src, L, B, P, 0.85);
-        } else if (src[P + 3] > 200 && src[L + 3] > 200 && src[B + 3] > 200 && !similarPixel(src, P, BL)) {
+        } else if (pa > 200 && src[L + 3] > 200 && src[B + 3] > 200 && !similarPixel(src, P, BL)) {
           if (similarPixel(src, L, BL) && similarPixel(src, B, BL)) {
             writeBlend(dst, d2, src, L, B, P, 0.35);
           }
@@ -343,7 +381,7 @@ export function upscaleEPX2x(
         // Bottom-Right subpixel (d3)
         if (simBR && !simLB && !simTR) {
           writeBlend(dst, d3, src, R, B, P, 0.85);
-        } else if (src[P + 3] > 200 && src[R + 3] > 200 && src[B + 3] > 200 && !similarPixel(src, P, BR)) {
+        } else if (pa > 200 && src[R + 3] > 200 && src[B + 3] > 200 && !similarPixel(src, P, BR)) {
           if (similarPixel(src, R, BR) && similarPixel(src, B, BR)) {
             writeBlend(dst, d3, src, R, B, P, 0.35);
           }
@@ -423,7 +461,6 @@ export class PixelCanvas {
     const activeFrames: FrameRect[] =
       this.frames.length > 0 ? this.frames : [{ x: 0, y: 0, w: this.w, h: this.h }];
 
-    // Apply pro pixel-art shading (Sel-Out, directional sun rim lighting, ambient occlusion, lustre gradient)
     const imgData = this.ctx.getImageData(0, 0, this.w, this.h);
     if (this.key !== 'glow' && this.key !== 'tiles') {
       shadePixelArt(imgData.data, this.w, this.h, activeFrames);
@@ -447,7 +484,11 @@ export class PixelCanvas {
       gl.bindTexture(gl.TEXTURE_2D, glWrapper.webGLTexture);
       gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, hdW, hdH, 0, gl.RGBA, gl.UNSIGNED_BYTE, pass2);
-      // Keep logical dimensions on the wrapper so Phaser's TilemapLayer & Sprite UVs stay 100% matched
+      if (!wrapSeamless) {
+        // On 4x pre-upscaled sprites/icons, LINEAR filtering prevents fractional-DPI pixel stepping while keeping 4x EPX crispness
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      }
       glWrapper.width = this.w;
       glWrapper.height = this.h;
     }

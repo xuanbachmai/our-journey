@@ -109,22 +109,29 @@ export function style(extra: Partial<Phaser.Types.GameObjects.Text.TextStyle> = 
     color: '#ffffff',
     stroke: P.outline,
     strokeThickness: strokeThick,
-    shadow: { offsetX: 0, offsetY: 2, color: P.outline, blur: 0, stroke: true, fill: false },
+    shadow: { offsetX: 0, offsetY: 1, color: P.outline, blur: 0, stroke: true, fill: false },
     resolution: TEXT_RES,
-    padding: { x: 4, y: 3 },
+    padding: { x: 2, y: 1 },
     ...extra,
   };
 }
 
 /** Slot counts sit on top of an icon, so they stay small and tight. */
 export function tiny(extra: Partial<Phaser.Types.GameObjects.Text.TextStyle> = {}): Phaser.Types.GameObjects.Text.TextStyle {
-  return style({ fontSize: '8px', strokeThickness: 2, padding: { x: 2, y: 1 }, ...extra });
+  return style({
+    fontSize: '7px',
+    strokeThickness: 2,
+    shadow: { offsetX: 0, offsetY: 1, color: P.outline, blur: 0, stroke: true, fill: false },
+    padding: { x: 1, y: 0 },
+    ...extra,
+  });
 }
 
 export function plain(extra: Partial<Phaser.Types.GameObjects.Text.TextStyle> = {}): Phaser.Types.GameObjects.Text.TextStyle {
   const curKey = getSavedFontKey();
   const opt = FONT_OPTIONS[curKey];
   const size = extra.fontSize ? parseInt(String(extra.fontSize), 10) : opt.defaultSize;
+  const hasStroke = (extra.strokeThickness ?? 0) > 0;
 
   return {
     fontFamily: opt.family,
@@ -132,7 +139,7 @@ export function plain(extra: Partial<Phaser.Types.GameObjects.Text.TextStyle> = 
     ...(opt.weight ? { fontStyle: opt.weight } : {}),
     color: P.outline,
     resolution: TEXT_RES,
-    padding: { x: 4, y: 3 },
+    padding: hasStroke ? { x: 2, y: 1 } : { x: 1, y: 0 },
     ...extra,
   };
 }
@@ -144,7 +151,7 @@ export function plain(extra: Partial<Phaser.Types.GameObjects.Text.TextStyle> = 
 export function note(extra: Partial<Phaser.Types.GameObjects.Text.TextStyle> = {}): Phaser.Types.GameObjects.Text.TextStyle {
   const opt = FONT_OPTIONS[getSavedFontKey()];
   const smooth = opt.noteSize < opt.defaultSize;
-  return plain({ fontSize: `${opt.noteSize}px`, ...(smooth ? { fontStyle: '600' } : {}), padding: { x: 2, y: 2 }, ...extra });
+  return plain({ fontSize: `${opt.noteSize}px`, ...(smooth ? { fontStyle: '600' } : {}), padding: { x: 1, y: 0 }, ...extra });
 }
 
 /**
@@ -156,88 +163,56 @@ export function count(n: number, one: string, many = one + 's'): string {
   return `${n} ${n === 1 ? one : many}`;
 }
 
-/** A rounded pill, for tabs and for the coin chip beside a price. */
+/** Smooth high-DPI rounded pill, for tabs and for the coin/heart chips. */
 export function pill(g: Phaser.GameObjects.Graphics, x: number, y: number, w: number, h: number, fill: number, outline = 0x4a2a3f) {
-  const r = Math.min(4, Math.floor(h / 2));
-  g.fillStyle(outline, 1);
-  g.fillRect(x + r, y, w - r * 2, h);
-  g.fillRect(x, y + r, w, h - r * 2);
-  g.fillRect(x + 1, y + 1, w - 2, h - 2);
-  g.fillStyle(fill, 1);
-  g.fillRect(x + r, y + 1, w - r * 2, h - 2);
-  g.fillRect(x + 1, y + r, w - 2, h - r * 2);
-  g.fillRect(x + 2, y + 2, w - 4, h - 4);
-  g.fillStyle(0xffffff, 0.5);
-  g.fillRect(x + r, y + 1, w - r * 2, 1);
-}
-
-/** A filled bar: how much of a wait is done, how much of an order is shipped. */
-export function meter(g: Phaser.GameObjects.Graphics, x: number, y: number, w: number, h: number, frac: number, fill: number) {
-  g.fillStyle(0x4a2a3f, 1).fillRect(x, y, w, h);
-  g.fillStyle(0xe8dcc8, 1).fillRect(x + 1, y + 1, w - 2, h - 2);
-  const inner = Math.max(0, Math.min(1, frac)) * (w - 2);
-  if (inner > 0) {
-    g.fillStyle(fill, 1).fillRect(x + 1, y + 1, inner, h - 2);
-    g.fillStyle(0xffffff, 0.35).fillRect(x + 1, y + 1, inner, 1);
+  const r = Math.max(2, Math.min(6, h / 2));
+  g.fillStyle(outline, 1).fillRoundedRect(x, y, w, h, r);
+  g.fillStyle(fill, 1).fillRoundedRect(x + 1, y + 1, Math.max(2, w - 2), Math.max(2, h - 2), Math.max(1, r - 1));
+  if (w > 6 && h > 4) {
+    g.fillStyle(0xffffff, 0.5).fillRoundedRect(x + 2, y + 1.2, Math.max(2, w - 4), 1.2, 0.6);
   }
 }
 
-/** Rounded pixel panel: outline + fill + light top edge. */
-/**
- * The window frame everything is built from: a dark outline, the fill, then a
- * pixel of light down the top and left and a pixel of shade down the bottom
- * and right. Those last two are the whole trick — they are what makes a flat
- * rectangle read as a raised panel rather than a coloured box.
- */
-export function panel(g: Phaser.GameObjects.Graphics, x: number, y: number, w: number, h: number, fill = 0xfff4dc, outline = 0x4a2a3f) {
-  g.fillStyle(outline, 1);
-  g.fillRect(x + 1, y, w - 2, h);
-  g.fillRect(x, y + 1, w, h - 2);
-  g.fillStyle(fill, 1);
-  g.fillRect(x + 2, y + 1, w - 4, h - 2);
-  g.fillRect(x + 1, y + 2, w - 2, h - 4);
-  // lit from the top left
-  g.fillStyle(0xffffff, 0.55);
-  g.fillRect(x + 2, y + 1, w - 4, 1);
-  g.fillRect(x + 1, y + 2, 1, h - 4);
-  // and shaded away from it
-  g.fillStyle(0x000000, 0.14);
-  g.fillRect(x + 2, y + h - 2, w - 4, 1);
-  g.fillRect(x + w - 2, y + 2, 1, h - 4);
+/** Smooth high-DPI filled progress bar. */
+export function meter(g: Phaser.GameObjects.Graphics, x: number, y: number, w: number, h: number, frac: number, fill: number) {
+  const r = Math.max(1.5, Math.min(3, h / 2));
+  g.fillStyle(0x4a2a3f, 1).fillRoundedRect(x, y, w, h, r);
+  g.fillStyle(0xe8dcc8, 1).fillRoundedRect(x + 1, y + 1, Math.max(2, w - 2), Math.max(2, h - 2), Math.max(1, r - 0.8));
+  const inner = Math.max(0, Math.min(1, frac)) * (w - 2);
+  if (inner > 0.5) {
+    const ir = Math.max(0.8, Math.min(r - 0.8, inner / 2));
+    g.fillStyle(fill, 1).fillRoundedRect(x + 1, y + 1, inner, Math.max(2, h - 2), ir);
+    if (inner > 2) g.fillStyle(0xffffff, 0.35).fillRect(x + 1.5, y + 1, inner - 1, 1);
+  }
 }
 
-/**
- * The same frame turned inside out: shade at the top left, light at the
- * bottom right, so the thing looks cut into the panel. For anything that
- * holds something — a seed slot, an item square, a portrait.
- */
+/** Smooth high-DPI raised panel with outline, bottom shade bevel, and top specular rim. */
+export function panel(g: Phaser.GameObjects.Graphics, x: number, y: number, w: number, h: number, fill = 0xfff4dc, outline = 0x4a2a3f) {
+  const r = Math.max(2, Math.min(5, Math.min(w, h) * 0.2));
+  const ir = Math.max(1, r - 1);
+  g.fillStyle(outline, 1).fillRoundedRect(x, y, w, h, r);
+  g.fillStyle(0x000000, 0.14).fillRoundedRect(x + 1, y + 1, Math.max(2, w - 2), Math.max(2, h - 2), ir);
+  g.fillStyle(fill, 1).fillRoundedRect(x + 1, y + 1, Math.max(2, w - 2), Math.max(2, h - 2.6), ir);
+  if (w > 6 && h > 6) {
+    g.fillStyle(0xffffff, 0.55).fillRoundedRect(x + 2, y + 1.2, Math.max(2, w - 4), 1.2, 0.6);
+  }
+}
+
+/** Smooth high-DPI recessed slot (shade at top, light at bottom). */
 export function inset(g: Phaser.GameObjects.Graphics, x: number, y: number, w: number, h: number, fill = 0xe8dcc8, outline = 0x4a2a3f) {
-  g.fillStyle(outline, 1);
-  g.fillRect(x + 1, y, w - 2, h);
-  g.fillRect(x, y + 1, w, h - 2);
-  g.fillStyle(fill, 1);
-  g.fillRect(x + 2, y + 1, w - 4, h - 2);
-  g.fillRect(x + 1, y + 2, w - 2, h - 4);
-  g.fillStyle(0x000000, 0.2);
-  g.fillRect(x + 2, y + 1, w - 4, 1);
-  g.fillRect(x + 1, y + 2, 1, h - 4);
-  g.fillStyle(0xffffff, 0.45);
-  g.fillRect(x + 2, y + h - 2, w - 4, 1);
-  g.fillRect(x + w - 2, y + 2, 1, h - 4);
+  const r = Math.max(2, Math.min(4.5, Math.min(w, h) * 0.2));
+  const ir = Math.max(1, r - 1);
+  g.fillStyle(outline, 1).fillRoundedRect(x, y, w, h, r);
+  g.fillStyle(0x000000, 0.18).fillRoundedRect(x + 1, y + 1, Math.max(2, w - 2), Math.max(2, h - 2), ir);
+  g.fillStyle(fill, 1).fillRoundedRect(x + 1, y + 1.8, Math.max(2, w - 2), Math.max(2, h - 2.6), ir);
 }
 
 /** A title bar: the panel's fill, lighter at the top, with a line under it. */
 export function titleBar(g: Phaser.GameObjects.Graphics, x: number, y: number, w: number, h: number, fill = 0xffd23f, outline = 0x4a2a3f) {
-  g.fillStyle(fill, 1);
-  g.fillRect(x, y, w, h);
-  g.fillStyle(0xffffff, 0.35);
-  g.fillRect(x, y, w, Math.max(1, Math.floor(h / 3)));
-  g.fillStyle(0xffffff, 0.5);
-  g.fillRect(x, y, w, 1);
-  g.fillStyle(0x000000, 0.18);
-  g.fillRect(x, y + h - 2, w, 1);
-  g.fillStyle(outline, 1);
-  g.fillRect(x, y + h - 1, w, 1);
+  g.fillStyle(fill, 1).fillRoundedRect(x, y, w, h, { tl: 4, tr: 4, bl: 0, br: 0 });
+  g.fillStyle(0xffffff, 0.35).fillRoundedRect(x, y, w, Math.max(1, Math.floor(h / 3)), { tl: 4, tr: 4, bl: 0, br: 0 });
+  g.fillStyle(0x000000, 0.16).fillRect(x, y + h - 2, w, 1);
+  g.fillStyle(outline, 1).fillRect(x, y + h - 1, w, 1);
 }
 
 export interface Button {
