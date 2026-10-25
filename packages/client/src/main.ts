@@ -5,10 +5,10 @@ import { HudScene } from './scenes/HudScene';
 import { MiniGameScene } from './scenes/MiniGameScene';
 import { TitleScene } from './scenes/TitleScene';
 
-const BASE_W = 320;
-const BASE_H = 180;
+const BASE_W = 420;
+const BASE_H = 240;
 /** The narrowest view we will scale up to: menus are drawn about this wide. */
-const MIN_W = 280;
+const MIN_W = 360;
 
 let game: Phaser.Game | null = null;
 let fellBack = false;
@@ -46,7 +46,7 @@ function createGame(type: number) {
 }
 
 /**
- * Keep the logical game grid at ~320x180 while upscaling the physical canvas
+ * Keep the logical game grid spacious (~420x240) while upscaling the physical canvas
  * backing buffer to native screen pixels. Sprites and tiles keep gl.NEAREST
  * pixel-art edges, while 4x supersampled Text renders at full native resolution.
  */
@@ -145,9 +145,8 @@ function fit() {
   }
   refitTries = 0;
   // Pick the zoom from the height, so the world is always about a screenful
-  // tall and the art never ends up tiny on a small phone, then hold it back if
-  // that would leave the view too narrow for a menu to sit in.
-  const zoom = Math.max(1, Math.min(Math.round(h / BASE_H), Math.floor(w / MIN_W)));
+  // tall and menus always have generous vertical & horizontal breathing room.
+  const zoom = Math.max(1, Math.min(Math.floor(h / BASE_H), Math.floor(w / MIN_W)));
   const gw = Math.ceil(w / zoom);
   const gh = Math.ceil(h / zoom);
   game.scale.setZoom(zoom);
@@ -158,7 +157,7 @@ function fit() {
 /**
  * Some embedded browsers fail to create Phaser's WebGL render targets at boot.
  * If that happens, rebuild the game on the Canvas renderer, which is fine for a
- * 320x180 pixel-art game.
+ * pixel-art game.
  */
 window.addEventListener('error', (e) => {
   const msg = String(e.error?.message ?? e.message ?? '');
@@ -211,7 +210,16 @@ if (import.meta.env.DEV) {
 
 // Offline play once installed. Development always runs live code, never a cache.
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
+  let refreshing = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (refreshing) return;
+    refreshing = true;
+    window.location.reload();
+  });
   window.addEventListener('load', () => {
-    void navigator.serviceWorker.register('./sw.js').catch(() => undefined);
+    void navigator.serviceWorker
+      .register('./sw.js')
+      .then((reg) => reg.update())
+      .catch(() => undefined);
   });
 }

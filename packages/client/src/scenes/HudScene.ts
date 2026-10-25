@@ -596,7 +596,7 @@ export class HudScene extends Phaser.Scene {
     ];
     tabs.forEach(([id, label], i) => {
       const tw = Math.floor((w - 16) / tabs.length);
-      const b = button(this, -w / 2 + 8 + i * tw, top - 6, tw - 4, 14, label, () => {
+      const b = button(this, -w / 2 + 8 + i * tw, top - 6, tw - 4, 16, label, () => {
         this.bookTab = id;
         this.bookSel = null;
         this.page = 0;
@@ -604,13 +604,13 @@ export class HudScene extends Phaser.Scene {
       }, this.bookTab === id ? 0xffe066 : 0xe8dcc8);
       c.add(b.container);
     });
-    const y0 = top + 14;
+    const y0 = top + 18;
 
     if (this.bookTab === 'cards') {
       const cards = wd.postcards;
-      if (!cards.length) c.add(this.add.text(0, y0 + 30, 'Postcards appear at special moments', plain({ color: '#7a6a70' })).setOrigin(0.5));
+      if (!cards.length) c.add(this.add.text(0, y0 + 44, 'Postcards appear at special moments', plain({ color: '#7a6a70' })).setOrigin(0.5));
       const card = cards[this.page % Math.max(1, cards.length)];
-      if (card) this.drawPostcard(c, card, 0, y0 + 40);
+      if (card) this.drawPostcard(c, card, 0, y0 + 50);
       this.pager(c, w, h, this.page % Math.max(1, cards.length), Math.max(1, cards.length), (p) => {
         this.page = p;
         this.openJournal('album');
@@ -620,13 +620,13 @@ export class HudScene extends Phaser.Scene {
 
     if (this.bookTab === 'photos') {
       const photos = [...(wd.photos ?? [])].reverse();
-      if (!photos.length) c.add(this.add.text(0, y0 + 40, 'Find the camera spots around the world.\nTogether, you both end up in the photo!', plain({ color: '#7a6a70', align: 'center' })).setOrigin(0.5));
+      if (!photos.length) c.add(this.add.text(0, y0 + 48, 'Find the camera spots around the world.\nTogether, you both end up in the photo!', plain({ color: '#7a6a70', align: 'center' })).setOrigin(0.5));
       const per = 2;
       const pages = Math.max(1, Math.ceil(photos.length / per));
       const page = this.page % pages;
       photos.slice(page * per, page * per + per).forEach((p, i) => {
-        this.drawPhoto(c, p, (i === 0 ? -1 : 1) * 68, y0 + 48, 1);
-        const z = this.add.zone((i === 0 ? -1 : 1) * 68, y0 + 48, 112, 92).setInteractive({ useHandCursor: true });
+        this.drawPhoto(c, p, (i === 0 ? -1 : 1) * 76, y0 + 54, 1);
+        const z = this.add.zone((i === 0 ? -1 : 1) * 76, y0 + 54, 112, 92).setInteractive({ useHandCursor: true });
         z.on('pointerdown', () => this.showPhoto(p));
         c.add(z);
       });
@@ -639,7 +639,7 @@ export class HudScene extends Phaser.Scene {
 
     if (this.bookTab === 'fish') {
       const colors: Record<string, string> = { common: '#7a6a70', uncommon: '#3f9a5f', rare: '#3f7fd0', legendary: '#e6a800' };
-      const slot = 30;
+      const slot = 32;
       const x0 = -(5 * slot) / 2;
       let caught = 0;
       FISH_IDS.forEach((id, i) => {
@@ -649,12 +649,12 @@ export class HudScene extends Phaser.Scene {
         if (have) caught++;
         const sel = this.bookSel === id;
         const g = this.add.graphics();
-        panel(g, sx, sy, 28, 28, sel ? 0xffe066 : have ? 0xffffff : 0xefe4d2, sel ? 0xff8fcf : 0x4a2a3f);
+        panel(g, sx, sy, 29, 29, sel ? 0xffe066 : have ? 0xffffff : 0xefe4d2, sel ? 0xff8fcf : 0x4a2a3f);
         c.add(g);
-        const img = this.add.image(sx + 14, sy + 14, 'icons', `fish-${id}`).setScale(2);
+        const img = this.add.image(sx + 14.5, sy + 14.5, 'icons', `fish-${id}`).setScale(2);
         if (!have) img.setTint(0x4a2a3f).setAlpha(0.35);
         c.add(img);
-        const z = this.add.zone(sx + 14, sy + 14, 28, 28).setInteractive({ useHandCursor: true });
+        const z = this.add.zone(sx + 14.5, sy + 14.5, 29, 29).setInteractive({ useHandCursor: true });
         z.on('pointerdown', () => {
           this.bookSel = id;
           this.openJournal('album');
@@ -664,19 +664,20 @@ export class HudScene extends Phaser.Scene {
       const sel = (this.bookSel as FishId | null) ?? FISH_IDS[0];
       const f = FISH[sel];
       const have = (wd.stats[`fish:${sel}`] ?? 0) > 0;
-      const dy = y0 + 2 * slot + 12;
-      c.add(this.add.text(-w / 2 + 12, dy, have ? f.name : '???', plain()).setOrigin(0, 0.5));
-      c.add(this.add.text(w / 2 - 12, dy, f.rarity, plain({ color: colors[f.rarity] })).setOrigin(1, 0.5));
-      c.add(this.add.text(-w / 2 + 12, dy + 12, f.hint, plain({ color: '#7a6a70' })).setOrigin(0, 0.5));
-      c.add(this.add.text(-w / 2 + 12, dy + 24, have ? `Caught ${wd.stats[`fish:${sel}`]}   Best ${wd.stats[`fishbest:${sel}`] ?? 0} cm` : 'Not caught yet', plain({ color: '#b07a00' })).setOrigin(0, 0.5));
-      c.add(this.add.text(0, h / 2 - 9, `${caught} / ${FISH_IDS.length} fish found`, plain({ color: '#7a6a70' })).setOrigin(0.5));
+      const dy = y0 + 2 * slot + 14;
+      this.rowCard(c, -w / 2 + 10, dy - 10, w - 20, 44, null, 0xfffdf9);
+      c.add(this.add.text(-w / 2 + 18, dy, have ? f.name : '???', plain()).setOrigin(0, 0.5));
+      c.add(this.add.text(w / 2 - 18, dy, f.rarity.toUpperCase(), plain({ color: colors[f.rarity] })).setOrigin(1, 0.5));
+      c.add(this.add.text(-w / 2 + 18, dy + 13, f.hint, note({ color: '#6a5560' })).setOrigin(0, 0.5));
+      c.add(this.add.text(-w / 2 + 18, dy + 25, have ? `Caught ${wd.stats[`fish:${sel}`]}   ·   Best ${wd.stats[`fishbest:${sel}`] ?? 0} cm` : 'Not caught yet', note({ color: '#9a5b00' })).setOrigin(0, 0.5));
+      c.add(this.add.text(0, h / 2 - 10, `${caught} / ${FISH_IDS.length} fish discovered`, note({ color: '#7a6a70' })).setOrigin(0.5));
       return;
     }
 
     if (this.bookTab === 'dishes') {
       const ids = Object.keys(RECIPES) as RecipeId[];
       const cols = 9;
-      const slot = 28;
+      const slot = 32;
       const x0 = -(cols * slot) / 2;
       let cooked = 0;
       ids.forEach((id, i) => {
@@ -687,11 +688,11 @@ export class HudScene extends Phaser.Scene {
         if (times > 0) cooked++;
         const sel = this.bookSel === id;
         const g = this.add.graphics();
-        panel(g, sx, sy, 26, 26, sel ? 0xffe066 : times ? 0xffffff : 0xefe4d2, sel ? 0xff8fcf : 0x4a2a3f);
+        panel(g, sx, sy, 29, 29, sel ? 0xffe066 : times ? 0xffffff : 0xefe4d2, sel ? 0xff8fcf : 0x4a2a3f);
         c.add(g);
-        c.add(this.add.image(sx + 13, sy + 12, 'icons', `dish-${id}`).setScale(1.5).setAlpha(times ? 1 : 0.3));
-        if (best) c.add(this.add.text(sx + 26, sy + 27, GRADE_NAMES[best - 1], style({ color: ['#cfcfd9', '#ffffff', '#7de8c8', '#ffe066'][best - 1] })).setOrigin(1, 1));
-        const z = this.add.zone(sx + 13, sy + 13, 26, 26).setInteractive({ useHandCursor: true });
+        c.add(this.add.image(sx + 14.5, sy + 13.5, 'icons', `dish-${id}`).setScale(1.6).setAlpha(times ? 1 : 0.3));
+        if (best) c.add(this.add.text(sx + 27, sy + 28, GRADE_NAMES[best - 1], style({ color: ['#cfcfd9', '#ffffff', '#7de8c8', '#ffe066'][best - 1] })).setOrigin(1, 1));
+        const z = this.add.zone(sx + 14.5, sy + 14.5, 29, 29).setInteractive({ useHandCursor: true });
         z.on('pointerdown', () => {
           this.bookSel = id;
           this.openJournal('album');
@@ -702,12 +703,13 @@ export class HudScene extends Phaser.Scene {
       const r = RECIPES[sel];
       const times = wd.stats[`cook:r:${sel}`] ?? 0;
       const best = wd.stats[`best:${sel}`] ?? 0;
-      const dy = y0 + 2 * slot + 12;
-      c.add(this.add.text(-w / 2 + 12, dy, r.name, plain()).setOrigin(0, 0.5));
-      c.add(this.add.text(w / 2 - 12, dy, `${r.basePrice}c`, plain({ color: '#b07a00' })).setOrigin(1, 0.5));
+      const dy = y0 + 2 * slot + 16;
+      this.rowCard(c, -w / 2 + 10, dy - 10, w - 20, 32, null, 0xfffdf9);
+      c.add(this.add.text(-w / 2 + 18, dy, r.name, plain()).setOrigin(0, 0.5));
+      c.add(this.add.text(w / 2 - 18, dy, `${r.basePrice}c`, plain({ color: '#9a5b00' })).setOrigin(1, 0.5));
       const lock = r.book ? BOOKS[r.book].name : `reputation ${r.unlockRep}`;
-      c.add(this.add.text(-w / 2 + 12, dy + 12, times ? `Best grade ${GRADE_NAMES[best - 1] ?? '-'}, cooked ${times} times` : recipeUnlocked(r, st.reputation, wd.books) ? 'Not cooked yet' : `Unlocks with ${lock}`, plain({ color: '#7a6a70' })).setOrigin(0, 0.5));
-      c.add(this.add.text(0, h / 2 - 9, `${cooked} / ${ids.length} recipes cooked`, plain({ color: '#7a6a70' })).setOrigin(0.5));
+      c.add(this.add.text(-w / 2 + 18, dy + 13, times ? `Best grade ${GRADE_NAMES[best - 1] ?? '-'}  ·  Cooked ${times} times` : recipeUnlocked(r, st.reputation, wd.books) ? 'Not cooked yet' : `Unlocks with ${lock}`, note({ color: '#6a5560' })).setOrigin(0, 0.5));
+      c.add(this.add.text(0, h / 2 - 10, `${cooked} / ${ids.length} recipes cooked`, note({ color: '#7a6a70' })).setOrigin(0.5));
       return;
     }
 
@@ -716,17 +718,15 @@ export class HudScene extends Phaser.Scene {
     const pages = Math.ceil(VILLAGERS.length / per);
     const page = this.page % pages;
     VILLAGERS.slice(page * per, page * per + per).forEach((v, i) => {
-      const y = y0 + 10 + i * 24;
+      const y = y0 + 14 + i * 29;
       const pts = friendPoints(wd, v.id);
       const hearts = heartsFor(pts);
-      const g = this.add.graphics();
-      panel(g, -w / 2 + 8, y - 11, w - 16, 22, 0xffffff);
-      c.add(g);
-      c.add(this.add.text(-w / 2 + 14, y - 5, v.name, plain()).setOrigin(0, 0.5));
-      for (let k = 0; k < 5; k++) c.add(this.add.image(w / 2 - 58 + k * 10, y - 5, 'icons', 'heart').setScale(0.7).setAlpha(k < hearts ? 1 : 0.4));
+      this.rowCard(c, -w / 2 + 10, y - 13, w - 20, 26, { key: 'icons', frame: 'heart' }, 0xfffdf9, 0xffe8f4);
+      c.add(this.add.text(-w / 2 + 36, y - 5, v.name, plain()).setOrigin(0, 0.5));
+      for (let k = 0; k < 5; k++) c.add(this.add.image(w / 2 - 64 + k * 11, y - 5, 'icons', 'heart').setScale(0.75).setAlpha(k < hearts ? 1 : 0.35));
       const loved = knownLoves(wd, v);
       const line = loved.length ? `Loves ${loved.map((k) => this.giftName(k)).join(', ')}` : v.where;
-      c.add(this.add.text(-w / 2 + 14, y + 5, line.length > 34 ? `${line.slice(0, 33)}…` : line, plain({ color: loved.length ? '#e05fa8' : '#7a6a70' })).setOrigin(0, 0.5));
+      c.add(this.add.text(-w / 2 + 36, y + 6, line.length > 42 ? `${line.slice(0, 41)}…` : line, note({ color: loved.length ? '#d94b94' : '#6a5560' })).setOrigin(0, 0.5));
     });
     this.pager(c, w, h, page, pages, (p) => {
       this.page = p;
@@ -930,17 +930,17 @@ export class HudScene extends Phaser.Scene {
     // row on short screens, because the contents were still placed for the
     // size the panel asked for.
     const fit = Math.min(1, (W - 8) / w, (H - 6) / h);
-    const dim = this.add.rectangle(0, 0, W * 3, H * 3, 0x2a1a2f, 0.45).setInteractive();
+    const dim = this.add.rectangle(0, 0, W * 3, H * 3, 0x2a1a2f, 0.48).setInteractive();
     const g = this.add.graphics();
     panel(g, -w / 2, -h / 2, w, h, 0xfff4dc);
-    titleBar(g, -w / 2 + 2, -h / 2 + 2, w - 4, 15);
-    const t = this.add.text(0, -h / 2 + 9, title, plain()).setOrigin(0.5);
-    const close = button(this, w / 2 - 16, -h / 2 + 2, 14, 14, 'x', () => this.closeOverlay(), 0xff8fcf);
+    titleBar(g, -w / 2 + 2, -h / 2 + 2, w - 4, 17);
+    const t = this.add.text(0, -h / 2 + 10.5, title, plain()).setOrigin(0.5);
+    const close = button(this, w / 2 - 18, -h / 2 + 3, 15, 15, 'x', () => this.closeOverlay(), 0xff8fcf);
     const c = this.add.container(Math.round(W / 2), Math.round(H / 2), [dim, g, t, close.container]).setDepth(100);
     c.setData('size', { w, h });
     this.overlay = c;
     this.world.setUiOpen(true);
-    c.setScale(fit * 0.8);
+    c.setScale(fit * 0.85);
     this.tweens.add({ targets: c, scale: fit, duration: 150, ease: 'Back.easeOut' });
     return c;
   }
@@ -953,7 +953,7 @@ export class HudScene extends Phaser.Scene {
     if (this.pendingPostcards.length) this.time.delayedCall(400, () => this.flushPostcards());
   }
 
-/**
+  /**
    * Tabs as pills. The live one is filled and sits a pixel proud of the rest,
    * so which page you are on reads at a glance instead of by shade.
    */
@@ -964,9 +964,9 @@ export class HudScene extends Phaser.Scene {
     items.forEach(([label, fn], i) => {
       const live = i === active;
       const x = -w / 2 + 8 + i * tw;
-      const y = -h / 2 + (live ? 18 : 19);
+      const y = -h / 2 + (live ? 21 : 22);
       pill(g, x, y, tw - 3, live ? 17 : 15, live ? 0xffd23f : 0xf3e7d4, live ? 0x4a2a3f : 0xd8c4b4);
-      c.add(this.add.text(x + (tw - 3) / 2, y + (live ? 9 : 8), label, plain({ color: live ? '#4a2a3f' : '#6a5a60' })).setOrigin(0.5));
+      c.add(this.add.text(x + (tw - 3) / 2, y + (live ? 8.5 : 7.5), label, plain({ color: live ? '#3b2133' : '#6a5a60' })).setOrigin(0.5));
       const z = this.add.zone(x + (tw - 3) / 2, y + 8, tw - 3, 20).setInteractive({ useHandCursor: true });
       z.on('pointerdown', () => {
         audio.play('blip');
@@ -1707,40 +1707,46 @@ export class HudScene extends Phaser.Scene {
     const me = this.world.playerId;
     const other = otherPlayer(me);
     // left: the two of you as you look right now
+    const lw = 114;
     const g = this.add.graphics();
-    panel(g, -w / 2 + 8, top - 4, 100, h / 2 - 8 - (top - 4), 0xffe8f4, 0xff8fcf);
+    panel(g, -w / 2 + 10, top - 4, lw, h / 2 - 10 - (top - 4), 0xffe8f4, 0xff8fcf);
     c.add(g);
-    const lx = -w / 2 + 58;
+    const lx = -w / 2 + 10 + lw / 2;
     const players = st.world.players;
-    c.add(this.add.image(lx - 17, top + 70, buildCharacterTexture(this, LOOKS.xb, players.xb.outfit), 0).setOrigin(0.5, 1).setScale(2));
-    c.add(this.add.image(lx + 17, top + 70, buildCharacterTexture(this, LOOKS.qd, players.qd.outfit), 0).setOrigin(0.5, 1).setScale(2));
-    const heart = this.add.image(lx, top + 18, 'icons', 'heart').setScale(1.5);
+    c.add(this.add.image(lx - 18, top + 84, buildCharacterTexture(this, LOOKS.xb, players.xb.outfit), 0).setOrigin(0.5, 1).setScale(2.2));
+    c.add(this.add.image(lx + 18, top + 84, buildCharacterTexture(this, LOOKS.qd, players.qd.outfit), 0).setOrigin(0.5, 1).setScale(2.2));
+    const heart = this.add.image(lx, top + 22, 'icons', 'heart').setScale(1.6);
     c.add(heart);
-    this.tweens.add({ targets: heart, scale: 1.9, duration: 600, yoyo: true, repeat: -1 });
-    c.add(this.add.text(lx, top + 80, st.matching ? 'Matching!' : 'Not matching', plain({ color: st.matching ? '#e05fa8' : '#9a8a90' })).setOrigin(0.5));
+    this.tweens.add({ targets: heart, scale: 2, duration: 600, yoyo: true, repeat: -1 });
+    c.add(this.add.text(lx, top + 100, st.matching ? 'Matching outfits!' : 'Different outfits', plain({ color: st.matching ? '#d94b94' : '#7a6a70' })).setOrigin(0.5));
     const started = Math.max(1, Math.floor((Date.now() - st.world.createdAt) / 86_400_000) + 1);
-    c.add(this.add.text(lx, top + 92, `Day ${started} of us`, plain({ color: '#7a6a70' })).setOrigin(0.5));
+    c.add(this.add.text(lx, top + 116, `Day ${started} of us`, note({ color: '#6a5560' })).setOrigin(0.5));
 
     // right: bond level
-    const rx = -w / 2 + 116;
+    const rx = -w / 2 + 10 + lw + 10;
     const lvl = st.bondLevel;
     const prog = bondProgress(st.bondPoints);
-    c.add(this.add.text(rx, top + 2, `Bond level ${lvl}${lvl >= MAX_BOND ? ' (max)' : ''}`, style({ color: '#e05fa8' })).setOrigin(0, 0.5));
-    const bw = w / 2 - 8 - rx;
+    c.add(this.add.text(rx, top + 2, `Bond Level ${lvl}${lvl >= MAX_BOND ? ' (Max)' : ''}`, style({ color: '#ff8fcf' })).setOrigin(0, 0.5));
+    const bw = w / 2 - 10 - rx;
     const bar = this.add.graphics();
-    panel(bar, rx, top + 10, bw, 9, 0xffffff);
-    bar.fillStyle(0xff8fcf, 1).fillRect(rx + 2, top + 12, Math.round((bw - 4) * (prog ? prog[0] / prog[1] : 1)), 5);
+    panel(bar, rx, top + 12, bw, 10, 0xffffff);
+    bar.fillStyle(0xff8fcf, 1).fillRect(rx + 2, top + 14, Math.round((bw - 4) * (prog ? prog[0] / prog[1] : 1)), 6);
     c.add(bar);
     const next = BOND_REWARDS.find((r) => r.level > lvl);
-    c.add(this.add.text(rx, top + 27, next ? `Lv ${next.level}: ${next.text}` : 'Soulmates. Nothing left to unlock!', plain({ color: '#7a6a70', wordWrap: { width: bw } })).setOrigin(0, 0));
+    c.add(this.add.text(rx, top + 28, next ? `Next (Lv ${next.level}): ${next.text}` : 'Soulmates — everything unlocked!', note({ color: '#6a5560', wordWrap: { width: bw } })).setOrigin(0, 0));
     const lines = [
-      `Days together: ${st.daysTogether}`,
-      `Photos: ${st.world.photos?.length ?? 0}   Gifts: ${st.world.stats.giftsent ?? 0}`,
-      `Today: +${Object.values(st.world.bond?.got ?? {}).reduce((a, b) => a + b, 0)} bond`,
-      `${other}: ${this.lastSeenText(st.world.players[other].lastSeen)}`,
+      `Days played together: ${st.daysTogether}`,
+      `Photos: ${st.world.photos?.length ?? 0}   ·   Gifts sent: ${st.world.stats.giftsent ?? 0}`,
+      `Today's bond: +${Object.values(st.world.bond?.got ?? {}).reduce((a, b) => a + b, 0)} pts`,
+      `Partner (${other}): ${this.lastSeenText(st.world.players[other].lastSeen)}`,
     ];
-    lines.forEach((l, i) => c.add(this.add.text(rx, top + 52 + i * 11, l, plain()).setOrigin(0, 0.5)));
-    const heartBtn = button(this, rx, h / 2 - 26, 82, 16, 'Send love', async () => {
+    lines.forEach((l, i) => {
+      const ly = top + 58 + i * 16;
+      this.rowCard(c, rx, ly - 7, bw, 14, null, 0xfffdf9);
+      c.add(this.add.text(rx + 6, ly, l, plain()).setOrigin(0, 0.5));
+    });
+    const btnW = Math.floor((bw - 6) / 2);
+    const heartBtn = button(this, rx, h / 2 - 28, btnW, 18, 'Send love', async () => {
       const body = `<3 ${me} is thinking of you`;
       if (net.enabled && net.pairing) {
         if (!(await net.sendNote(other, body))) return this.showToast('Could not send. Check your connection.');
@@ -1755,7 +1761,7 @@ export class HudScene extends Phaser.Scene {
       this.world.afterChange();
       this.openJournal('us');
     }, 0xff8fcf);
-    const giftBtn = button(this, rx + 88, h / 2 - 26, 82, 16, 'Wrap gift', () => void this.openMail('gift'), 0xffe066);
+    const giftBtn = button(this, rx + btnW + 6, h / 2 - 28, btnW, 18, 'Wrap gift', () => void this.openMail('gift'), 0xffe066);
     c.add([heartBtn.container, giftBtn.container]);
   }
 
@@ -2255,32 +2261,44 @@ export class HudScene extends Phaser.Scene {
   private farmPage(c: Phaser.GameObjects.Container, w: number, h: number) {
     const st = this.world.state;
     const f = st.farmSummary();
-    const top = -h / 2 + 44;
-    const lines = [
-      `${f.ripe} ripe, ${f.planted} growing${f.dry ? `, ${f.dry} thirsty` : ''}`,
-      `${f.waiting} waiting in the barn, ${f.onCounter} on the counter`,
-      f.running || f.ready ? `${f.running} batch${f.running === 1 ? '' : 'es'} working, ${f.ready} made` : 'no machines working',
-      f.wages ? `help costs ${f.wages}c a day` : 'no help hired',
+    const top = -h / 2 + 46;
+    const summary: [string, string, string][] = [
+      ['crop-tomato', 'Field', `${f.ripe} ripe · ${f.planted} growing${f.dry ? ` · ${f.dry} dry` : ''}`],
+      ['egg', 'Barn & Stall', `${f.waiting} in barn · ${f.onCounter} on counter`],
+      ['honey', 'Machines', f.running || f.ready ? `${f.running} working · ${f.ready} ready` : 'All machines idle'],
+      ['coin', 'Hired Help', f.wages ? `${f.wages}c / day wages` : 'No farmhands hired'],
     ];
-    lines.forEach((t, i) => c.add(this.add.text(-w / 2 + 14, top + i * 12, t, i === 0 ? plain() : note({ color: '#7a6a70' })).setOrigin(0, 0.5)));
-
-    c.add(this.add.text(-w / 2 + 14, top + 56, 'Best to plant right now', plain()).setOrigin(0, 0.5));
-    st.cropProfit().slice(0, 4).forEach((row, i) => {
-      const y = top + 72 + i * 13;
-      c.add(this.add.image(-w / 2 + 20, y, 'icons', `crop-${row.crop}`));
-      c.add(this.add.text(-w / 2 + 32, y, CROPS[row.crop].name, plain()).setOrigin(0, 0.5));
-      c.add(this.add.text(w / 2 - 56, y, `${row.each}c each`, note({ color: '#7a6a70' })).setOrigin(1, 0.5));
-      c.add(this.add.text(w / 2 - 14, y, `${Math.round(row.perHour)}/h`, plain({ color: i === 0 ? '#3f9a5f' : '#b07a00' })).setOrigin(1, 0.5));
+    const colW = Math.floor((w - 26) / 2);
+    summary.forEach(([icon, title, detail], i) => {
+      const cx = -w / 2 + 10 + (i % 2) * (colW + 6);
+      const cy = top - 2 + Math.floor(i / 2) * 30;
+      this.rowCard(c, cx, cy, colW, 26, { key: 'icons', frame: icon }, 0xfffdf9, 0xf3e7d4);
+      c.add(this.add.text(cx + 26, cy + 8, title, plain()).setOrigin(0, 0.5));
+      c.add(this.add.text(cx + 26, cy + 19, detail, note({ color: '#6a5560' })).setOrigin(0, 0.5));
     });
-    const load = button(this, w / 2 - 96, top + 48, 84, 16, 'Load machines', () => {
+
+    const secY = top + 68;
+    c.add(this.add.text(-w / 2 + 12, secY, 'Best Crops to Plant Right Now', plain()).setOrigin(0, 0.5));
+    const load = button(this, w / 2 - 104, secY - 8, 94, 16, 'Load machines', () => {
       const n = st.loadAllMachines();
       if (!n) return audio.play('bad');
       audio.play('pop');
       this.showToast(`Started ${n} batch${n === 1 ? '' : 'es'}`);
       this.world.afterChange();
+      this.openJournal('farm');
     }, 0xffe066);
     load.setEnabled(MACHINE_IDS.some((id) => st.machineFree(id) > 0 && MACHINES[id].accepts.some((i) => st.count(i) > 0)));
     c.add(load.container);
+
+    st.cropProfit().slice(0, 4).forEach((row, i) => {
+      const y = secY + 18 + i * 20;
+      this.rowCard(c, -w / 2 + 10, y - 9, w - 20, 18, null, i === 0 ? 0xe6faed : 0xfffdf9);
+      c.add(this.add.image(-w / 2 + 20, y, 'icons', `crop-${row.crop}`));
+      c.add(this.add.text(-w / 2 + 32, y, CROPS[row.crop].name, plain()).setOrigin(0, 0.5));
+      c.add(this.add.text(w / 2 - 76, y, `profit +${row.each}c each`, note({ color: '#6a5560' })).setOrigin(1, 0.5));
+      c.add(this.add.text(w / 2 - 16, y, `${Math.round(row.perHour)}c/hr`, plain({ color: i === 0 ? '#1e6f3d' : '#9a5b00' })).setOrigin(1, 0.5));
+    });
+    void h;
   }
 
   // ---------- contracts and hired help ----------
@@ -2772,8 +2790,8 @@ export class HudScene extends Phaser.Scene {
   private journeyView: number | null = null;
 
   private openJournal(tab: 'journey' | 'today' | 'farm' | 'us' | 'album' | 'stats' | 'settings') {
-    const w = 300;
-    const h = 174;
+    const w = 356;
+    const h = 232;
     const c = this.openOverlay(w, h, 'Journal');
     this.tabs(c, w, h, [
       ['Story', () => { this.journeyView = null; this.openJournal('journey'); }],
@@ -2785,7 +2803,7 @@ export class HudScene extends Phaser.Scene {
       ['Setup', () => this.openJournal('settings')],
     ], ['journey', 'today', 'farm', 'us', 'album', 'stats', 'settings'].indexOf(tab));
     const st = this.world.state;
-    const top = -h / 2 + 40;
+    const top = -h / 2 + 48;
     if (tab === 'journey') this.journeyPage(c, w, h, top);
     else if (tab === 'today') this.todayPage(c, w, h, top);
     else if (tab === 'farm') this.farmPage(c, w, h);
@@ -2794,21 +2812,25 @@ export class HudScene extends Phaser.Scene {
       this.bookPage(c, w, h, top);
     } else if (tab === 'stats') {
       const s = st.world.stats;
-      const lines: [string, string][] = [
-        ['Crops harvested', String(s.harvest ?? 0)],
-        ['Dishes cooked / together', `${s.cook ?? 0} / ${s.coop ?? 0}`],
-        ['Diners served', String(s.served ?? 0)],
-        ['Counter sales', String(s.sale ?? 0)],
-        ['Orders delivered', String(s.orders ?? 0)],
-        ['Coins earned', String(s.earned ?? 0)],
-        ['Fish / forage / eggs', `${s.fish ?? 0} / ${s.forage ?? 0} / ${s['collect:egg'] ?? 0}`],
-        ['Days together', String(st.daysTogether)],
-        ['Reputation', `${Math.floor(st.reputation)} / 100`],
+      const cards: [string, string, string][] = [
+        ['crop-tomato', 'Crops harvested', String(s.harvest ?? 0)],
+        ['dish-tomato_soup', 'Cooked / Co-op', `${s.cook ?? 0} / ${s.coop ?? 0}`],
+        ['plate', 'Diners served', String(s.served ?? 0)],
+        ['coin', 'Counter sales', String(s.sale ?? 0)],
+        ['book', 'Orders delivered', String(s.orders ?? 0)],
+        ['coin', 'Total coins earned', String(s.earned ?? 0)],
+        ['fish', 'Fish / Forage / Eggs', `${s.fish ?? 0} / ${s.forage ?? 0} / ${s['collect:egg'] ?? 0}`],
+        ['heart', 'Days together', String(st.daysTogether)],
+        ['star', 'Reputation', `${Math.floor(st.reputation)} / 100`],
       ];
-      lines.forEach(([k, v], i) => {
-        const y = top + 4 + i * 13;
-        c.add(this.add.text(-w / 2 + 12, y, k, plain()).setOrigin(0, 0.5));
-        c.add(this.add.text(w / 2 - 12, y, v, plain({ color: '#b07a00' })).setOrigin(1, 0.5));
+      const colW = Math.floor((w - 26) / 2);
+      cards.forEach(([icon, k, v], i) => {
+        const cx = -w / 2 + 10 + (i % 2) * (colW + 6);
+        const cy = top - 4 + Math.floor(i / 2) * 30;
+        const spanW = i === cards.length - 1 ? w - 20 : colW;
+        this.rowCard(c, cx, cy, spanW, 25, { key: 'icons', frame: icon }, 0xfffdf9, 0xf3e7d4);
+        c.add(this.add.text(cx + 26, cy + 12.5, k, plain()).setOrigin(0, 0.5));
+        c.add(this.add.text(cx + spanW - 10, cy + 12.5, v, plain({ color: '#9a5b00' })).setOrigin(1, 0.5));
       });
     } else this.settings(c, w, h, top);
   }
@@ -2823,33 +2845,77 @@ export class HudScene extends Phaser.Scene {
     const complete = wd.questsClaimed.includes(`ch:${ch.id}`);
     const locked = !!cur && idx > curIdx;
 
-    const prev = button(this, -w / 2 + 8, top - 5, 18, 14, '<', () => { this.journeyView = idx - 1; this.openJournal('journey'); }, 0xe8dcc8);
-    const next = button(this, w / 2 - 26, top - 5, 18, 14, '>', () => { this.journeyView = idx + 1; this.openJournal('journey'); }, 0xe8dcc8);
+    const headerGfx = this.add.graphics();
+    pill(
+      headerGfx,
+      -w / 2 + 36,
+      top - 6,
+      w - 72,
+      16,
+      complete ? 0xd8f5e0 : locked ? 0xefe4d2 : 0xfff8dc,
+      complete ? 0x3fb35f : 0xd8c4b4,
+    );
+    c.add(headerGfx);
+
+    const prev = button(this, -w / 2 + 10, top - 6, 22, 15, '<', () => { this.journeyView = idx - 1; this.openJournal('journey'); }, 0xe8dcc8);
+    const next = button(this, w / 2 - 32, top - 6, 22, 15, '>', () => { this.journeyView = idx + 1; this.openJournal('journey'); }, 0xe8dcc8);
     prev.setEnabled(idx > 0);
     next.setEnabled(idx < CHAPTERS.length - 1);
     c.add([prev.container, next.container]);
-    c.add(this.add.text(0, top + 2, `${idx + 1}/${CHAPTERS.length}  ${ch.title}`, plain({ color: complete ? '#005923' : locked ? '#9a8a90' : '#4a2a3f' })).setOrigin(0.5));
+    c.add(
+      this.add
+        .text(0, top + 2, `Chapter ${idx + 1}/${CHAPTERS.length}  ·  ${ch.title}`, plain({ color: complete ? '#1e6f3d' : locked ? '#8a7a80' : '#3b2133' }))
+        .setOrigin(0.5),
+    );
 
     const firstOpen = ch.tasks.findIndex((t) => !wd.questsClaimed.includes(t.id) && t.progress(wd) < t.target);
     ch.tasks.forEach((t, i) => {
-      const y = top + 20 + i * 22;
+      const y = top + 23 + i * 27;
       const done = complete || wd.questsClaimed.includes(t.id);
       const isNext = !locked && !complete && i === firstOpen;
-      const g = this.add.graphics();
-      panel(g, -w / 2 + 8, y - 10, w - 16, 21, done ? 0xd8f5e0 : isNext ? 0xfffbe8 : locked ? 0xe8dcc8 : 0xffffff, isNext ? 0xff8fcf : 0x4a2a3f);
-      c.add(g);
-      c.add(this.add.image(-w / 2 + 18, y, 'icons', done ? 'star' : 'book').setAlpha(locked ? 0.4 : 1));
-      c.add(this.add.text(-w / 2 + 28, y - 5, t.title, plain({ color: locked ? '#9a8a90' : '#4a2a3f' })).setOrigin(0, 0.5));
-      // hint gets the whole second line; progress and reward share the first
-      c.add(this.add.text(-w / 2 + 28, y + 5, locked ? '...' : done ? 'done' : t.hint, plain({ color: done ? '#005923' : '#6b5760' })).setOrigin(0, 0.5));
+      const cardFill = done ? 0xe6faed : isNext ? 0xfff8dc : locked ? 0xf0e6d8 : 0xfffdf9;
+      const tileFill = done ? 0xc5f0d4 : isNext ? 0xffe066 : locked ? 0xe2d4c2 : 0xf3e7d4;
+      const g = this.rowCard(
+        c,
+        -w / 2 + 10,
+        y - 12,
+        w - 20,
+        25,
+        { key: 'icons', frame: done ? 'star' : 'book' },
+        cardFill,
+        tileFill,
+      );
+      if (isNext) {
+        g.lineStyle(1, 0xff8fcf, 1).strokeRoundedRect(-w / 2 + 10, y - 12, w - 20, 25, 4);
+      }
+      c.add(this.add.text(-w / 2 + 36, y - 5, t.title, plain({ color: locked ? '#8a7a80' : '#3b2133' })).setOrigin(0, 0.5));
+      c.add(
+        this.add
+          .text(-w / 2 + 36, y + 6, locked ? 'Complete earlier chapters first' : done ? 'Completed!' : t.hint, note({ color: done ? '#1e6f3d' : '#6a5560' }))
+          .setOrigin(0, 0.5),
+      );
       if (!locked) {
         const short = (n: number) => (n >= 1000 ? `${Math.floor(n / 100) / 10}k` : String(n));
         const prog = done ? t.target : Math.min(t.target, t.progress(wd));
-        c.add(this.add.text(w / 2 - 14, y - 5, `${short(prog)}/${short(t.target)} +${t.reward}c`, plain({ color: done ? '#005923' : '#905200' })).setOrigin(1, 0.5));
+        c.add(
+          this.add
+            .text(w / 2 - 16, y - 5, done ? 'Done' : `${short(prog)}/${short(t.target)}`, plain({ color: done ? '#1e6f3d' : '#3b2133' }))
+            .setOrigin(1, 0.5),
+        );
+        c.add(
+          this.add
+            .text(w / 2 - 16, y + 6, `+${t.reward}c`, note({ color: done ? '#1e6f3d' : '#9a5b00' }))
+            .setOrigin(1, 0.5),
+        );
       }
     });
-    const footer = complete ? `Claimed: ${ch.reward.text}` : locked ? 'Finish the chapters before this one' : `Reward: ${ch.reward.text}`;
-    c.add(this.add.text(0, h / 2 - 9, footer, plain({ color: complete ? '#005923' : '#905200' })).setOrigin(0.5));
+
+    const footY = h / 2 - 13;
+    const footGfx = this.add.graphics();
+    pill(footGfx, -w / 2 + 10, footY - 8, w - 20, 16, complete ? 0xe6faed : 0xfff2c2, complete ? 0x3fb35f : 0xd8b45e);
+    c.add(footGfx);
+    const footer = complete ? `Claimed: ${ch.reward.text}` : locked ? 'Finish the chapters before this one' : `Chapter Reward: ${ch.reward.text}`;
+    c.add(this.add.text(0, footY, footer, plain({ color: complete ? '#1e6f3d' : '#8a4b00' })).setOrigin(0.5));
   }
 
   /** Today: three small tasks that change every day, plus a bonus for all three. */
@@ -2858,41 +2924,51 @@ export class HudScene extends Phaser.Scene {
     if (!st.world.daily) this.world.afterChange();
     const wd = st.world;
     const d = wd.daily;
-    c.add(this.add.text(0, top + 2, 'Small things to do today', plain()).setOrigin(0.5));
+    c.add(this.add.text(0, top + 2, 'Daily Tasks — complete all 3 for a bonus!', plain()).setOrigin(0.5));
     const defs = dailyDefs(wd);
     if (!d || !defs.length) {
-      c.add(this.add.text(0, top + 40, 'New tasks appear each day', plain({ color: '#7a6a70' })).setOrigin(0.5));
+      c.add(this.add.text(0, top + 48, 'New tasks appear each day', plain({ color: '#7a6a70' })).setOrigin(0.5));
       return;
     }
     defs.forEach((def, i) => {
-      const y = top + 26 + i * 26;
+      const y = top + 28 + i * 36;
       const done = d.claimed.includes(def.id);
       const prog = done ? def.target : Math.min(def.target, dailyProgress(wd, def));
-      const g = this.add.graphics();
-      panel(g, -w / 2 + 8, y - 11, w - 16, 24, done ? 0xd8f5e0 : 0xffffff);
-      const barW = 120;
-      g.fillStyle(0x4a2a3f, 1).fillRect(-w / 2 + 28, y + 4, barW, 5);
-      g.fillStyle(done ? 0x3fb35f : 0xffd23f, 1).fillRect(-w / 2 + 29, y + 5, Math.round((barW - 2) * (prog / def.target)), 3);
-      c.add(g);
-      c.add(this.add.image(-w / 2 + 18, y - 2, 'icons', done ? 'star' : 'sun'));
-      c.add(this.add.text(-w / 2 + 28, y - 5, def.title, plain({ color: '#4a2a3f' })).setOrigin(0, 0.5));
-      c.add(this.add.text(-w / 2 + 34 + barW, y + 6, `${prog}/${def.target}`, plain({ color: done ? '#005923' : '#4a2a3f' })).setOrigin(0, 0.5));
-      c.add(this.add.text(w / 2 - 14, y, done ? 'done' : `+${def.reward}c`, plain({ color: done ? '#005923' : '#905200' })).setOrigin(1, 0.5));
+      const g = this.rowCard(
+        c,
+        -w / 2 + 10,
+        y - 15,
+        w - 20,
+        31,
+        { key: 'icons', frame: done ? 'star' : 'sun' },
+        done ? 0xe6faed : 0xfffdf9,
+        done ? 0xc5f0d4 : 0xffe066,
+      );
+      const barW = 160;
+      meter(g, -w / 2 + 36, y + 4, barW, 6, prog / Math.max(1, def.target), done ? 0x3fb35f : 0xffd23f);
+      c.add(this.add.text(-w / 2 + 36, y - 6, def.title, plain({ color: '#3b2133' })).setOrigin(0, 0.5));
+      c.add(this.add.text(-w / 2 + 44 + barW, y + 7, `${prog}/${def.target}`, note({ color: done ? '#1e6f3d' : '#6a5560' })).setOrigin(0, 0.5));
+      c.add(this.add.text(w / 2 - 18, y, done ? 'Done' : `+${def.reward}c`, plain({ color: done ? '#1e6f3d' : '#9a5b00' })).setOrigin(1, 0.5));
     });
     const allDone = d.claimed.includes('all');
-    c.add(this.add.text(0, top + 26 + defs.length * 26 + 2, allDone ? 'Bonus claimed! See you tomorrow' : `Finish all ${defs.length}: +${DAILY_BONUS} coins, +1 rep`, plain({ color: allDone ? '#005923' : '#905200' })).setOrigin(0.5));
-    c.add(this.add.text(0, h / 2 - 9, 'New tasks at midnight', plain({ color: '#7a6a70' })).setOrigin(0.5));
+    const bonusY = h / 2 - 25;
+    const bonusGfx = this.add.graphics();
+    pill(bonusGfx, -w / 2 + 10, bonusY - 8, w - 20, 16, allDone ? 0xe6faed : 0xfff2c2, allDone ? 0x3fb35f : 0xd8b45e);
+    c.add(bonusGfx);
+    c.add(this.add.text(0, bonusY, allDone ? 'Bonus claimed! See you tomorrow' : `Finish all ${defs.length}: +${DAILY_BONUS} coins, +1 rep`, plain({ color: allDone ? '#1e6f3d' : '#8a4b00' })).setOrigin(0.5));
+    c.add(this.add.text(0, h / 2 - 8, 'New tasks arrive at midnight', note({ color: '#7a6a70' })).setOrigin(0.5));
   }
 
   private settings(c: Phaser.GameObjects.Container, w: number, h: number, top: number) {
     const st = this.world.state;
     const d = st.data;
-    const col = (i: number) => -w / 2 + 12 + (i % 2) * 142;
-    const rowY = (i: number) => top + Math.floor(i / 2) * 19;
+    const btnW = Math.floor((w - 28) / 2);
+    const col = (i: number) => -w / 2 + 10 + (i % 2) * (btnW + 8);
+    const rowY = (i: number) => top - 2 + Math.floor(i / 2) * 23;
     let slot = 0;
     const mk = (label: string, fn: () => void, color = 0xe8dcc8) => {
       const i = slot++;
-      const b = button(this, col(i), rowY(i), 134, 15, label, fn, color);
+      const b = button(this, col(i), rowY(i), btnW, 18, label, fn, color);
       c.add(b.container);
       return b;
     };
@@ -2971,7 +3047,7 @@ export class HudScene extends Phaser.Scene {
         this.scene.start('Title');
         this.scene.stop();
       });
-      c.add(this.add.text(-w / 2 + 12, rowY(8) + 8, net.enabled ? 'Solo mode. Pair up from the title.' : 'Solo mode: no backend configured.', plain({ color: '#7a6a70' })).setOrigin(0, 0.5));
+      c.add(this.add.text(-w / 2 + 12, rowY(8) + 8, net.enabled ? 'Solo mode. Pair up from the title.' : 'Solo mode: no backend configured.', note({ color: '#7a6a70' })).setOrigin(0, 0.5));
     }
     // app stores ask for a way to erase your data; it is handy on a shared phone too
     mk('Erase this phone', async () => {
@@ -2980,29 +3056,29 @@ export class HudScene extends Phaser.Scene {
       net.forgetDevice();
       window.location.reload();
     }, 0xff6b6b);
-    c.add(this.add.text(0, h / 2 - 9, 'Our Journey 1.0', plain({ color: '#7a6a70' })).setOrigin(0.5));
+    c.add(this.add.text(0, h / 2 - 9, 'Our Journey 1.0', note({ color: '#7a6a70' })).setOrigin(0.5));
   }
 
   private async openSpecialDays() {
     const st = this.world.state;
-    const w = 260;
-    const h = 150;
+    const w = 280;
+    const h = 164;
     const c = this.openOverlay(w, h, 'Special days');
-    const top = -h / 2 + 28;
+    const top = -h / 2 + 32;
     const days = st.world.specialDays;
-    if (!days.length) c.add(this.add.text(0, top + 16, 'Add birthdays and your anniversary', plain({ color: '#7a6a70' })).setOrigin(0.5));
+    if (!days.length) c.add(this.add.text(0, top + 20, 'Add birthdays and your anniversary', plain({ color: '#7a6a70' })).setOrigin(0.5));
     days.slice(0, 4).forEach((sd, i) => {
-      const y = top + i * 18;
-      c.add(this.add.image(-w / 2 + 16, y, 'icons', 'gift'));
-      c.add(this.add.text(-w / 2 + 28, y, `${sd.label}  ${String(sd.day).padStart(2, '0')}/${String(sd.month).padStart(2, '0')}`, plain()).setOrigin(0, 0.5));
-      const del = button(this, w / 2 - 44, y - 7, 32, 14, 'x', () => {
+      const y = top + i * 22;
+      this.rowCard(c, -w / 2 + 10, y - 10, w - 20, 20, { key: 'icons', frame: 'gift' }, 0xfffdf9, 0xffe8f4);
+      c.add(this.add.text(-w / 2 + 34, y, `${sd.label}  ·  ${String(sd.day).padStart(2, '0')}/${String(sd.month).padStart(2, '0')}`, plain()).setOrigin(0, 0.5));
+      const del = button(this, w / 2 - 46, y - 7, 32, 14, 'x', () => {
         st.world.specialDays.splice(i, 1);
         st.touch();
         void this.openSpecialDays();
       }, 0xff8fcf);
       c.add(del.container);
     });
-    const add = button(this, -w / 2 + 8, h / 2 - 22, 110, 16, 'Add a day', async () => {
+    const add = button(this, -w / 2 + 10, h / 2 - 24, 110, 16, 'Add a day', async () => {
       const label = await promptText({ title: 'What is the occasion? (e.g. qd birthday)', placeholder: 'qd birthday', maxLength: 24 });
       if (!label) return;
       const date = await promptText({ title: 'Date as DD/MM', placeholder: '24/12', maxLength: 5 });
@@ -3015,7 +3091,7 @@ export class HudScene extends Phaser.Scene {
       void this.openSpecialDays();
     }, 0x7de8c8);
     c.add(add.container);
-    c.add(this.add.text(w / 2 - 8, h / 2 - 14, 'decorations + fireworks that day', plain({ color: '#7a6a70' })).setOrigin(1, 0.5));
+    c.add(this.add.text(w / 2 - 10, h / 2 - 16, 'decorations + fireworks that day', note({ color: '#7a6a70' })).setOrigin(1, 0.5));
   }
 
   // ---------- welcome back ----------
@@ -3029,11 +3105,11 @@ export class HudScene extends Phaser.Scene {
     const mins = Math.round(a.awayMs / 60000);
     const when = mins < 60 ? `${mins} min` : mins < 60 * 48 ? `${Math.round(mins / 60)} h` : `${Math.round(mins / 1440)} days`;
     const lines: [string, string][] = [];
-    if (sales.length) lines.push(['dish-tomato_soup', `${count(sales.length, 'dish', 'dishes')} sold, +${earned} coins`]);
-    if (left) lines.push(['dots', `${count(left, 'customer')} left — the counter was empty`]);
-    if (ripe) lines.push(['star', `${count(ripe, 'crop')} ready to pick`]);
-    if (produce) lines.push(['egg', `${count(produce, 'thing')} waiting from the animals`]);
-    if (rain) lines.push(['rain', 'It rained, so the field watered itself']);
+    if (sales.length) lines.push(['dish-tomato_soup', `${count(sales.length, 'dish', 'dishes')} sold on the counter (+${earned}c)`]);
+    if (sales.length && left) lines.push(['dots', 'Counter sold out — put out more dishes to sell!']);
+    if (ripe) lines.push(['star', `${count(ripe, 'crop')} ripened and ready to harvest`]);
+    if (produce) lines.push(['egg', `${count(produce, 'item')} waiting from your animals`]);
+    if (rain) lines.push(['rain', 'It rained while away — your crops are watered!']);
     // what your love did while you were away
     const say: Record<string, [string, string]> = {
       harvest: ['crop-tomato', 'harvested %c|crop'],
@@ -3048,8 +3124,6 @@ export class HudScene extends Phaser.Scene {
       note: ['heart', 'wrote you %c|note'],
       hugs: ['hug', 'hugged you %c|time'],
     };
-    // "%c|crop" or "%c|dish|dishes": the plural is named, not guessed by
-    // chopping an s off the end, which used to turn one fish into one "fis".
     if (a.partner) for (const { key, n } of a.partner.news.slice(0, 5)) if (say[key]) {
       const [icon, tpl] = say[key];
       const [text, one, many] = tpl.split('|');
@@ -3059,15 +3133,15 @@ export class HudScene extends Phaser.Scene {
       this.showToast(`Welcome back! You were away ${when}.`);
       return;
     }
-    const w = 270;
-    const h = 60 + lines.length * 16;
+    const w = 310;
+    const h = 66 + lines.length * 24;
     const c = this.openOverlay(w, h, mins >= 1 ? `Welcome back! (away ${when})` : 'Welcome back!');
     lines.forEach(([icon, text], i) => {
-      const y = -h / 2 + 30 + i * 16;
-      c.add(this.add.image(-w / 2 + 16, y, 'icons', icon));
-      c.add(this.add.text(-w / 2 + 28, y, text, plain()).setOrigin(0, 0.5));
+      const y = -h / 2 + 34 + i * 24;
+      this.rowCard(c, -w / 2 + 10, y - 11, w - 20, 22, { key: 'icons', frame: icon }, 0xfffdf9, 0xf3e7d4);
+      c.add(this.add.text(-w / 2 + 36, y, text, plain()).setOrigin(0, 0.5));
     });
-    const ok = button(this, -30, h / 2 - 22, 60, 16, 'Nice!', () => this.closeOverlay(), 0x7de8c8);
+    const ok = button(this, -36, h / 2 - 24, 72, 18, 'Nice!', () => this.closeOverlay(), 0x7de8c8);
     c.add(ok.container);
     if (earned) audio.play('coin');
   }

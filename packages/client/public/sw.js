@@ -6,7 +6,7 @@
  * itself is fetched fresh when possible so updates arrive, with the cached
  * copy as a fallback. Supabase and the keep-alive are never cached.
  */
-const CACHE = 'our-journey-v1';
+const CACHE = 'our-journey-v3';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './apple-touch-icon.png', './favicon.png'];
 
 self.addEventListener('install', (e) => {
@@ -45,6 +45,22 @@ self.addEventListener('fetch', (e) => {
           return r;
         })
         .catch(() => caches.match('./index.html').then((r) => r ?? Response.error())),
+    );
+    return;
+  }
+
+  // JS and CSS bundles: network-first so new deployments take effect immediately
+  if (url.pathname.endsWith('.js') || url.pathname.endsWith('.css')) {
+    e.respondWith(
+      fetch(request)
+        .then((r) => {
+          if (r.ok && r.type === 'basic') {
+            const copy = r.clone();
+            void caches.open(CACHE).then((c) => c.put(request, copy));
+          }
+          return r;
+        })
+        .catch(() => caches.match(request).then((r) => r ?? Response.error())),
     );
     return;
   }
