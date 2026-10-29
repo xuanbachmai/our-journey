@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import {
+  type TaskTutorial,
   ACCESSORIES,
   applyReward,
   COSTUMES,
@@ -158,6 +159,10 @@ export class HudScene extends Phaser.Scene {
   private overlay?: Phaser.GameObjects.Container;
   private hint!: Phaser.GameObjects.Text;
   private questBox!: Phaser.GameObjects.Container;
+  private tutorialBtn!: Phaser.GameObjects.Container;
+  private tutorialBox!: Phaser.GameObjects.Container;
+  private tutorialOpen = true;
+  private lastTutorialSig = '';
   private questGfx!: Phaser.GameObjects.Graphics;
   private questText!: Phaser.GameObjects.Text;
   private menuBtn!: Phaser.GameObjects.Container;
@@ -218,6 +223,13 @@ export class HudScene extends Phaser.Scene {
     const qz = this.add.zone(0, 0, 10, 10).setOrigin(0, 0.5).setInteractive({ useHandCursor: true });
     qz.on('pointerdown', () => this.openJournal('journey'));
     this.questBox = this.add.container(0, 0, [this.questGfx, this.questText, qz]);
+    this.tutorialBtn = this.iconButton('question', () => {
+      this.tutorialOpen = !this.tutorialOpen;
+      this.lastTutorialSig = '';
+      if (this.tutorialOpen) this.world.pulseGuide();
+      if (this.last) this.refresh(this.last);
+    });
+    this.tutorialBox = this.add.container(0, 0).setDepth(25);
     this.menuBtn = this.iconButton('menu', () => this.openJournal('journey'));
     this.mapBtn = this.iconButton('map', () => this.openMap());
     this.helpBtn = this.iconButton('help', () => this.openHelp(0));
@@ -406,6 +418,9 @@ export class HudScene extends Phaser.Scene {
     this.actionBtn.setPosition(W - 30, H - 32);
     this.hint.setPosition(W / 2, H - 30);
     this.menuBtn.setPosition(W - 14, 12);
+    this.tutorialBtn.setPosition(W - 80, 12);
+    // below the place name and the partner line, which live at 26 and 38
+    this.tutorialBox.setPosition(W - 6, 52);
     this.mapBtn.setPosition(W - 36, 12);
     this.helpBtn.setPosition(W - 58, 12);
     this.questBox.setPosition(W - 72, 12);
@@ -429,6 +444,56 @@ export class HudScene extends Phaser.Scene {
     }
     this.emoteRow?.setPosition(W - 30, H - 100);
     if (this.last) this.refresh(this.last);
+  }
+
+  /**
+   * The next step, written out: where to go, what to press, and what it
+   * opens up. The guide arrow points the way but says nothing, and someone
+   * coming back after a week should not have to guess.
+   */
+  private refreshTutorialCard(tut: TaskTutorial | null, decorate: boolean) {
+    this.tutorialBtn.setVisible(!!tut && !decorate);
+    const show = !!tut && this.tutorialOpen && !decorate;
+    this.tutorialBox.setVisible(show);
+    const sig = show && tut ? `${tut.taskId}|${tut.whereText}|${tut.howText}|${tut.unlockTeaser}|${this.scale.width}` : 'hidden';
+    if (sig === this.lastTutorialSig) return;
+    this.lastTutorialSig = sig;
+    this.tutorialBox.removeAll(true);
+    if (!show || !tut) return;
+
+    // take the room that is there rather than a fixed width, so a line is
+    // not cut mid-word on a screen with space to spare
+    const cw = Math.max(166, Math.min(228, this.scale.width - 96));
+    const ch = 68;
+    const fits = Math.max(16, Math.floor((cw - 26) / 5));
+    const g = this.add.graphics();
+    panel(g, -cw, 0, cw, ch, 0xfff9ee, 0x4a2a3f);
+    g.fillStyle(0xffe066, 1).fillRoundedRect(-cw + 2, 2, cw - 4, 13, 3);
+    this.tutorialBox.add(g);
+
+    const cut = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
+    const header = `NEXT Ch.${tut.chapterNum} (${tut.stepIndex}/${tut.totalSteps}): ${cut(tut.title, fits - 16)}`;
+    this.tutorialBox.add(this.add.text(-cw + 6, 8, header, note({ color: P.outline })).setOrigin(0, 0.5));
+
+    const row = (y: number, icon: string, text: string, colour: string) => {
+      this.tutorialBox.add(this.add.image(-cw + 10, y, 'icons', icon).setScale(0.75));
+      this.tutorialBox.add(this.add.text(-cw + 18, y, cut(text, fits), note({ color: colour })).setOrigin(0, 0.5));
+    };
+    row(21, 'map', tut.whereText, '#1f6a56');
+    row(33, 'star', tut.howText, '#4a2a3f');
+    row(45, 'lock', tut.unlockTeaser, '#a8456a');
+
+    const showWay = button(this, -cw + 6, 52, 82, 13, 'Show Way', () => {
+      this.world.pulseGuide();
+      this.showToast(tut.whereText);
+    }, 0x7de8c8);
+    const storyBtn = button(this, -80, 52, 44, 13, 'Story', () => this.openJournal('journey'), 0xffe8f4);
+    const hideBtn = button(this, -32, 52, 26, 13, 'Hide', () => {
+      this.tutorialOpen = false;
+      this.lastTutorialSig = '';
+      if (this.last) this.refresh(this.last);
+    }, 0xe8dcc8);
+    this.tutorialBox.add([showWay.container, storyBtn.container, hideBtn.container]);
   }
 
   private refresh(d: HudData) {
@@ -494,11 +559,14 @@ export class HudScene extends Phaser.Scene {
       this.rideIcon.setAlpha(next ? 1 : 0.5);
     }
     // quest ticker
-    const questKey = d.quest ? `${this.scale.width}|${d.quest.title}|${d.quest.progress}/${d.quest.target}` : '';
+    // the card below names the same task in full, so the ticker stands down
+    const cardOpen = this.tutorialOpen && !!d.tutorial && !d.decorate;
+    this.questBox.setVisible(!cardOpen);
+    const questKey = d.quest && !cardOpen ? `${this.scale.width}|${d.quest.title}|${d.quest.progress}/${d.quest.target}` : '';
     if (questKey !== this.lastQuestKey) {
       this.lastQuestKey = questKey;
       this.questGfx.clear();
-      if (d.quest) {
+      if (d.quest && !cardOpen) {
         // fit between the coins on the left and the three buttons on the right
         const prog = d.quest.target > 1 ? ` ${d.quest.progress}/${d.quest.target}` : '';
         const maxChars = Math.max(8, Math.floor((this.scale.width - 150) / 8));
@@ -515,6 +583,7 @@ export class HudScene extends Phaser.Scene {
         (this.questBox.list[2] as Phaser.GameObjects.Zone).setPosition(-w, 0).setSize(w, h);
       } else this.questText.setText('');
     }
+    this.refreshTutorialCard(d.tutorial, !!d.decorate);
     // area & weather & partner
     this.areaText.setText(d.areaName + (d.special ? `  *${d.special}*` : ''));
     this.weatherIcon.setFrame(d.weather === 'rain' ? 'rain' : d.weather === 'cloudy' ? 'cloud' : 'sun');

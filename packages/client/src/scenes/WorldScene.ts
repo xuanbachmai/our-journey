@@ -1,5 +1,7 @@
 import Phaser from 'phaser';
 import {
+  tutorialForTask,
+  type TaskTutorial,
   type MachineId,
   ANIMALS,
   AREAS,
@@ -80,6 +82,8 @@ export interface HudData {
   dishCap: number;
   selectedSeed: CropId;
   action: Action | null;
+  /** The next step, spelled out for the card in the corner. */
+  tutorial: TaskTutorial | null;
   quest: { title: string; progress: number; target: number; chapter: number; hint: string } | null;
   area: AreaId;
   areaName: string;
@@ -1011,6 +1015,7 @@ export class WorldScene extends Phaser.Scene {
       dishCap: this.state.dishCap,
       selectedSeed: this.state.selectedSeed,
       action: a,
+      tutorial: tutorialForTask(q, this.state.world),
       quest: q ? { title: q.title, progress: Math.min(q.target, q.progress(this.state.world)), target: q.target, chapter: CHAPTERS.indexOf(currentChapter(this.state.world) as never) + 1, hint: q.hint } : null,
       area: this.areaId,
       areaName: AREAS[this.areaId].name,
@@ -2226,6 +2231,31 @@ export class WorldScene extends Phaser.Scene {
       }
     }
     return null;
+  }
+
+  /**
+   * Turn the guide arrow on and run a trail of sparkles towards whatever the
+   * current task points at. The arrow alone says where but not that anything
+   * happened, so the card's "Show Way" needs something to show.
+   */
+  pulseGuide() {
+    this.state.data.guideOn = true;
+    this.lastGuideCheck = 0;
+    this.guideWorld = this.guidePoint();
+    const target = this.guideWorld;
+    if (!target) return;
+    audio.play('good');
+    const sx = this.player.x;
+    const sy = this.player.y - 8;
+    const dist = Math.hypot(target.x - sx, target.y - sy);
+    const steps = Math.max(4, Math.min(10, Math.floor(dist / 16)));
+    for (let i = 1; i <= steps; i++) {
+      const f = i / steps;
+      const px = sx + (target.x - sx) * f;
+      const py = sy + (target.y - sy) * f;
+      const sp = this.add.image(px, py, 'fx', i % 2 === 0 ? 'twinkle' : 'spark0').setDepth(29500).setAlpha(0);
+      this.tweens.add({ targets: sp, alpha: 1, y: py - 5, duration: 220, delay: i * 45, yoyo: true, onComplete: () => sp.destroy() });
+    }
   }
 
   private updateGuide(time: number) {
