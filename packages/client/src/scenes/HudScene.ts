@@ -279,7 +279,15 @@ export class HudScene extends Phaser.Scene {
     this.joyKnob.fillStyle(0xffffff, 0.75).fillCircle(0, 0, 9).lineStyle(1, 0x4a2a3f, 1).strokeCircle(0, 0, 9);
 
     this.hint = this.add
-      .text(0, 0, this.isTouch ? 'left side: move\nright button: act' : 'WASD move  SPACE act  1-8 seeds\nJ journal  M map', style({ color: '#fff', align: 'center' }))
+      .text(
+        0,
+        0,
+        this.isTouch ? 'left side: move\nright button: act' : 'WASD move  SPACE act  1-8 seeds\nJ journal  M map',
+        // a plate behind it: these lines land wherever the player happens to be
+        // standing, and over the paddock fence the rails cut straight through
+        // the letters. It is part of the text object, so it fades out with it.
+        style({ color: '#fff', align: 'center', backgroundColor: 'rgba(42,24,38,0.55)', padding: { x: 5, y: 3 } }),
+      )
       .setOrigin(0.5, 1)
       .setLineSpacing(2)
       .setAlpha(0.9);
@@ -491,34 +499,44 @@ export class HudScene extends Phaser.Scene {
     this.tutorialBox.removeAll(true);
     if (!show || !tut) return;
 
-    // take the room that is there rather than a fixed width, so a line is
-    // not cut mid-word on a screen with space to spare
-    const cw = Math.max(166, Math.min(228, this.scale.width - 96));
-    const ch = 68;
-    const fits = Math.max(16, Math.floor((cw - 26) / 5));
+    // Take the room that is there, and wrap. This card exists to tell you what
+    // to do next, so guessing a character width and chopping the sentence at it
+    // — which left every line reading "walk through the seed path to enter Ma…"
+    // — defeated the only thing it is for. Phaser measures the real glyphs, so
+    // the card is laid out first and the panel drawn around what it came to.
+    const cw = Math.max(176, Math.min(300, this.scale.width - 80));
+    const textW = cw - 26;
     const g = this.add.graphics();
-    panel(g, -cw, 0, cw, ch, 0xfff9ee, 0x4a2a3f);
-    g.fillStyle(0xffe066, 1).fillRoundedRect(-cw + 2, 2, cw - 4, 13, 3);
     this.tutorialBox.add(g);
 
-    const cut = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
-    const header = `NEXT Ch.${tut.chapterNum} (${tut.stepIndex}/${tut.totalSteps}): ${cut(tut.title, fits - 16)}`;
-    this.tutorialBox.add(this.add.text(-cw + 6, 8, header, note({ color: P.outline })).setOrigin(0, 0.5));
+    const header = `NEXT Ch.${tut.chapterNum} (${tut.stepIndex}/${tut.totalSteps}): ${tut.title}`;
+    const headText = this.add
+      .text(-cw + 6, 3, header, note({ color: P.outline, wordWrap: { width: cw - 14 } }))
+      .setOrigin(0, 0);
+    this.tutorialBox.add(headText);
+    const barH = Math.max(13, headText.height + 4);
 
-    const row = (y: number, icon: string, text: string, colour: string) => {
-      this.tutorialBox.add(this.add.image(-cw + 10, y, 'icons', icon).setScale(0.75));
-      this.tutorialBox.add(this.add.text(-cw + 18, y, cut(text, fits), note({ color: colour })).setOrigin(0, 0.5));
+    let y = barH + 3;
+    const row = (icon: string, text: string, colour: string) => {
+      const t = this.add.text(-cw + 18, y, text, note({ color: colour, wordWrap: { width: textW } })).setOrigin(0, 0);
+      this.tutorialBox.add([this.add.image(-cw + 10, y + 4, 'icons', icon).setScale(0.75), t]);
+      y += Math.max(11, t.height + 1);
     };
-    row(21, 'map', tut.whereText, '#1f6a56');
-    row(33, 'star', tut.howText, '#4a2a3f');
-    row(45, 'lock', tut.unlockTeaser, '#a8456a');
+    row('map', tut.whereText, '#1f6a56');
+    row('star', tut.howText, '#4a2a3f');
+    row('lock', tut.unlockTeaser, '#a8456a');
 
-    const showWay = button(this, -cw + 6, 52, 82, 13, 'Show Way', () => {
+    const btnY = y + 2;
+    const ch = btnY + 16;
+    panel(g, -cw, 0, cw, ch, 0xfff9ee, 0x4a2a3f);
+    g.fillStyle(0xffe066, 1).fillRoundedRect(-cw + 2, 2, cw - 4, barH, 3);
+
+    const showWay = button(this, -cw + 6, btnY, 82, 13, 'Show Way', () => {
       this.world.pulseGuide();
       this.showToast(tut.whereText);
     }, 0x7de8c8);
-    const storyBtn = button(this, -80, 52, 44, 13, 'Story', () => this.openJournal('journey'), 0xffe8f4);
-    const hideBtn = button(this, -32, 52, 26, 13, 'Hide', () => {
+    const storyBtn = button(this, -80, btnY, 44, 13, 'Story', () => this.openJournal('journey'), 0xffe8f4);
+    const hideBtn = button(this, -32, btnY, 26, 13, 'Hide', () => {
       this.tutorialOpen = false;
       this.lastTutorialSig = '';
       if (this.last) this.refresh(this.last);

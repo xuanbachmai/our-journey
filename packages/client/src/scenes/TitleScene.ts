@@ -1,5 +1,8 @@
 import Phaser from 'phaser';
 import { newWorld, PLAYER_IDS, type PlayerId, type WorldState } from '@hh/shared';
+
+/** Survives a scene restart, so a relayout does not re-run the reachability probe. */
+let lastReach = { ok: false, at: 0 };
 import { buildCharacterTexture, LOOKS } from '../art/characters';
 import { P } from '../art/palette';
 import { isWorldFullForDevice, MAX_WORLD_PLAYERS, net, seatCount, type Seats } from '../game/net';
@@ -47,11 +50,28 @@ export class TitleScene extends Phaser.Scene {
     this.chosen = false;
     this.bootGen++;
     this.drawBackdrop();
+    // Rebuilding the whole scene is how this screen re-lays-out, so a resize
+    // that changed nothing — and the pane fires several — threw the menu away,
+    // put "Connecting to world server..." up and went back to the network. Any
+    // tap landing in that window hit nothing, which on a phone is every tap
+    // after a rotation or the address bar sliding away. Ignore a size that did
+    // not actually change, and let a burst settle before rebuilding once.
+    let lastW = this.scale.width;
+    let lastH = this.scale.height;
+    let pending: number | undefined;
     const onResize = () => {
-      if (this.scene.isActive() && !this.chosen) this.scene.restart();
+      if (!this.scene.isActive() || this.chosen) return;
+      if (this.scale.width === lastW && this.scale.height === lastH) return;
+      lastW = this.scale.width;
+      lastH = this.scale.height;
+      window.clearTimeout(pending);
+      pending = window.setTimeout(() => {
+        if (this.scene.isActive() && !this.chosen) this.scene.restart();
+      }, 250);
     };
     this.scale.on('resize', onResize);
     this.events.once('shutdown', () => {
+      window.clearTimeout(pending);
       this.scale.off('resize', onResize);
       this.input.keyboard?.off('keydown-ONE');
       this.input.keyboard?.off('keydown-TWO');
@@ -70,8 +90,10 @@ export class TitleScene extends Phaser.Scene {
     g.fillStyle(0xffffff, 1);
     for (const [cx, cy, s] of [
       [40, 30, 1],
-      [W - 70, 22, 1.3],
-      [W / 2 + 30, 48, 0.8],
+      // clear of the font button in the top-right corner: tucked under it, the
+      // top half of this cloud is hidden and the rest reads as a stray white box
+      [W - 130, 46, 1.3],
+      [W / 2 + 30, 26, 0.8],
     ]) {
       g.fillRect(cx - 12 * s, cy, 24 * s, 6 * s);
       g.fillRect(cx - 6 * s, cy - 5 * s, 14 * s, 6 * s);
@@ -141,8 +163,14 @@ export class TitleScene extends Phaser.Scene {
     const join = params.get('join')?.trim().toUpperCase() || null;
 
     if (net.cloudEnabled) {
-      this.setStatus('Connecting to world server...');
-      const ok = await net.reachable();
+      // A rebuild moments after the last one is a relayout, not a fresh start:
+      // re-announcing "Connecting to world server..." and going back out to the
+      // network makes the screen flicker through a loading state it already
+      // finished. Within a few seconds, trust the answer we just got.
+      const warm = Date.now() - lastReach.at < 5000;
+      if (!warm) this.setStatus('Connecting to world server...');
+      const ok = warm ? lastReach.ok : await net.reachable();
+      lastReach = { ok, at: Date.now() };
       if (!this.isAlive(gen)) return;
       // Every path that lands somewhere clears this, except the one a new
       // player takes — straight to the menu — which left them reading

@@ -4,11 +4,14 @@ import { WorldScene } from './scenes/WorldScene';
 import { HudScene } from './scenes/HudScene';
 import { MiniGameScene } from './scenes/MiniGameScene';
 import { TitleScene } from './scenes/TitleScene';
+import { setTextScale } from './ui/text';
 
 const BASE_W = 320;
 const BASE_H = 180;
 /** The narrowest view we will scale up to: menus are drawn about this wide. */
 const MIN_W = 280;
+/** Past this the world stops growing and you simply see more of it. */
+const MAX_ZOOM = 3;
 
 let game: Phaser.Game | null = null;
 let fellBack = false;
@@ -65,14 +68,17 @@ function fit() {
     return;
   }
   refitTries = 0;
-  // Pick the zoom from the height, so the world is always about a screenful
-  // tall and the art never ends up tiny on a small phone, then hold it back if
-  // that would leave the view too narrow for a menu to sit in.
-  const zoom = Math.max(1, Math.min(Math.round(h / BASE_H), Math.floor(w / MIN_W)));
+  // Pick the zoom from the height so the art never ends up tiny on a phone,
+  // hold it back if that would leave the view too narrow for a menu, and cap
+  // it: the menus are drawn in the same pixels as the world, so an uncapped
+  // zoom of five or six on a desktop monitor made every line of text fifty
+  // pixels tall and the task card half the screen wide.
+  const zoom = Math.max(1, Math.min(Math.round(h / BASE_H), Math.floor(w / MIN_W), MAX_ZOOM));
   const gw = Math.ceil(w / zoom);
   const gh = Math.ceil(h / zoom);
   game.scale.setZoom(zoom);
   game.scale.resize(gw, gh);
+  setTextScale(zoom);
 }
 
 /**

@@ -26,7 +26,17 @@ export const FONT_OPTIONS: Record<FontKey, FontOption> = {
 };
 
 const FONT_STORAGE_KEY = 'oj-font-key-v3';
-const TEXT_RES = 2;
+/**
+ * How many real device pixels one game pixel covers. Text is rasterised at
+ * this multiple, so a glyph lands on the display's own pixels instead of being
+ * drawn small and then stretched — a fixed 2 here was why text stayed blurry
+ * on any screen big enough to zoom past 2.
+ */
+let TEXT_RES = 2;
+export function setTextScale(zoom: number) {
+  const dpr = typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1;
+  TEXT_RES = Math.max(1, Math.min(8, Math.round(zoom * dpr)));
+}
 
 export function getSavedFontKey(): FontKey {
   try {
