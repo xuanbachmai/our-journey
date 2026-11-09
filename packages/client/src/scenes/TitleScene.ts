@@ -3,7 +3,7 @@ import { newWorld, PLAYER_IDS, type PlayerId, type WorldState } from '@hh/shared
 import { buildCharacterTexture, LOOKS } from '../art/characters';
 import { P } from '../art/palette';
 import { isWorldFullForDevice, MAX_WORLD_PLAYERS, net, seatCount, type Seats } from '../game/net';
-import { eraseLocalData } from '../game/state';
+import { eraseLocalData, GameState } from '../game/state';
 import { confirmBox, copyToClipboard, promptText } from '../ui/dom';
 import {
   button,
@@ -33,6 +33,7 @@ export class TitleScene extends Phaser.Scene {
   private mode: Mode = 'loading';
   private ui: Phaser.GameObjects.GameObject[] = [];
   private chosen = false;
+  private bootGen = 0;
   private pickCtx: { code: string | null; seats: Seats | null; world: WorldState | null } = { code: null, seats: null, world: null };
   private status?: Phaser.GameObjects.Text;
   /** Where the status line lives when nothing is competing for the bottom. */
@@ -44,13 +45,18 @@ export class TitleScene extends Phaser.Scene {
 
   create() {
     this.chosen = false;
+    this.bootGen++;
     this.drawBackdrop();
     const onResize = () => {
       if (this.scene.isActive() && !this.chosen) this.scene.restart();
     };
     this.scale.on('resize', onResize);
-    this.events.once('shutdown', () => this.scale.off('resize', onResize));
-    void this.boot();
+    this.events.once('shutdown', () => {
+      this.scale.off('resize', onResize);
+      this.input.keyboard?.off('keydown-ONE');
+      this.input.keyboard?.off('keydown-TWO');
+    });
+    void this.boot(this.bootGen);
   }
 
   private drawBackdrop() {
@@ -86,7 +92,7 @@ export class TitleScene extends Phaser.Scene {
     this.add.image(6, H - 30, 'trees', 2).setOrigin(0, 1);
     this.add.image(W - 6, H - 28, 'trees', 0).setOrigin(1, 1);
     this.add.image(W - 40, H - 22, 'trees', 3).setOrigin(1, 1).setScale(0.8);
-    const titleY = Math.min(H * 0.16, H - 180);
+    const titleY = Math.max(22, Math.min(H * 0.16, H - 154));
     const title = this.add.text(W / 2, titleY, 'Our Journey', style({ fontSize: '18px', color: '#fff4dc', strokeThickness: 3 })).setOrigin(0.5);
     this.tweens.add({ targets: title, y: title.y - 3, duration: 1200, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
     this.add.text(W / 2, titleY + 18, 'a little world for two', plain({ color: '#7a4b00', stroke: '#fff4dc', strokeThickness: 2.5 })).setOrigin(0.5);
@@ -105,6 +111,8 @@ export class TitleScene extends Phaser.Scene {
   }
 
   private clearUi() {
+    this.input.keyboard?.off('keydown-ONE');
+    this.input.keyboard?.off('keydown-TWO');
     this.ui.forEach((o) => o.destroy());
     this.ui = [];
   }
@@ -120,19 +128,26 @@ export class TitleScene extends Phaser.Scene {
       this.status.setOrigin(0.5, 1).setPosition(this.statusHome.x, this.statusHome.y);
       return;
     }
-    const subtitleBottom = Math.min(H * 0.16, H - 180) + 26;
+    const subtitleBottom = Math.max(22, Math.min(H * 0.16, H - 154)) + 26;
     this.status.setOrigin(0.5, 1).setPosition(W / 2, Math.max(subtitleBottom + this.status.height, H - 144));
   }
 
-  private async boot() {
+  private isAlive(gen: number): boolean {
+    return gen === this.bootGen && this.sys.isActive();
+  }
+
+  private async boot(gen: number) {
     const params = new URLSearchParams(window.location.search);
     const join = params.get('join')?.trim().toUpperCase() || null;
 
     if (net.cloudEnabled) {
       this.setStatus('Connecting to world server...');
-      if (!(await net.reachable())) {
-        this.setStatus('Cloud server unreachable — running in local world mode.');
-      }
+      const ok = await net.reachable();
+      if (!this.isAlive(gen)) return;
+      // Every path that lands somewhere clears this, except the one a new
+      // player takes — straight to the menu — which left them reading
+      // "Connecting to world server..." for ever on a healthy connection.
+      this.setStatus(ok ? '' : 'Cloud server unreachable — running in local world mode.');
       if (window.location.hash.includes('access_token') || params.get('code')) {
         this.setStatus('Restoring your seat...');
         try {
@@ -140,6 +155,7 @@ export class TitleScene extends Phaser.Scene {
         } catch {
           /* ignore */
         }
+        if (!this.isAlive(gen)) return;
         history.replaceState(null, '', window.location.pathname);
       }
     }
@@ -161,9 +177,10 @@ export class TitleScene extends Phaser.Scene {
       const { code, player } = net.pairing;
       this.setStatus(`Loading World ${code}...`);
       const w = await net.fetchWorld(code);
+      if (!this.isAlive(gen)) return;
       if (!w) {
-        // World was deleted remotely or missing locally; recreate local entry from fresh/saved state so it stays bound
-        const fallbackWorld = newWorld(Date.now());
+        // World was unreachable or missing on server; preserve local saved state so progress is never wiped
+        const fallbackWorld = new GameState().world;
         const seats: Seats = { xb: null, qd: null, [player]: { device: net.deviceId } };
         this.setStatus('');
         this.showBoundWorld(code, player, seats, fallbackWorld);
@@ -189,6 +206,7 @@ export class TitleScene extends Phaser.Scene {
     if (net.pendingCode) {
       const code = net.pendingCode;
       const w = await net.fetchWorld(code);
+      if (!this.isAlive(gen)) return;
       if (w) {
         this.setStatus(`World ${code} created! Pick your character to lock in your seat.`);
         this.showPick(code, w.seats, w.state);
@@ -211,32 +229,37 @@ export class TitleScene extends Phaser.Scene {
     const { width: W, height: H } = this.scale;
 
     const cardW = 250;
-    const cardH = 112;
+    const cardH = retry ? 132 : 112;
     const cy = H / 2 + 22;
+    const top = cy - cardH / 2;
     const g = this.add.graphics();
-    panel(g, W / 2 - cardW / 2, cy - cardH / 2, cardW, cardH, 0xfff4dc);
+    panel(g, W / 2 - cardW / 2, top, cardW, cardH, 0xfff4dc);
     this.ui.push(g);
 
     const header = this.add
-      .text(W / 2, cy - cardH / 2 + 14, 'Start Your World', plain({ color: '#3b2133' }))
+      .text(W / 2, top + 14, 'Start Your World', plain({ color: '#3b2133' }))
       .setOrigin(0.5);
     this.ui.push(header);
 
     const bw = 180;
-    const mk = (yOff: number, label: string, fn: () => void, color?: number): Button => {
-      const b = button(this, W / 2 - bw / 2, cy + yOff, bw, 20, label, fn, color);
+    const mk = (yPos: number, label: string, fn: () => void, color?: number): Button => {
+      const b = button(this, W / 2 - bw / 2, yPos, bw, 20, label, fn, color);
       this.ui.push(b.container);
       return b;
     };
 
-    if (retry) mk(-52, 'Try again', () => this.scene.restart(), 0xffd23f);
-    mk(-24, '+ Create World (New Code)', () => void this.newFarm(), 0x7de8c8);
-    mk(2, 'Join World with Code', () => void this.joinPrompt(), 0xffe066);
+    let btnY = top + 28;
+    if (retry) {
+      mk(btnY, 'Try again', () => this.scene.restart(), 0xffd23f);
+      btnY += 24;
+    }
+    mk(btnY, '+ Create World (New Code)', () => void this.newFarm(), 0x7de8c8);
+    mk(btnY + 26, 'Join World with Code', () => void this.joinPrompt(), 0xffe066);
 
     const ruleText = this.add
       .text(
         W / 2,
-        cy + 36,
+        top + cardH - 12,
         `Max ${MAX_WORLD_PLAYERS} players per world  ·  1 world per device`,
         note({ color: '#6a5560', align: 'center' }),
       )
@@ -453,15 +476,17 @@ export class TitleScene extends Phaser.Scene {
       this.ui.push(backBtn.container);
     }
 
-    this.input.keyboard?.once('keydown-ONE', () => void this.choose('xb'));
-    this.input.keyboard?.once('keydown-TWO', () => void this.choose('qd'));
+    this.input.keyboard?.on('keydown-ONE', () => void this.choose('xb'));
+    this.input.keyboard?.on('keydown-TWO', () => void this.choose('qd'));
   }
 
   private async choose(id: PlayerId, spr?: Phaser.GameObjects.Sprite) {
     if (this.chosen || this.mode !== 'pick') return;
+    const { code, seats, world } = this.pickCtx;
+    const seat = seats?.[id];
+    if (seat && seat.device !== net.deviceId) return;
     this.chosen = true;
     if (spr) this.tweens.add({ targets: spr, scale: 2.4, duration: 120, yoyo: true });
-    const { code, world } = this.pickCtx;
     if (code) {
       this.setStatus('Claiming your seat...');
       const r = await net.claimSeat(code, id);
@@ -479,7 +504,10 @@ export class TitleScene extends Phaser.Scene {
         else this.showMenu(false);
         return;
       }
-      if (!net.pairing || !world) return;
+      if (!net.pairing || !world) {
+        this.chosen = false;
+        return;
+      }
       this.start(id, world);
       return;
     }
@@ -502,10 +530,14 @@ export class TitleScene extends Phaser.Scene {
    */
   static async deleteWorld(): Promise<boolean> {
     const code = net.boundWorldCode;
+    // This removes the world row from the server, so it goes for both of you,
+    // not just this phone. The old wording said it "removes it so you can
+    // create or join a new world", which is true and nowhere near enough for
+    // a red button sitting one tap from Copy Code.
     const ok = await confirmBox(
-      `Delete World ${code ?? ''}? Each device can only have 1 world at a time. Deleting this world will remove it so you can create or join a new world.`,
-      'Delete World',
-      'Keep World',
+      `Delete World ${code ?? ''} for BOTH of you? The farm, everything in it and all your progress are gone for good, on your partner's phone as well as this one. This cannot be undone.`,
+      'Delete for both',
+      'Keep our world',
     );
     if (!ok) return false;
     await net.deleteWorld();

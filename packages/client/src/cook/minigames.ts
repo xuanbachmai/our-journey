@@ -66,6 +66,7 @@ export class ChopGame extends MiniGame {
   private zoneHalf = 0.09;
   private zoneC = 0.5;
   private speed = 1.4;
+  private finishing = false;
 
   create() {
     const { scene, cx, cy } = this.c;
@@ -91,7 +92,7 @@ export class ChopGame extends MiniGame {
   }
 
   update(dt: number) {
-    if (this.done) return;
+    if (this.done || this.finishing) return;
     this.t += dt / 1000;
     const p = this.pos();
     this.knife.x = this.c.cx - 60 + 120 * p;
@@ -106,7 +107,7 @@ export class ChopGame extends MiniGame {
   }
 
   private chop() {
-    if (this.done) return;
+    if (this.done || this.finishing) return;
     const d = Math.abs(this.pos() - this.zoneC);
     const acc = Phaser.Math.Clamp(1 - d / this.zoneHalf, 0, 1);
     this.hits.push(acc);
@@ -117,6 +118,7 @@ export class ChopGame extends MiniGame {
     this.c.scene.tweens.add({ targets: pop, y: pop.y - 12, alpha: 0, duration: 500, onComplete: () => pop.destroy() });
     this.speed += 0.15;
     if (this.hits.length >= this.need) {
+      this.finishing = true;
       const avg = this.hits.reduce((a, b) => a + b, 0) / this.need;
       this.c.scene.time.delayedCall(350, () => this.end(avg));
     }
@@ -135,6 +137,8 @@ export class StirGame extends MiniGame {
   private g!: Phaser.GameObjects.Graphics;
   private spoon!: Phaser.GameObjects.Image;
   private lastAngle: number | null = null;
+  private frameAngleDelta = 0;
+  private keyAngle = 0;
   private omega = 0;
   private elapsed = 0;
   private good = 0;
@@ -149,12 +153,20 @@ export class StirGame extends MiniGame {
     this.max *= this.c.leniency;
     this.keep(scene.add.image(cx, cy + 4, 'mg', 'pot'));
     this.g = this.keep(scene.add.graphics());
+    // subtle circular stir guide inside the pot
+    this.g.lineStyle(1, 0xffffff, 0.35).strokeEllipse(cx, cy - 3, 22, 12);
     this.spoon = this.keep(scene.add.image(cx, cy - 10, 'mg', 'spoon').setOrigin(0.5, 0.2));
     this.meter = this.keep(scene.add.graphics());
   }
 
   private angleOf(x: number, y: number) {
     return Math.atan2(y - (this.c.cy - 4), x - this.c.cx);
+  }
+
+  private positionSpoon(a: number) {
+    this.spoon.setRotation(a + Math.PI / 2);
+    this.spoon.x = this.c.cx + Math.cos(a) * 10;
+    this.spoon.y = this.c.cy - 4 + Math.sin(a) * 6;
   }
 
   move(x: number, y: number, isDown: boolean) {
@@ -167,25 +179,40 @@ export class StirGame extends MiniGame {
       let d = a - this.lastAngle;
       while (d > Math.PI) d -= Math.PI * 2;
       while (d < -Math.PI) d += Math.PI * 2;
-      this.omega = this.omega * 0.6 + (Math.abs(d) / (1 / 60)) * 0.4;
+      this.frameAngleDelta += Math.abs(d);
     }
     this.lastAngle = a;
-    this.spoon.setRotation(a + Math.PI / 2);
-    this.spoon.x = this.c.cx + Math.cos(a) * 10;
-    this.spoon.y = this.c.cy - 4 + Math.sin(a) * 6;
+    this.positionSpoon(a);
   }
 
   up() {
     this.lastAngle = null;
   }
 
+  key(k: 'space' | 'enter') {
+    if (this.done) return;
+    if (k === 'space' || k === 'enter') {
+      this.keyAngle += 0.85;
+      this.frameAngleDelta += 0.85;
+      this.positionSpoon(this.keyAngle);
+    }
+  }
+
   update(dt: number) {
     if (this.done) return;
-    this.elapsed += dt / 1000;
-    if (this.lastAngle === null) this.omega *= 0.85;
+    const s = dt / 1000;
+    this.elapsed += s;
+    if (this.frameAngleDelta > 0 && s > 0) {
+      const inst = Math.min(14, this.frameAngleDelta / s);
+      this.omega = this.omega * 0.65 + inst * 0.35;
+      this.frameAngleDelta = 0;
+    } else {
+      // Decay smoothly when the pointer or keyboard is stationary
+      this.omega *= Math.pow(0.06, s);
+    }
     const inRange = this.omega >= this.min && this.omega <= this.max;
     if (inRange) {
-      this.good += dt / 1000;
+      this.good += s;
       if (Math.random() < 0.15) {
         const b = this.keep(this.c.scene.add.image(this.c.cx + Phaser.Math.Between(-12, 12), this.c.cy - 2, 'mg', 'bubble'));
         this.c.scene.tweens.add({ targets: b, y: b.y - 10, alpha: 0, duration: 400, onComplete: () => b.destroy() });
@@ -215,6 +242,7 @@ export class FlipGame extends MiniGame {
   private z0 = 0.62;
   private z1 = 0.8;
   private text!: Phaser.GameObjects.Text;
+  private finishing = false;
 
   create() {
     const { scene, cx, cy } = this.c;
@@ -228,7 +256,7 @@ export class FlipGame extends MiniGame {
   }
 
   update(dt: number) {
-    if (this.done) return;
+    if (this.done || this.finishing) return;
     this.v += (dt / 1000) * this.rate;
     if (this.v > 1) {
       this.v = 0;
@@ -250,7 +278,7 @@ export class FlipGame extends MiniGame {
   }
 
   private flip() {
-    if (this.done) return;
+    if (this.done || this.finishing) return;
     const centre = (this.z0 + this.z1) / 2;
     const half = (this.z1 - this.z0) / 2;
     const acc = Phaser.Math.Clamp(1 - Math.abs(this.v - centre) / half, 0, 1);
@@ -268,6 +296,7 @@ export class FlipGame extends MiniGame {
 
   private check() {
     if (this.flips.length >= this.need) {
+      this.finishing = true;
       const avg = this.flips.reduce((a, b) => a + b, 0) / this.need;
       this.c.scene.time.delayedCall(400, () => this.end(avg));
     }
@@ -410,6 +439,7 @@ export class PlateGame extends MiniGame {
   private elapsed = 0;
   private limit = 8;
   private g!: Phaser.GameObjects.Graphics;
+  private finishing = false;
 
   create() {
     const { scene, cx, cy } = this.c;
@@ -435,39 +465,54 @@ export class PlateGame extends MiniGame {
     return null;
   }
 
+  private placeItem(it: { img: Phaser.GameObjects.Image; placed: boolean }) {
+    it.placed = true;
+    const n = this.items.filter((i) => i.placed).length;
+    it.img.setPosition(this.c.cx + (n - 2) * 8, this.c.cy + 2).setScale(1.2);
+    this.c.sfx('blip');
+    if (this.items.every((i) => i.placed)) {
+      this.finishing = true;
+      const remaining = Math.max(0, this.limit - this.elapsed) / this.limit;
+      this.c.sfx('good');
+      this.c.scene.time.delayedCall(300, () => this.end(0.45 + 0.55 * remaining));
+    }
+  }
+
   down(x: number, y: number) {
+    if (this.done || this.finishing) return;
     this.dragging = this.pick(x, y);
   }
   move(x: number, y: number, isDown: boolean) {
-    if (!isDown || !this.dragging) return;
+    if (!isDown || !this.dragging || this.done || this.finishing) return;
     this.dragging.setPosition(x, y);
   }
   up(x: number, y: number) {
-    if (!this.dragging) return;
+    if (!this.dragging || this.done || this.finishing) return;
     const d = Math.hypot(x - this.c.cx, y - (this.c.cy + 4));
     const it = this.items.find((i) => i.img === this.dragging);
-    if (it && d < 16) {
-      it.placed = true;
-      const n = this.items.filter((i) => i.placed).length;
-      it.img.setPosition(this.c.cx + (n - 2) * 8, this.c.cy + 2).setScale(1.2);
-      this.c.sfx('blip');
-      if (this.items.every((i) => i.placed)) {
-        const remaining = Math.max(0, this.limit - this.elapsed) / this.limit;
-        this.c.sfx('good');
-        this.c.scene.time.delayedCall(300, () => this.end(0.45 + 0.55 * remaining));
-      }
+    if (it && d < 20) {
+      this.placeItem(it);
     }
     this.dragging = null;
   }
 
+  key(k: 'space' | 'enter') {
+    if (this.done || this.finishing) return;
+    if (k === 'space' || k === 'enter') {
+      const next = this.items.find((i) => !i.placed);
+      if (next) this.placeItem(next);
+    }
+  }
+
   update(dt: number) {
-    if (this.done) return;
+    if (this.done || this.finishing) return;
     this.elapsed += dt / 1000;
     const { cx, cy } = this.c;
     this.g.clear();
     this.g.fillStyle(0x4a2a3f, 1).fillRect(cx - 60, cy - 56, 120, 4);
     this.g.fillStyle(0xffd23f, 1).fillRect(cx - 60, cy - 56, 120 * Math.max(0, 1 - this.elapsed / this.limit), 4);
     if (this.elapsed >= this.limit) {
+      this.finishing = true;
       const placed = this.items.filter((i) => i.placed).length;
       this.end((placed / this.items.length) * 0.4);
     }
@@ -517,6 +562,7 @@ export class ReelGame extends MiniGame {
   }
 
   private hook() {
+    if (this.done) return;
     if (this.phase === 'bite') {
       this.phase = 'reel';
       this.c.sfx('good');
@@ -530,8 +576,13 @@ export class ReelGame extends MiniGame {
       this.tries++;
       this.t = 0;
       this.biteAt = 1 + Math.random() * 2.5;
-      this.text.setText('Too early! Waiting...');
       this.c.sfx('bad');
+      if (this.tries >= 3) {
+        this.text.setText('It got away...');
+        this.c.scene.time.delayedCall(700, () => this.end(0));
+      } else {
+        this.text.setText('Too early! Waiting...');
+      }
     }
   }
 
@@ -567,7 +618,7 @@ export class ReelGame extends MiniGame {
     }
     // reel
     this.elapsed += s;
-    if (Math.random() < this.jumpChance || Math.abs(this.fishPos - this.fishTarget) < 0.02) this.fishTarget = Math.random();
+    if (Math.random() < this.jumpChance * (s * 60) || Math.abs(this.fishPos - this.fishTarget) < 0.02) this.fishTarget = Math.random();
     this.fishPos += (this.fishTarget - this.fishPos) * Math.min(1, s * (1.2 + this.elapsed * 0.08) * this.speedMul);
     const up = this.c.held();
     this.barV += (up ? 2.4 : -2.4) * s;

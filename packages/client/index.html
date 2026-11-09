@@ -18,10 +18,10 @@
       :root { --sat: env(safe-area-inset-top, 0px); --sar: env(safe-area-inset-right, 0px); --sab: env(safe-area-inset-bottom, 0px); --sal: env(safe-area-inset-left, 0px); }
       html, body { margin: 0; padding: 0; height: 100%; background: #7ecbff; overflow: hidden; overscroll-behavior: none; }
       body { display: flex; align-items: center; justify-content: center; touch-action: none; -webkit-user-select: none; user-select: none; }
-      #game { display: flex; align-items: center; justify-content: center; width: 100vw; height: 100vh; }
+      #game { display: flex; align-items: center; justify-content: center; width: 100vw; height: 100vh; box-sizing: border-box; padding: var(--sat) var(--sar) var(--sab) var(--sal); }
       canvas { display: block; }
       #rotate {
-        display: none; position: fixed; inset: 0; background: #7ecbff; color: #3b2a3a; z-index: 10;
+        display: none; position: fixed; inset: 0; background: #7ecbff; color: #3b2a3a; z-index: 100;
         font-family: 'Press Start 2P', monospace; font-size: 14px; text-align: center; line-height: 2;
         align-items: center; justify-content: center; flex-direction: column;
       }

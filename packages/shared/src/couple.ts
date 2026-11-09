@@ -117,4 +117,5 @@ export const POSTCARD_MILESTONES: PostcardMilestone[] = [
   { id: 'served50', title: 'Full house', scene: 'restaurant', check: (s) => (s.stats.served ?? 0) >= 50 },
   { id: 'orders10', title: 'Town favourites', scene: 'orders', check: (s) => (s.stats.orders ?? 0) >= 10 },
   { id: 'coop', title: 'Cooked together', scene: 'together', check: (s) => (s.stats.coop ?? 0) >= 1 },
+  { id: 'special_day', title: 'A day to remember', scene: 'special', check: (s) => s.specialToday },
 ];

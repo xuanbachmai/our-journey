@@ -108,9 +108,10 @@ describe('hired help', () => {
     expect(isRipe(wet.world.plots[key]), 'the waterer should have brought it in').toBe(true);
     expect(isRipe(dry.world.plots[key]), 'a dry field should not grow itself').toBe(false);
     expect(wet.events.some((e) => e.type === 'hand' && e.hand === 'water')).toBe(true);
+    expect(wet.world.stats.water ?? 0).toBeGreaterThan(0);
   });
 
-  it('empties the barn into the bag', () => {
+  it('empties the barn into the bag and credits product-specific collection stats', () => {
     const now = Date.now();
     const w = newWorld(now, 14);
     w.producers.chicken = { count: 2, anchor: now, waiting: 0 };
@@ -118,10 +119,11 @@ describe('hired help', () => {
 
     const after = simulateWorld(w, now + 2 * DAY);
     expect(after.world.inventory.egg ?? 0).toBeGreaterThan(0);
+    expect(after.world.stats['collect:egg'] ?? 0).toBeGreaterThan(0);
     expect(after.events.some((e) => e.type === 'hand' && e.hand === 'barn')).toBe(true);
   });
 
-  it('reloads the machines from what the barn hand brought in', () => {
+  it('reloads the machines from what the barn hand brought in and credits batch stats', () => {
     const now = Date.now();
     const w = newWorld(now, 15);
     w.machines = { mill: { count: 1, jobs: [], ready: 0 } };
@@ -131,6 +133,7 @@ describe('hired help', () => {
     const after = simulateWorld(w, now + 2 * DAY);
     expect(after.world.machines?.mill?.ready ?? 0).toBeGreaterThan(0);
     expect((after.world.inventory['crop:wheat'] ?? 0)).toBeLessThan(6);
+    expect(after.world.stats.batch ?? 0).toBeGreaterThan(0);
   });
 
   it('stops working the day the wages run out', () => {

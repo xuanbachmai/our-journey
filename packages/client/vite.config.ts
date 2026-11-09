@@ -1,4 +1,5 @@
 import { defineConfig } from 'vite';
+import { fileURLToPath } from 'node:url';
 
 export default defineConfig({
   base: './',
@@ -17,6 +18,6 @@ export default defineConfig({
   },
   test: {
     // the engine needs a browser; the map and the rules do not
-    alias: { phaser: new URL('./src/test/phaser-stub.ts', import.meta.url).pathname },
+    alias: { phaser: fileURLToPath(new URL('./src/test/phaser-stub.ts', import.meta.url)) },
   },
 });

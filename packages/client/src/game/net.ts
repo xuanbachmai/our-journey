@@ -381,13 +381,13 @@ export class Net {
     }, delayMs);
   }
 
-  private cancelScheduledSave() {
+  cancelScheduledSave() {
     if (this.saveTimer !== null) window.clearTimeout(this.saveTimer);
     this.saveTimer = null;
     this.pendingSave = null;
   }
 
-  private async flushScheduledSave() {
+  async flushScheduledSave() {
     if (this.saveTimer !== null) window.clearTimeout(this.saveTimer);
     this.saveTimer = null;
     const state = this.pendingSave;
@@ -452,8 +452,16 @@ export class Net {
         bc.onmessage = (ev) => {
           const msg = ev.data as { event?: string; payload?: unknown; player?: PlayerId } | null;
           if (!msg || !msg.event) return;
-          if (msg.event === '__presence' && msg.player) {
+          if ((msg.event === '__presence' || msg.event === '__presence_ack') && msg.player) {
             this.online.add(msg.player);
+            this.onPresence?.(this.online);
+            if (msg.event === '__presence' && msg.player !== player) {
+              bc.postMessage({ event: '__presence_ack', player });
+            }
+            return;
+          }
+          if (msg.event === '__leave' && msg.player) {
+            this.online.delete(msg.player);
             this.onPresence?.(this.online);
             return;
           }
@@ -503,8 +511,16 @@ export class Net {
   }
 
   async disconnect() {
+    await this.flushScheduledSave();
     this.channelGeneration++;
     if (this.bc) {
+      if (this.pairing?.player) {
+        try {
+          this.bc.postMessage({ event: '__leave', player: this.pairing.player });
+        } catch {
+          /* ignore */
+        }
+      }
       this.bc.close();
       this.bc = null;
     }

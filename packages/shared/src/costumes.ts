@@ -1,4 +1,4 @@
-import { clothingDef, clothingKey, type AccessoryId, type DyeId, type HairId, type HatId, type Outfit, type TopId } from './clothing';
+import { clothingDef, clothingKey, isFreeClothing, type AccessoryId, type DyeId, type HairId, type HatId, type Outfit, type TopId } from './clothing';
 
 /**
  * A costume is a whole look in one tap: top, hat, extra, dye and hair colour
@@ -56,7 +56,7 @@ export function costumePieces(c: Costume): { kind: 'top' | 'hat' | 'accessory' |
 /** What the pieces would cost bought one at a time. */
 export function costumeFullPrice(c: Costume, owned: string[] = []): number {
   return costumePieces(c)
-    .filter((p) => !owned.includes(p.key))
+    .filter((p) => !isFreeClothing(p.id) && !owned.includes(p.key))
     .reduce((sum, p) => sum + (clothingDef(p.kind, p.id)?.price ?? 0), 0);
 }
 
@@ -71,7 +71,7 @@ export function costumePrice(c: Costume, owned: string[] = []): number {
 
 /** True once every piece of the look is in the wardrobe. */
 export function costumeOwned(c: Costume, owned: string[]): boolean {
-  return c.free || costumePieces(c).every((p) => owned.includes(p.key));
+  return c.free || costumePieces(c).every((p) => isFreeClothing(p.id) || owned.includes(p.key));
 }
 
 export function wearingCostume(c: Costume, outfit: Outfit): boolean {

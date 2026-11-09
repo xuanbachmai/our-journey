@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { STEP_INFO } from '@hh/shared';
 import { audio } from '../game/audio';
 import { makeMiniGame, type MiniGame, type MiniGameId } from '../cook/minigames';
-import { panel, plain, style } from '../ui/text';
+import { button, panel, plain, style } from '../ui/text';
 
 export interface MiniGameData {
   title: string;
@@ -28,6 +28,8 @@ const STEP_LABEL: Record<MiniGameId, { name: string; hint: string; hintTouch: st
   reel: { name: 'Fishing', hint: 'Wait for the "!", then press SPACE', hintTouch: 'Wait for the "!", then tap' },
 };
 
+const CHEER_LINES = ['You got this! ♥', 'Go go! ♥', 'Smells amazing! ♥', 'Nice timing! ♥'];
+
 /** Runs a list of mini-games one after another and reports their scores. */
 export class MiniGameScene extends Phaser.Scene {
   private data_!: MiniGameData;
@@ -41,7 +43,9 @@ export class MiniGameScene extends Phaser.Scene {
   private isTouch = false;
   private pointerDown = false;
   private finished = false;
+  private waitingForPartner = false;
   private waitText?: Phaser.GameObjects.Text;
+  private lastCheerAt = 0;
 
   constructor() {
     super('MiniGame');
@@ -53,28 +57,41 @@ export class MiniGameScene extends Phaser.Scene {
     this.scores = [];
     this.game_ = null;
     this.finished = false;
+    this.waitingForPartner = false;
+    this.lastCheerAt = 0;
   }
 
   create() {
     const { width: W, height: H } = this.scale;
-    this.isTouch = this.sys.game.device.input.touch;
+    this.isTouch = this.sys.game.device.input.touch && window.innerWidth <= 900;
     this.add.rectangle(W / 2, H / 2, W * 3, H * 3, 0x2a1a2f, 0.55).setInteractive();
     const pw = Math.min(280, W - 8);
     const ph = Math.min(170, H - 6);
+    const px = Math.round(W / 2 - pw / 2);
+    const py = Math.round(H / 2 - ph / 2);
     const g = this.add.graphics();
-    panel(g, Math.round(W / 2 - pw / 2), Math.round(H / 2 - ph / 2), pw, ph, 0xfff4dc);
-    g.fillStyle(0xffd23f, 1).fillRect(Math.round(W / 2 - pw / 2) + 2, Math.round(H / 2 - ph / 2) + 2, pw - 4, 14);
-    this.header = this.add.text(W / 2, Math.round(H / 2 - ph / 2) + 9, '', plain()).setOrigin(0.5);
-    this.hint = this.add.text(W / 2, Math.round(H / 2 + ph / 2) - 10, '', plain({ color: '#7a6a70', align: 'center', wordWrap: { width: pw - 16 } })).setOrigin(0.5);
+    panel(g, px, py, pw, ph, 0xfff4dc);
+    g.fillStyle(0xffd23f, 1).fillRect(px + 2, py + 2, pw - 4, 14);
+    this.header = this.add.text(W / 2, py + 9, '', plain()).setOrigin(0.5);
+    this.hint = this.add.text(W / 2, py + ph - 10, '', plain({ color: '#7a6a70', align: 'center', wordWrap: { width: pw - 16 } })).setOrigin(0.5);
     this.dots = this.add.graphics();
 
+    if (this.data_.onCancel) {
+      button(this, px + pw - 17, py + 1, 15, 15, 'x', () => this.cancel(), 0xff8fa3);
+      this.input.keyboard?.on('keydown-ESC', () => this.cancel());
+    }
+
     this.space = this.input.keyboard?.addKey('SPACE');
-    this.input.keyboard?.on('keydown-SPACE', () => this.game_?.key('space'));
+    this.input.keyboard?.on('keydown-SPACE', () => {
+      if (this.waitingForPartner) this.cheer();
+      else this.game_?.key('space');
+    });
     this.input.keyboard?.on('keydown-ENTER', () => this.game_?.key('enter'));
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
       this.pointerDown = true;
       audio.unlock();
-      this.game_?.down(p.x, p.y);
+      if (this.waitingForPartner) this.cheer(p.x, p.y);
+      else this.game_?.down(p.x, p.y);
     });
     this.input.on('pointermove', (p: Phaser.Input.Pointer) => this.game_?.move(p.x, p.y, p.isDown));
     const up = (p: Phaser.Input.Pointer) => {
@@ -85,6 +102,29 @@ export class MiniGameScene extends Phaser.Scene {
     this.input.on('pointerupoutside', up);
 
     void this.startStep();
+  }
+
+  private cancel() {
+    if (this.finished || !this.data_.onCancel) return;
+    this.finished = true;
+    this.game_?.destroy();
+    this.game_ = null;
+    audio.play('cancel');
+    this.scene.stop();
+    this.data_.onCancel();
+  }
+
+  private cheer(x?: number, y?: number) {
+    const now = this.time.now;
+    if (now - this.lastCheerAt < 240) return;
+    this.lastCheerAt = now;
+    audio.play('pop');
+    const { width: W, height: H } = this.scale;
+    const cx = x ?? W / 2 + Phaser.Math.Between(-36, 36);
+    const cy = y ?? H / 2 + Phaser.Math.Between(-16, 16);
+    const line = CHEER_LINES[Math.floor(Math.random() * CHEER_LINES.length)];
+    const pop = this.add.text(cx, cy, line, style({ fontSize: '9px', color: '#ff8fcf' })).setOrigin(0.5).setDepth(12);
+    this.tweens.add({ targets: pop, y: cy - 18, alpha: 0, duration: 750, onComplete: () => pop.destroy() });
   }
 
   private isMine(i: number) {
@@ -99,11 +139,13 @@ export class MiniGameScene extends Phaser.Scene {
     this.drawDots();
     const { width: W, height: H } = this.scale;
     if (!this.isMine(this.index) && this.data_.waitFor) {
-      this.hint.setText(`${this.data_.partnerName ?? 'Your partner'} is doing this step...`);
-      this.waitText = this.add.text(W / 2, H / 2, `waiting for ${this.data_.partnerName ?? 'partner'}`, style({ color: '#ffe066' })).setOrigin(0.5);
+      this.waitingForPartner = true;
+      this.hint.setText(`${this.data_.partnerName ?? 'Your partner'} is cooking — tap or press SPACE to cheer!`);
+      this.waitText = this.add.text(W / 2, H / 2, `waiting for ${this.data_.partnerName ?? 'partner'}...`, style({ color: '#ffe066' })).setOrigin(0.5);
       this.tweens.add({ targets: this.waitText, alpha: 0.4, duration: 600, yoyo: true, repeat: -1 });
       const score = await this.data_.waitFor(this.index);
-      this.waitText.destroy();
+      this.waitingForPartner = false;
+      this.waitText?.destroy();
       if (score === null) {
         this.finished = true;
         this.scene.stop();
@@ -113,6 +155,7 @@ export class MiniGameScene extends Phaser.Scene {
       this.stepDone(score, false);
       return;
     }
+    this.waitingForPartner = false;
     this.hint.setText(this.isTouch ? info.hintTouch : info.hint);
     this.game_ = makeMiniGame(id, {
       scene: this,

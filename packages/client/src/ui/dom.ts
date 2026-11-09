@@ -37,7 +37,14 @@ function ensureStyle() {
   document.head.appendChild(s);
 }
 
+let domModalOpen = false;
+export function isDomModalOpen(): boolean {
+  return domModalOpen;
+}
+
 export function promptText(opts: PromptOptions): Promise<string | null> {
+  if (domModalOpen) return Promise.resolve(null);
+  domModalOpen = true;
   ensureStyle();
   return new Promise((resolve) => {
     const dim = document.createElement('div');
@@ -72,23 +79,38 @@ export function promptText(opts: PromptOptions): Promise<string | null> {
     box.append(title, input, row);
     dim.appendChild(box);
     document.body.appendChild(dim);
+    let closed = false;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        done(null);
+      } else if (e.key === 'Enter' && !opts.multiline) {
+        e.preventDefault();
+        e.stopPropagation();
+        done(input.value.trim());
+      } else {
+        e.stopPropagation();
+      }
+    };
+    window.addEventListener('keydown', onKey, true);
     const done = (v: string | null) => {
+      if (closed) return;
+      closed = true;
+      domModalOpen = false;
+      window.removeEventListener('keydown', onKey, true);
       dim.remove();
       resolve(v);
     };
     cancel.onclick = () => done(null);
     ok.onclick = () => done(input.value.trim());
-    input.addEventListener('keydown', (e: Event) => {
-      const key = (e as KeyboardEvent).key;
-      if (key === 'Enter' && !opts.multiline) done(input.value.trim());
-      if (key === 'Escape') done(null);
-      e.stopPropagation();
-    });
     setTimeout(() => input.focus(), 50);
   });
 }
 
 export function confirmBox(title: string, okLabel = 'Yes', cancelLabel = 'No'): Promise<boolean> {
+  if (domModalOpen) return Promise.resolve(false);
+  domModalOpen = true;
   ensureStyle();
   return new Promise((resolve) => {
     const dim = document.createElement('div');
@@ -111,14 +133,31 @@ export function confirmBox(title: string, okLabel = 'Yes', cancelLabel = 'No'): 
     box.append(t, row);
     dim.appendChild(box);
     document.body.appendChild(dim);
-    cancel.onclick = () => {
-      dim.remove();
-      resolve(false);
+    let closed = false;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        done(false);
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        e.stopPropagation();
+        done(true);
+      } else {
+        e.stopPropagation();
+      }
     };
-    ok.onclick = () => {
+    window.addEventListener('keydown', onKey, true);
+    const done = (v: boolean) => {
+      if (closed) return;
+      closed = true;
+      domModalOpen = false;
+      window.removeEventListener('keydown', onKey, true);
       dim.remove();
-      resolve(true);
+      resolve(v);
     };
+    cancel.onclick = () => done(false);
+    ok.onclick = () => done(true);
   });
 }
 

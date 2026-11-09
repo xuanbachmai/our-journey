@@ -97,8 +97,8 @@ import { P } from '../art/palette';
 import { LETTER } from '../config/letter';
 import { audio } from '../game/audio';
 import { net, type NoteRow } from '../game/net';
-import { eraseLocalData, MAX_PENDING_GIFTS, type AwaySummary, type ProgressEvent } from '../game/state';
-import { confirmBox, copyToClipboard, promptText } from '../ui/dom';
+import { eraseLocalData, MAX_PENDING_GIFTS, type AwaySummary, type ProgressEvent, loadLocalNotes, saveLocalNotes, loadLocalAnswers, saveLocalAnswer } from '../game/state';
+import { confirmBox, copyToClipboard, promptText, isDomModalOpen } from '../ui/dom';
 import { button, count, FONT_OPTIONS, inset, meter, note, pill, titleBar, type FontKey, getSavedFontKey, panel, plain, refreshFontConfig, saveFontKey, style, tiny } from '../ui/text';
 import { TitleScene } from './TitleScene';
 import type { CookResult, HudData, WorldScene } from './WorldScene';
@@ -179,7 +179,6 @@ export class HudScene extends Phaser.Scene {
   private emoteRow?: Phaser.GameObjects.Container;
   private last?: HudData;
   private page = 0;
-  private localNotes: NoteRow[] = [];
 
   constructor() {
     super('Hud');
@@ -216,6 +215,11 @@ export class HudScene extends Phaser.Scene {
     this.areaText = this.add.text(0, 6, '', style({ color: '#fff' })).setOrigin(0.5, 0);
     this.weatherIcon = this.add.image(0, 12, 'icons', 'sun');
     this.partnerText = this.add.text(0, 18, '', style({ color: '#ffe066' })).setOrigin(0.5, 0);
+    this.partnerText.setInteractive({ useHandCursor: true });
+    this.partnerText.on('pointerdown', () => {
+      audio.play('blip');
+      this.openJournal('us');
+    });
 
     // top right: quest ticker, menu, map, help
     this.questGfx = this.add.graphics();
@@ -316,12 +320,38 @@ export class HudScene extends Phaser.Scene {
     this.input.on('pointerupoutside', release);
 
     this.bindWorld();
-    this.input.keyboard?.on('keydown-ESC', () => this.closeOverlay());
-    this.input.keyboard?.on('keydown-J', () => (this.overlay ? this.closeOverlay() : this.openJournal('journey')));
-    this.input.keyboard?.on('keydown-M', () => (this.overlay ? this.closeOverlay() : this.openMap()));
-    const bagKey = () => (this.overlay ? this.closeOverlay() : this.openBag());
+    const canHudKey = () => !isDomModalOpen() && !this.scene.isActive('MiniGame');
+    this.input.keyboard?.on('keydown-ESC', () => {
+      if (!canHudKey()) return;
+      this.dialog ? this.closeDialog() : this.closeOverlay();
+    });
+    this.input.keyboard?.on('keydown-J', () => {
+      if (!canHudKey()) return;
+      this.overlay ? this.closeOverlay() : this.openJournal('journey');
+    });
+    this.input.keyboard?.on('keydown-M', () => {
+      if (!canHudKey()) return;
+      this.overlay ? this.closeOverlay() : this.openMap();
+    });
+    const bagKey = () => {
+      if (!canHudKey()) return;
+      this.overlay ? this.closeOverlay() : this.openBag();
+    };
     this.input.keyboard?.on('keydown-B', bagKey);
     this.input.keyboard?.on('keydown-I', bagKey);
+
+    const onAdvanceDialog = () => {
+      if (!this.dialog) return;
+      if (this.isTyping) {
+        this.finishDialogTyping?.();
+      } else {
+        audio.play('select');
+        this.closeDialog();
+      }
+    };
+    this.input.keyboard?.on('keydown-SPACE', onAdvanceDialog);
+    this.input.keyboard?.on('keydown-E', onAdvanceDialog);
+    this.input.keyboard?.on('keydown-ENTER', onAdvanceDialog);
 
     const onResize = () => this.layout();
     this.scale.on('resize', onResize);
@@ -585,6 +615,9 @@ export class HudScene extends Phaser.Scene {
     }
     this.refreshTutorialCard(d.tutorial, !!d.decorate);
     // area & weather & partner
+    if (this.last && this.last.area !== d.area) {
+      this.showAreaPlate(d.areaName);
+    }
     this.areaText.setText(d.areaName + (d.special ? `  *${d.special}*` : ''));
     this.weatherIcon.setFrame(d.weather === 'rain' ? 'rain' : d.weather === 'cloudy' ? 'cloud' : 'sun');
     this.weatherIcon.setVisible(AREAS[d.area].outdoor);
@@ -601,6 +634,7 @@ export class HudScene extends Phaser.Scene {
 
   private showCatch(c: { id: FishId; size: number; isNew: boolean; record: boolean; bonus: number }) {
     const f = FISH[c.id];
+    audio.play(c.isNew || f.rarity === 'rare' || f.rarity === 'legendary' ? 'obtain' : 'good');
     const colors: Record<string, string> = { common: '#7a6a70', uncommon: '#3f9a5f', rare: '#3f7fd0', legendary: '#e6a800' };
     const w = 250;
     const h = 118;
@@ -832,51 +866,157 @@ export class HudScene extends Phaser.Scene {
 
   private dialog?: Phaser.GameObjects.Container;
   private dialogTimer?: Phaser.Time.TimerEvent;
+  private crawlTimer?: Phaser.Time.TimerEvent;
+  private isTyping = false;
+  private finishDialogTyping?: () => void;
+  private areaPlate?: Phaser.GameObjects.Container;
 
-  /** Pokemon-style text box along the bottom with a name tag. Tap it or wait to close. */
+  /** Pokemon-style text box along the bottom with typewriter crawl and bouncing prompt. */
   private showDialog(name: string, text: string, friend?: { id: string; hearts: number; canGift: boolean }) {
-    this.dialog?.destroy();
-    this.dialogTimer?.remove();
+    this.closeDialog();
     const { width: W, height: H } = this.scale;
-    const w = Math.min(300, W - 72);
-    const t = this.add.text(-w / 2 + 10, -8, text, plain({ wordWrap: { width: w - 20 }, lineSpacing: 3 })).setOrigin(0, 0);
-    const h = Math.max(30, t.height + 18);
+    const w = Math.min(300, W - 40);
+    // Measure full height
+    const dummy = this.add.text(0, 0, text, plain({ wordWrap: { width: w - 24 }, lineSpacing: 4 }));
+    const textH = dummy.height;
+    dummy.destroy();
+    const h = Math.max(34, textH + 18);
+
+    const t = this.add.text(-w / 2 + 12, -h / 2 + 8, '', plain({ wordWrap: { width: w - 24 }, lineSpacing: 4 })).setOrigin(0, 0);
+
     const g = this.add.graphics();
-    panel(g, -w / 2, -h / 2 - 2, w, h, 0xfff4dc);
-    t.setY(-h / 2 + 8);
-    const tagText = this.add.text(0, -h / 2 - 5, name, plain()).setOrigin(0.5);
-    const tagW = Math.max(36, tagText.width + 14);
-    tagText.setX(-w / 2 + 6 + tagW / 2);
+    // Pokemon double-line pixel frame:
+    // Outer dark outline
+    g.fillStyle(0x4a2a3f, 1);
+    g.fillRect(-w / 2, -h / 2 - 2, w, h);
+    // Inner crisp highlight outline
+    g.fillStyle(0xffffff, 1);
+    g.fillRect(-w / 2 + 1, -h / 2 - 1, w - 2, h - 2);
+    // Inner cream fill
+    g.fillStyle(0xfffbf2, 1);
+    g.fillRect(-w / 2 + 2, -h / 2, w - 4, h - 4);
+    // Bottom shade line
+    g.fillStyle(0x000000, 0.08);
+    g.fillRect(-w / 2 + 2, h / 2 - 5, w - 4, 2);
+
+    // Name tag
+    const tagText = this.add.text(0, -h / 2 - 7, name, plain({ fontSize: '9px', color: '#4a2a3f' })).setOrigin(0.5);
+    const tagW = Math.max(38, tagText.width + 12);
+    tagText.setX(-w / 2 + 8 + tagW / 2);
     const tag = this.add.graphics();
-    panel(tag, -w / 2 + 6, -h / 2 - 12, tagW, 14, 0xffd23f);
-    const arrow = this.add.text(w / 2 - 10, h / 2 - 10, '▼', plain({ color: '#b07a00' })).setOrigin(0.5);
-    this.tweens.add({ targets: arrow, y: arrow.y + 2, duration: 400, yoyo: true, repeat: -1 });
-    const zone = this.add.zone(0, 0, w, h).setInteractive();
+    tag.fillStyle(0x4a2a3f, 1);
+    tag.fillRect(-w / 2 + 8, -h / 2 - 14, tagW, 14);
+    tag.fillStyle(0xffd23f, 1);
+    tag.fillRect(-w / 2 + 9, -h / 2 - 13, tagW - 2, 12);
+    tag.fillStyle(0xffffff, 0.4);
+    tag.fillRect(-w / 2 + 9, -h / 2 - 13, tagW - 2, 1);
+
+    // Bouncing indicator arrow (hidden while typing)
+    const arrow = this.add.text(w / 2 - 12, h / 2 - 10, '▼', plain({ color: '#d03030', fontSize: '9px' })).setOrigin(0.5);
+    arrow.setVisible(false);
+    this.tweens.add({ targets: arrow, y: arrow.y + 2, duration: 320, yoyo: true, repeat: -1 });
+
+    const zone = this.add.zone(0, 0, w, h).setInteractive({ useHandCursor: true });
     const extra: Phaser.GameObjects.GameObject[] = [];
     if (friend) {
-      // friendship hearts next to the name tag, and a gift button while one is allowed today
-      for (let i = 0; i < 5; i++) extra.push(this.add.image(-w / 2 + 12 + tagW + i * 9, -h / 2 - 5, 'icons', 'heart').setScale(0.7).setAlpha(i < friend.hearts ? 1 : 0.4));
+      for (let i = 0; i < 5; i++) {
+        extra.push(this.add.image(-w / 2 + 14 + tagW + i * 9, -h / 2 - 7, 'icons', 'heart').setScale(0.7).setAlpha(i < friend.hearts ? 1 : 0.35));
+      }
       if (friend.canGift) {
-        const gift = button(this, w / 2 - 52, -h / 2 - 14, 46, 14, 'Gift', () => {
+        const gift = button(this, w / 2 - 50, -h / 2 - 15, 44, 14, 'Gift', () => {
           this.closeDialog();
           this.openGiftPicker(friend.id, name);
         }, 0xff8fcf);
         extra.push(gift.container);
       }
     }
-    const c = this.add.container(Math.round(W / 2 - 18), Math.round(H - 30 - h / 2), [g, t, tag, tagText, arrow, zone, ...extra]).setDepth(45);
-    zone.on('pointerdown', () => this.closeDialog());
+
+    const c = this.add.container(Math.round(W / 2), Math.round(H - 24 - h / 2), [g, t, tag, tagText, arrow, zone, ...extra]).setDepth(45);
     this.dialog = c;
-    c.setScale(0.9);
-    this.tweens.add({ targets: c, scale: 1, duration: 120, ease: 'Back.easeOut' });
-    this.dialogTimer = this.time.delayedCall(Math.max(friend?.canGift ? 7000 : 3500, text.length * 90), () => this.closeDialog());
+
+    // Typewriter crawl state
+    this.isTyping = true;
+    let charIdx = 0;
+    const len = text.length;
+
+    const finishTyping = () => {
+      if (!this.isTyping) return;
+      this.isTyping = false;
+      this.crawlTimer?.remove();
+      this.crawlTimer = undefined;
+      t.setText(text);
+      arrow.setVisible(true);
+      this.dialogTimer = this.time.delayedCall(Math.max(friend?.canGift ? 8000 : 4000, text.length * 60), () => this.closeDialog());
+    };
+    this.finishDialogTyping = finishTyping;
+
+    this.crawlTimer = this.time.addEvent({
+      delay: 24,
+      repeat: len,
+      callback: () => {
+        if (!this.isTyping) return;
+        charIdx++;
+        if (charIdx <= len) {
+          t.setText(text.slice(0, charIdx));
+          const ch = text[charIdx - 1];
+          if (ch && ch !== ' ' && charIdx % 2 === 0) {
+            audio.play('text');
+          }
+        }
+        if (charIdx >= len) {
+          finishTyping();
+        }
+      },
+    });
+
+    zone.on('pointerdown', () => {
+      if (this.isTyping) {
+        finishTyping();
+      } else {
+        audio.play('select');
+        this.closeDialog();
+      }
+    });
+
+    c.setScale(0.95);
+    this.tweens.add({ targets: c, scale: 1, duration: 100, ease: 'Quad.easeOut' });
   }
 
   private closeDialog() {
-    this.dialog?.destroy();
-    this.dialog = undefined;
+    this.crawlTimer?.remove();
+    this.crawlTimer = undefined;
     this.dialogTimer?.remove();
     this.dialogTimer = undefined;
+    this.finishDialogTyping = undefined;
+    this.isTyping = false;
+    this.dialog?.destroy();
+    this.dialog = undefined;
+  }
+
+  /** Pokemon-style area banner when entering a town, forest, or route. */
+  private showAreaPlate(name: string) {
+    this.areaPlate?.destroy();
+    const { width: W } = this.scale;
+    const txt = this.add.text(0, 0, name.toUpperCase(), style({ fontSize: '9px', color: '#ffffff' })).setOrigin(0.5);
+    const pw = Math.max(90, txt.width + 24);
+    const ph = 18;
+    const g = this.add.graphics();
+    panel(g, -pw / 2, -ph / 2, pw, ph, 0xffd23f, 0x4a2a3f);
+    const c = this.add.container(Math.round(W / 2), -20, [g, txt]).setDepth(48);
+    this.areaPlate = c;
+    audio.play('blip');
+    this.tweens.add({ targets: c, y: 36, duration: 300, ease: 'Back.easeOut' });
+    this.tweens.add({
+      targets: c,
+      y: -24,
+      duration: 250,
+      delay: 2400,
+      ease: 'Quad.easeIn',
+      onComplete: () => {
+        c.destroy();
+        if (this.areaPlate === c) this.areaPlate = undefined;
+      },
+    });
   }
 
   // ---------- toast & banners ----------
@@ -1015,16 +1155,29 @@ export class HudScene extends Phaser.Scene {
     c.add(this.add.text(x, y + 29, card.day, note({ color: '#6a5a60' })).setOrigin(0.5, 0.5));
   }
 
-  // ---------- overlays ----------
+  private onOverlayClose?: () => void;
 
-  private openOverlay(w: number, h: number, title: string): Phaser.GameObjects.Container {
-    this.closeOverlay();
+  private openOverlay(w: number, h: number, title: string, inPlace = false): Phaser.GameObjects.Container {
     const { width: W, height: H } = this.scale;
+    const fit = Math.min(1, (W - 8) / w, (H - 6) / h);
+    if (inPlace && this.overlay) {
+      this.overlay.removeAll(true);
+      const dim = this.add.rectangle(0, 0, W * 3, H * 3, 0x2a1a2f, 0.48).setInteractive();
+      const g = this.add.graphics();
+      panel(g, -w / 2, -h / 2, w, h, 0xfff4dc);
+      titleBar(g, -w / 2 + 2, -h / 2 + 2, w - 4, 17);
+      const t = this.add.text(0, -h / 2 + 10.5, title, plain()).setOrigin(0.5);
+      const close = button(this, w / 2 - 18, -h / 2 + 3, 15, 15, 'x', () => this.closeOverlay(), 0xff8fcf);
+      this.overlay.add([dim, g, t, close.container]);
+      this.overlay.setData('size', { w, h });
+      this.overlay.setScale(fit);
+      return this.overlay;
+    }
+    this.closeOverlay();
     // Panels are laid out at their designed size and the whole thing is shrunk
     // to fit the screen. Clamping the size instead used to cut off the bottom
     // row on short screens, because the contents were still placed for the
     // size the panel asked for.
-    const fit = Math.min(1, (W - 8) / w, (H - 6) / h);
     const dim = this.add.rectangle(0, 0, W * 3, H * 3, 0x2a1a2f, 0.48).setInteractive();
     const g = this.add.graphics();
     panel(g, -w / 2, -h / 2, w, h, 0xfff4dc);
@@ -1041,6 +1194,15 @@ export class HudScene extends Phaser.Scene {
   }
 
   closeOverlay() {
+    if (this.onOverlayClose) {
+      const fn = this.onOverlayClose;
+      this.onOverlayClose = undefined;
+      try {
+        fn();
+      } catch {
+        /* ignore */
+      }
+    }
     if (!this.overlay) return;
     this.overlay.destroy();
     this.overlay = undefined;
@@ -1111,21 +1273,21 @@ export class HudScene extends Phaser.Scene {
   }
 
   // ---------- stall (farm) ----------
-  private openStall(tab: 'seeds' | 'tools' | 'upgrades' | 'sell') {
+  private openStall(tab: 'seeds' | 'tools' | 'upgrades' | 'sell', inPlace = false) {
     const w = 270;
     const h = 168;
     const st = this.world.state;
-    const c = this.openOverlay(w, h, `Farm stall   (coins: ${st.coins})`);
+    const c = this.openOverlay(w, h, `Farm stall   (coins: ${st.coins})`, inPlace);
     this.tabs(c, w, h, [
-      ['Seeds', () => this.openStall('seeds')],
-      ['Tools', () => this.openStall('tools')],
-      ['Farm', () => this.openStall('upgrades')],
-      ['Sell', () => this.openStall('sell')],
+      ['Seeds', () => { this.page = 0; this.openStall('seeds', true); }],
+      ['Tools', () => { this.upgPage = 0; this.openStall('tools', true); }],
+      ['Farm', () => { this.upgPage = 0; this.openStall('upgrades', true); }],
+      ['Sell', () => { this.page = 0; this.openStall('sell', true); }],
     ], ['seeds', 'tools', 'upgrades', 'sell'].indexOf(tab));
-    if (tab === 'seeds') this.seedList(c, w, h, () => this.openStall('seeds'));
-    else if (tab === 'tools') this.upgradeList(c, w, h, 'tools', () => this.openStall('tools'));
-    else if (tab === 'upgrades') this.upgradeList(c, w, h, 'stall', () => this.openStall('upgrades'));
-    else this.sellList(c, w, h, () => this.openStall('sell'));
+    if (tab === 'seeds') this.seedList(c, w, h, () => this.openStall('seeds', true));
+    else if (tab === 'tools') this.upgradeList(c, w, h, 'tools', () => this.openStall('tools', true));
+    else if (tab === 'upgrades') this.upgradeList(c, w, h, 'stall', () => this.openStall('upgrades', true));
+    else this.sellList(c, w, h, () => this.openStall('sell', true));
   }
 
   private seedList(c: Phaser.GameObjects.Container, w: number, h: number, reopen: () => void) {
@@ -1138,8 +1300,9 @@ export class HudScene extends Phaser.Scene {
       c.add(this.add.image(-w / 2 + 14, y, 'icons', `seed-${id}`).setAlpha(open ? 1 : 0.4));
       c.add(this.add.text(-w / 2 + 24, y, open ? def.name : `${def.name} (rep ${def.unlockRep})`, plain({ color: open ? P.outline : '#9a8a90' })).setOrigin(0, 0.5));
       if (!open) return;
+      const owned = st.count(`seed:${id}`);
       c.add(this.add.text(-w / 2 + 104, y, `${def.seedPrice}c`, plain({ color: '#b07a00' })).setOrigin(0, 0.5));
-      c.add(this.add.text(-w / 2 + 136, y, `grows ${this.growText(id)}`, note({ color: '#7a6a70' })).setOrigin(0, 0.5));
+      c.add(this.add.text(-w / 2 + 136, y, `grows ${this.growText(id)}${owned > 0 ? ` (${owned})` : ''}`, note({ color: '#7a6a70' })).setOrigin(0, 0.5));
       const buy = button(this, w / 2 - 66, y - 7, 28, 14, 'x1', () => this.buySeed(id, 1, reopen));
       const buy5 = button(this, w / 2 - 36, y - 7, 28, 14, 'x5', () => this.buySeed(id, 5, reopen));
       buy.setEnabled(st.coins >= def.seedPrice);
@@ -1215,6 +1378,8 @@ export class HudScene extends Phaser.Scene {
     const st = this.world.state;
     const top = -h / 2 + 44;
     const owned = SELLABLE.filter((id) => st.count(id) > 0);
+    const pages = Math.max(1, Math.ceil(owned.length / 6));
+    if (this.page >= pages) this.page = Math.max(0, pages - 1);
     if (!owned.length) c.add(this.add.text(0, top + 20, 'Nothing to sell yet', plain({ color: '#7a6a70' })).setOrigin(0.5));
     let total = 0;
     owned.slice(this.page * 6, this.page * 6 + 6).forEach((id, i) => {
@@ -1251,25 +1416,25 @@ export class HudScene extends Phaser.Scene {
       c.add(all.container);
     }
     c.add(this.add.text(w / 2 - 8, h / 2 - 12, 'prices change daily', note({ color: '#7a6a70' })).setOrigin(1, 0.5));
-    this.pager(c, w, h, this.page, Math.max(1, Math.ceil(owned.length / 6)), (p) => {
+    this.pager(c, w, h, this.page, pages, (p) => {
       this.page = p;
       reopen();
     });
   }
 
   // ---------- town store ----------
-  private openStore(tab: 'seeds' | 'books' | 'machines' | 'sell') {
+  private openStore(tab: 'seeds' | 'books' | 'machines' | 'sell', inPlace = false) {
     const w = 280;
     const h = 168;
     const st = this.world.state;
-    const c = this.openOverlay(w, h, `General Store   (coins: ${st.coins})`);
+    const c = this.openOverlay(w, h, `General Store   (coins: ${st.coins})`, inPlace);
     this.tabs(c, w, h, [
-      ['Seeds', () => this.openStore('seeds')],
-      ['Books+', () => this.openStore('books')],
-      ['Make', () => this.openStore('machines')],
-      ['Sell', () => this.openStore('sell')],
+      ['Seeds', () => { this.page = 0; this.openStore('seeds', true); }],
+      ['Books+', () => { this.upgPage = 0; this.openStore('books', true); }],
+      ['Make', () => { this.upgPage = 0; this.openStore('machines', true); }],
+      ['Sell', () => { this.page = 0; this.openStore('sell', true); }],
     ], ['seeds', 'books', 'machines', 'sell'].indexOf(tab));
-    const reopen = () => this.openStore(tab);
+    const reopen = () => this.openStore(tab, true);
     if (tab === 'seeds') this.seedList(c, w, h, reopen);
     else if (tab === 'machines') this.machineList(c, w, h, reopen);
     else if (tab === 'sell') this.sellList(c, w, h, reopen);
@@ -1428,12 +1593,12 @@ export class HudScene extends Phaser.Scene {
     else c.add(this.add.text(gx + 93, h / 2 - 12, mode === 'buy' ? 'A set costs less than the pieces' : 'The first five are yours already', note({ color: '#6a5a60' })).setOrigin(0.5));
   }
 
-  private openClothes(mode: 'buy' | 'equip', kind: ClothingKind | 'looks') {
+  private openClothes(mode: 'buy' | 'equip', kind: ClothingKind | 'looks', inPlace = false) {
     const st = this.world.state;
     const w = 300;
     const h = 176;
-    const c = this.openOverlay(w, h, mode === 'buy' ? `Rosa's Tailor   (coins: ${st.coins})` : 'Wardrobe');
-    const reopen = () => this.openClothes(mode, kind);
+    const c = this.openOverlay(w, h, mode === 'buy' ? `Rosa's Tailor   (coins: ${st.coins})` : 'Wardrobe', inPlace);
+    const reopen = () => this.openClothes(mode, kind, true);
     const kinds: [ClothingKind | 'looks', string][] = [
       ['looks', 'Looks'],
       ['top', 'Outfits'],
@@ -1449,7 +1614,7 @@ export class HudScene extends Phaser.Scene {
       kinds.map(([k, label]) => [label, () => {
         this.shopSel = null;
         this.page = 0;
-        this.openClothes(mode, k);
+        this.openClothes(mode, k, true);
       }]),
       kinds.findIndex(([k]) => k === kind),
     );
@@ -1556,7 +1721,33 @@ export class HudScene extends Phaser.Scene {
     else if (mode === 'buy') {
       const s = st.clothingSale;
       c.add(this.add.text(gx + 93, h / 2 - 12, `Sale: ${clothingDef(s.kind, s.id).name} -30%`, note({ color: '#d94a4a' })).setOrigin(0.5));
-    } else c.add(this.add.text(gx + 93, h / 2 - 12, 'Pick one, then put it on', note({ color: '#7a6a70' })).setOrigin(0.5));
+    } else {
+      const matchBtn = button(this, gx + 93 - 55, h / 2 - 19, 110, 15, 'Match Partner ♥', () => {
+        const partnerOutfit = this.world.state.partnerOutfit;
+        let matchedAny = false;
+        const newOutfit: Partial<Outfit> = {};
+        const kindsToCheck: ClothingKind[] = ['top', 'hat', 'accessory', 'dye'];
+        for (const k of kindsToCheck) {
+          const piece = partnerOutfit[k];
+          if (piece && st.owns(k, piece)) {
+            (newOutfit as any)[k] = piece;
+            matchedAny = true;
+          }
+        }
+        if (matchedAny) {
+          st.setOutfit(newOutfit);
+          audio.play('great');
+          this.showToast('Matching outfits ♥');
+          this.world.refreshFromState();
+          this.world.afterChange();
+          reopen();
+        } else {
+          audio.play('bad');
+          this.showToast("Don't own your partner's pieces yet!");
+        }
+      }, 0xff8fcf);
+      c.add(matchBtn.container);
+    }
   }
 
   // ---------- Cozy Corner (furniture) ----------
@@ -1709,7 +1900,6 @@ export class HudScene extends Phaser.Scene {
     }
     const c = this.openOverlay(220, 130, `A gift from ${g.from}!`);
     c.setData('gift', true);
-    this.shownGifts.add(g.id);
     const box = this.add.image(0, -16, 'icons', 'gift').setScale(4);
     c.add(box);
     this.tweens.add({ targets: box, angle: 6, duration: 180, yoyo: true, repeat: -1 });
@@ -1717,6 +1907,7 @@ export class HudScene extends Phaser.Scene {
     const open = button(this, -40, 40, 80, 16, 'Open it', () => {
       const got = st.openGift(g.id);
       if (!got) return;
+      this.shownGifts.add(g.id);
       audio.play('great');
       this.world.afterChange();
       const info = this.giftInfo(got.key);
@@ -1846,9 +2037,9 @@ export class HudScene extends Phaser.Scene {
       if (net.enabled && net.pairing) {
         if (!(await net.sendNote(other, body))) return this.showToast('Could not send. Check your connection.');
       } else {
-        this.localNotes = this.loadLocalNotes();
-        this.localNotes.unshift({ id: Date.now(), from_player: me, to_player: other, body, created_at: new Date().toISOString(), read: false });
-        this.saveLocalNotes();
+        const list = loadLocalNotes();
+        list.unshift({ id: Date.now(), from_player: me, to_player: other, body, created_at: new Date().toISOString(), read: false });
+        saveLocalNotes(list);
       }
       st.sendHeart();
       this.world.emote('heart');
@@ -1861,11 +2052,11 @@ export class HudScene extends Phaser.Scene {
   }
 
   // ---------- seed maker ----------
-  private openSeedMaker() {
+  private openSeedMaker(inPlace = false) {
     const st = this.world.state;
     const w = 270;
     const h = 168;
-    const c = this.openOverlay(w, h, 'Seed maker');
+    const c = this.openOverlay(w, h, 'Seed maker', inPlace);
     const crops = CROP_IDS.filter((id) => st.count(`crop:${id}`) > 0);
     const top = -h / 2 + 30;
     c.add(this.add.text(0, top, `Clean 1 crop into ${SEEDS_PER_CROP} seeds`, plain({ color: '#7a6a70' })).setOrigin(0.5));
@@ -1873,7 +2064,9 @@ export class HudScene extends Phaser.Scene {
       c.add(this.add.text(0, 10, 'No crops in the bag.\nHarvest something first!', plain({ color: '#7a6a70', align: 'center' })).setOrigin(0.5));
       return;
     }
-    crops.slice(0, 6).forEach((id, i) => {
+    const pages = Math.max(1, Math.ceil(crops.length / 5));
+    if (this.page >= pages) this.page = Math.max(0, pages - 1);
+    crops.slice(this.page * 5, this.page * 5 + 5).forEach((id, i) => {
       const y = top + 20 + i * ROW;
       const have = st.count(`crop:${id}`);
       c.add(this.add.image(-w / 2 + 14, y, 'icons', `crop-${id}`));
@@ -1886,11 +2079,15 @@ export class HudScene extends Phaser.Scene {
         audio.play('pop');
         this.showToast(`+${got} ${CROPS[id].name} seeds`);
         this.world.afterChange();
-        this.openSeedMaker();
+        this.openSeedMaker(true);
       };
       const one = button(this, w / 2 - 98, y - 7, 40, 14, 'x1', () => make(1), 0x7de8c8);
       const all = button(this, w / 2 - 54, y - 7, 44, 14, 'All', () => make(have), 0xffe066);
       c.add([one.container, all.container]);
+    });
+    this.pager(c, w, h, this.page, pages, (p) => {
+      this.page = p;
+      this.openSeedMaker(true);
     });
   }
 
@@ -2000,38 +2197,44 @@ export class HudScene extends Phaser.Scene {
   }
 
   // ---------- counter ----------
-  private openCounter(tab: 'dishes' | 'counter' = 'dishes') {
+  private openCounter(tab: 'dishes' | 'counter' = 'dishes', inPlace = false) {
     const w = 270;
     const h = 168;
     const st = this.world.state;
     const free = st.freeSlots();
-    const c = this.openOverlay(w, h, 'Display counter');
+    const c = this.openOverlay(w, h, 'Display counter', inPlace);
     this.tabs(c, w, h, [
-      [`Dishes (${st.world.dishes.length})`, () => this.openCounter('dishes')],
-      [`Counter (${st.slotCount() - free}/${st.slotCount()})`, () => this.openCounter('counter')],
+      [`Dishes (${st.world.dishes.length})`, () => { this.page = 0; this.openCounter('dishes', true); }],
+      [`Counter (${st.slotCount() - free}/${st.slotCount()})`, () => { this.page = 0; this.openCounter('counter', true); }],
     ], tab === 'dishes' ? 0 : 1);
     const top = -h / 2 + 46;
     const row = (i: number) => top + i * 16;
     if (tab === 'dishes') {
       const dishes = st.world.dishes;
       if (!dishes.length) c.add(this.add.text(0, top + 20, 'Cook something at the kitchen first!', plain({ color: '#7a6a70' })).setOrigin(0.5));
-      dishes.slice(0, 7).forEach((d, i) => {
-        const y = row(i);
+      const pages = Math.max(1, Math.ceil(dishes.length / 6));
+      if (this.page >= pages) this.page = Math.max(0, pages - 1);
+      dishes.slice(this.page * 6, this.page * 6 + 6).forEach((d, idxInPage) => {
+        const dishIndex = this.page * 6 + idxInPage;
+        const y = row(idxInPage);
         c.add(this.add.image(-w / 2 + 16, y, 'icons', `dish-${d.recipe}`));
         c.add(this.add.text(-w / 2 + 26, y, RECIPES[d.recipe].name, plain()).setOrigin(0, 0.5));
         c.add(this.add.text(w / 2 - 78, y, `${GRADE_NAMES[d.grade]}  ${st.priceOf(d)}c`, plain({ color: '#b07a00' })).setOrigin(1, 0.5));
         const b = button(this, w / 2 - 72, y - 7, 60, 14, free ? 'Put out' : 'Full', () => {
-          if (st.listDish(i)) {
+          if (st.listDish(dishIndex)) {
             audio.play('blip');
             this.world.syncCounter();
             this.world.afterChange();
-            this.openCounter('dishes');
+            this.openCounter('dishes', true);
           }
         }, 0x7de8c8);
         b.setEnabled(free > 0);
         c.add(b.container);
       });
-      if (dishes.length > 7) c.add(this.add.text(0, row(7), `+${dishes.length - 7} more`, note({ color: '#7a6a70' })).setOrigin(0.5));
+      this.pager(c, w, h, this.page, pages, (p) => {
+        this.page = p;
+        this.openCounter('dishes', true);
+      });
     } else {
       st.world.counter.forEach((s, i) => {
         const y = row(i);
@@ -2047,7 +2250,7 @@ export class HudScene extends Phaser.Scene {
               audio.play('blip');
               this.world.syncCounter();
               this.world.afterChange();
-              this.openCounter('counter');
+              this.openCounter('counter', true);
             }
           }, 0xffd23f);
           c.add(b.container);
@@ -2107,17 +2310,18 @@ export class HudScene extends Phaser.Scene {
   }
 
   private openCoopInvite(m: { from: PlayerId; recipe: RecipeId; session: string }) {
+    this.onOverlayClose = () => this.world.declineCoop(m.session);
     const c = this.openOverlay(230, 90, 'Cook together?');
     c.add(this.add.image(-90, 6, 'icons', `dish-${m.recipe}`).setScale(2));
     c.add(this.add.text(-70, -4, `${m.from} wants to make`, plain()).setOrigin(0, 0.5));
     c.add(this.add.text(-70, 8, `${RECIPES[m.recipe].name} with you!`, plain({ color: '#b07a00' })).setOrigin(0, 0.5));
     const yes = button(this, -80, 26, 70, 16, 'Join!', () => {
+      this.onOverlayClose = undefined;
       this.closeOverlay();
       this.world.acceptCoop(m.recipe, m.from, m.session);
     }, 0x7de8c8);
     const no = button(this, 10, 26, 70, 16, 'Not now', () => {
       this.closeOverlay();
-      this.world.declineCoop(m.session);
     }, 0xe8dcc8);
     c.add([yes.container, no.container]);
   }
@@ -2577,6 +2781,10 @@ export class HudScene extends Phaser.Scene {
       } else if (sel.key === 'rod') {
         info = 'Catch 10 kinds of fish';
         hint = 'Face a pond and press act';
+      } else if (sel.key === 'camera') {
+        info = 'Snap photos anywhere';
+        hint = 'Tap Snap to take a keepsake';
+        action = ['Snap', () => { this.closeOverlay(); this.world.snapAnywhere(); }];
       } else {
         info = `1 crop into ${SEEDS_PER_CROP} seeds`;
         hint = 'It stands by the field';
@@ -2684,15 +2892,17 @@ export class HudScene extends Phaser.Scene {
   }
 
   // ---------- decorate ----------
-  private openDecorate() {
+  private openDecorate(inPlace = false) {
     const w = 260;
     const h = 160;
     const st = this.world.state;
-    const c = this.openOverlay(w, h, `Decorate   (cosy ${cozyPoints(st.world.furniturePlaced)}, +${Math.round(st.cozyBonus * 100)}% prices)`);
+    const c = this.openOverlay(w, h, `Decorate   (cosy ${cozyPoints(st.world.furniturePlaced)}, +${Math.round(st.cozyBonus * 100)}% prices)`, inPlace);
     const owned = FURNITURE_IDS.filter((id) => st.furnitureOwned(id) > 0);
-    const top = -h / 2 + 30;
+    const top = -h / 2 + 28;
     if (!owned.length) c.add(this.add.text(0, top + 16, 'Buy furniture at the town store', plain({ color: '#7a6a70' })).setOrigin(0.5));
-    owned.slice(0, 6).forEach((id, i) => {
+    const pages = Math.max(1, Math.ceil(owned.length / 5));
+    if (this.page >= pages) this.page = Math.max(0, pages - 1);
+    owned.slice(this.page * 5, this.page * 5 + 5).forEach((id, i) => {
       const y = top + i * ROW;
       c.add(this.add.image(-w / 2 + 14, y, 'icons', `furn-${id}`));
       c.add(this.add.text(-w / 2 + 24, y, `${FURNITURE[id].name} x${st.furnitureOwned(id)}`, plain()).setOrigin(0, 0.5));
@@ -2703,25 +2913,29 @@ export class HudScene extends Phaser.Scene {
       }, 0x7de8c8);
       c.add(b.container);
     });
-    const pick = button(this, -w / 2 + 8, h / 2 - 22, 110, 16, 'Pick up furniture', () => {
+    this.pager(c, w, h, this.page, pages, (p) => {
+      this.page = p;
+      this.openDecorate(true);
+    });
+    const pick = button(this, -w / 2 + 8, h / 2 - 20, 100, 14, 'Pick up furniture', () => {
       this.closeOverlay();
       this.world.startDecorate(null, 'pickup');
       this.showToast(this.isTouch ? 'Tap a piece, then press Pick up' : 'Move the cursor onto a piece, SPACE picks it up');
     }, 0xffe066);
     c.add(pick.container);
-    c.add(this.add.text(w / 2 - 8, h / 2 - 14, `${st.world.furniturePlaced.length} placed`, plain({ color: '#7a6a70' })).setOrigin(1, 0.5));
+    c.add(this.add.text(w / 2 - 8, h / 2 - 13, `${st.world.furniturePlaced.length} placed`, plain({ color: '#7a6a70' })).setOrigin(1, 0.5));
   }
 
   // ---------- mail: letter + notes ----------
-  private async openMail(tab: 'letter' | 'notes' | 'question' | 'gift') {
+  private async openMail(tab: 'letter' | 'notes' | 'question' | 'gift', inPlace = false) {
     const w = 260;
     const h = 168;
-    const c = this.openOverlay(w, h, 'Mailbox');
+    const c = this.openOverlay(w, h, 'Mailbox', inPlace);
     this.tabs(c, w, h, [
-      ['Letter', () => void this.openMail('letter')],
-      ['Notes', () => void this.openMail('notes')],
-      ['Question', () => void this.openMail('question')],
-      ['Gift', () => void this.openMail('gift')],
+      ['Letter', () => { this.page = 0; void this.openMail('letter', true); }],
+      ['Notes', () => { this.page = 0; void this.openMail('notes', true); }],
+      ['Question', () => { this.page = 0; void this.openMail('question', true); }],
+      ['Gift', () => { this.page = 0; void this.openMail('gift', true); }],
     ], ['letter', 'notes', 'question', 'gift'].indexOf(tab));
     const top = -h / 2 + 44;
     if (tab === 'letter') {
@@ -2738,12 +2952,14 @@ export class HudScene extends Phaser.Scene {
     if (tab === 'notes') {
       const me = this.world.playerId;
       const other = otherPlayer(me);
-      const notes = net.enabled && net.pairing ? await net.fetchNotes() : this.loadLocalNotes();
+      const notes = net.enabled && net.pairing ? await net.fetchNotes() : loadLocalNotes();
       if (net.enabled && net.pairing) void net.markNotesRead();
       if (!this.overlay || this.overlay !== c) return;
       if (!notes.length) c.add(this.add.text(0, top + 16, 'No notes yet. Write the first one!', plain({ color: '#7a6a70' })).setOrigin(0.5));
-      notes.slice(0, 5).forEach((n, i) => {
-        const y = top + i * 18;
+      const pages = Math.max(1, Math.ceil(notes.length / 5));
+      if (this.page >= pages) this.page = Math.max(0, pages - 1);
+      notes.slice(this.page * 5, this.page * 5 + 5).forEach((n, idxInPage) => {
+        const y = top + idxInPage * 18;
         const mine = n.from_player === me;
         const g = this.add.graphics();
         panel(g, -w / 2 + 8, y - 8, w - 16, 17, mine ? 0xe8f4ff : 0xfff0f6);
@@ -2755,10 +2971,14 @@ export class HudScene extends Phaser.Scene {
         z.on('pointerdown', () => {
           const cc = this.openOverlay(240, 100, `Note from ${mine ? 'you' : n.from_player}`);
           cc.add(this.add.text(0, 4, n.body, plain({ align: 'center', wordWrap: { width: 220 } })).setOrigin(0.5));
-          const back = button(this, -30, 32, 60, 14, 'Back', () => void this.openMail('notes'), 0xe8dcc8);
+          const back = button(this, -30, 32, 60, 14, 'Back', () => void this.openMail('notes', true), 0xe8dcc8);
           cc.add(back.container);
         });
         c.add(z);
+      });
+      this.pager(c, w, h, this.page, pages, (p) => {
+        this.page = p;
+        void this.openMail('notes', true);
       });
       const write = button(this, -w / 2 + 8, h / 2 - 22, 120, 16, `Write to ${other}`, async () => {
         const body = await promptText({ title: `A note for ${other}`, placeholder: 'Miss you. Water the tomatoes!', multiline: true, maxLength: 300, okLabel: 'Send' });
@@ -2772,14 +2992,15 @@ export class HudScene extends Phaser.Scene {
             this.world.afterChange();
           } else this.showToast('Could not send. Check your connection.');
         } else {
-          this.localNotes.unshift({ id: Date.now(), from_player: me, to_player: other, body, created_at: new Date().toISOString(), read: false });
-          this.saveLocalNotes();
+          const list = loadLocalNotes();
+          list.unshift({ id: Date.now(), from_player: me, to_player: other, body, created_at: new Date().toISOString(), read: false });
+          saveLocalNotes(list);
           audio.play('pop');
           this.world.state.stat('note');
           this.world.state.bond('note');
           this.world.afterChange();
         }
-        void this.openMail('notes');
+        void this.openMail('notes', true);
       }, 0x7de8c8);
       c.add(write.container);
       return;
@@ -2789,7 +3010,7 @@ export class HudScene extends Phaser.Scene {
     const day = dayKey(Date.now());
     const me = this.world.playerId;
     const other = otherPlayer(me);
-    const answers = net.enabled && net.pairing ? await net.fetchAnswers(day) : this.loadLocalAnswers(day);
+    const answers = net.enabled && net.pairing ? await net.fetchAnswers(day) : loadLocalAnswers(day);
     if (!this.overlay || this.overlay !== c) return;
     c.add(this.add.image(-w / 2 + 18, top + 2, 'icons', 'question'));
     c.add(this.add.text(-w / 2 + 32, top + 2, q, plain({ wordWrap: { width: w - 50 } })).setOrigin(0, 0.5));
@@ -2802,7 +3023,7 @@ export class HudScene extends Phaser.Scene {
       const a = await promptText({ title: q, placeholder: 'Your answer', multiline: true, maxLength: 200, initial: mine ?? '', okLabel: 'Save' });
       if (!a) return;
       if (net.enabled && net.pairing) await net.answerQuestion(day, a);
-      else this.saveLocalAnswer(day, me, a);
+      else saveLocalAnswer(day, me, a);
       if (!mine) {
         this.world.state.stat('answer');
         this.world.state.bond('answer');
@@ -2810,46 +3031,10 @@ export class HudScene extends Phaser.Scene {
         this.world.afterChange();
       }
       audio.play('pop');
-      void this.openMail('question');
+      void this.openMail('question', true);
     }, 0x7de8c8);
     c.add(ans.container);
     c.add(this.add.text(w / 2 - 8, h / 2 - 14, 'new daily', plain({ color: '#7a6a70' })).setOrigin(1, 0.5));
-  }
-
-  private loadLocalNotes(): NoteRow[] {
-    try {
-      this.localNotes = JSON.parse(localStorage.getItem('oj-notes-local') ?? '[]') as NoteRow[];
-    } catch {
-      this.localNotes = [];
-    }
-    return this.localNotes;
-  }
-
-  private saveLocalNotes() {
-    try {
-      localStorage.setItem('oj-notes-local', JSON.stringify(this.localNotes.slice(0, 30)));
-    } catch {
-      /* ignore */
-    }
-  }
-
-  private loadLocalAnswers(day: string): Partial<Record<PlayerId, string>> {
-    try {
-      const all = JSON.parse(localStorage.getItem('oj-answers-local') ?? '{}') as Record<string, Partial<Record<PlayerId, string>>>;
-      return all[day] ?? {};
-    } catch {
-      return {};
-    }
-  }
-
-  private saveLocalAnswer(day: string, player: PlayerId, a: string) {
-    try {
-      const all = JSON.parse(localStorage.getItem('oj-answers-local') ?? '{}') as Record<string, Partial<Record<PlayerId, string>>>;
-      all[day] = { ...(all[day] ?? {}), [player]: a };
-      localStorage.setItem('oj-answers-local', JSON.stringify(all));
-    } catch {
-      /* ignore */
-    }
   }
 
   private refreshNotesBadge() {
@@ -2884,18 +3069,18 @@ export class HudScene extends Phaser.Scene {
   // ---------- journal ----------
   private journeyView: number | null = null;
 
-  private openJournal(tab: 'journey' | 'today' | 'farm' | 'us' | 'album' | 'stats' | 'settings') {
+  private openJournal(tab: 'journey' | 'today' | 'farm' | 'us' | 'album' | 'stats' | 'settings', inPlace = false) {
     const w = 356;
     const h = 232;
-    const c = this.openOverlay(w, h, 'Journal');
+    const c = this.openOverlay(w, h, 'Journal', inPlace);
     this.tabs(c, w, h, [
-      ['Story', () => { this.journeyView = null; this.openJournal('journey'); }],
-      ['Today', () => this.openJournal('today')],
-      ['Farm', () => this.openJournal('farm')],
-      ['Us', () => this.openJournal('us')],
-      ['Book', () => this.openJournal('album')],
-      ['Stats', () => this.openJournal('stats')],
-      ['Setup', () => this.openJournal('settings')],
+      ['Story', () => { this.journeyView = null; this.openJournal('journey', true); }],
+      ['Today', () => this.openJournal('today', true)],
+      ['Farm', () => this.openJournal('farm', true)],
+      ['Us', () => this.openJournal('us', true)],
+      ['Book', () => this.openJournal('album', true)],
+      ['Stats', () => this.openJournal('stats', true)],
+      ['Setup', () => this.openJournal('settings', true)],
     ], ['journey', 'today', 'farm', 'us', 'album', 'stats', 'settings'].indexOf(tab));
     const st = this.world.state;
     const top = -h / 2 + 48;
@@ -3091,6 +3276,7 @@ export class HudScene extends Phaser.Scene {
       const nextKey = keys[(keys.indexOf(fontKey) + 1) % keys.length];
       saveFontKey(nextKey);
       refreshFontConfig();
+      this.refreshPersistentTexts();
       this.openJournal('settings');
     }, 0x7de8c8);
     mk('Special days', () => void this.openSpecialDays(), 0xffe066);
@@ -3147,26 +3333,43 @@ export class HudScene extends Phaser.Scene {
     );
   }
 
-  private async openSpecialDays() {
+  private refreshPersistentTexts() {
+    this.coinText?.setStyle(style({ color: '#b07a00' }));
+    this.repText?.setStyle(note({ color: '#a8456a' }));
+    this.areaText?.setStyle(style({ color: '#fff' }));
+    this.partnerText?.setStyle(style({ color: '#ffe066' }));
+    this.questText?.setStyle(plain({ color: P.outline }));
+    this.actionLabel?.setStyle(plain({ align: 'center', wordWrap: { width: 44 } }));
+    this.hint?.setStyle(style({ color: '#fff', align: 'center' }));
+  }
+
+  private async openSpecialDays(inPlace = false) {
     const st = this.world.state;
     const w = 280;
     const h = 164;
-    const c = this.openOverlay(w, h, 'Special days');
+    const c = this.openOverlay(w, h, 'Special days', inPlace);
     const top = -h / 2 + 32;
     const days = st.world.specialDays;
     if (!days.some((d) => d.day === 25 && d.month === 11)) {
       days.unshift({ label: 'xb & qd birthday', day: 25, month: 11 });
     }
-    days.slice(0, 4).forEach((sd, i) => {
-      const y = top + i * 22;
+    const pages = Math.max(1, Math.ceil(days.length / 4));
+    if (this.page >= pages) this.page = Math.max(0, pages - 1);
+    days.slice(this.page * 4, this.page * 4 + 4).forEach((sd, idxInPage) => {
+      const globalIdx = this.page * 4 + idxInPage;
+      const y = top + idxInPage * 22;
       this.rowCard(c, -w / 2 + 10, y - 10, w - 20, 20, { key: 'icons', frame: 'gift' }, 0xfffdf9, 0xffe8f4);
       c.add(this.add.text(-w / 2 + 34, y, `${sd.label}  ·  ${String(sd.day).padStart(2, '0')}/${String(sd.month).padStart(2, '0')}`, plain()).setOrigin(0, 0.5));
       const del = button(this, w / 2 - 46, y - 7, 32, 14, 'x', () => {
-        st.world.specialDays.splice(i, 1);
+        st.world.specialDays.splice(globalIdx, 1);
         st.touch();
-        void this.openSpecialDays();
+        void this.openSpecialDays(true);
       }, 0xff8fcf);
       c.add(del.container);
+    });
+    this.pager(c, w, h, this.page, pages, (p) => {
+      this.page = p;
+      void this.openSpecialDays(true);
     });
     const add = button(this, -w / 2 + 10, h / 2 - 24, 110, 16, 'Add a day', async () => {
       const label = await promptText({ title: 'What is the occasion? (e.g. Anniversary)', placeholder: 'Our anniversary', maxLength: 24 });
@@ -3175,10 +3378,13 @@ export class HudScene extends Phaser.Scene {
       if (!date) return;
       const m = date.match(/^(\d{1,2})[\/.-](\d{1,2})$/);
       if (!m) return this.showToast('Use DD/MM, like 25/11');
-      st.world.specialDays.push({ label, day: Number(m[1]), month: Number(m[2]) });
+      const day = Number(m[1]);
+      const month = Number(m[2]);
+      if (day < 1 || day > 31 || month < 1 || month > 12) return this.showToast('Invalid day or month!');
+      st.world.specialDays.push({ label, day, month });
       st.touch();
       audio.play('quest');
-      void this.openSpecialDays();
+      void this.openSpecialDays(true);
     }, 0x7de8c8);
     c.add(add.container);
     c.add(this.add.text(w / 2 - 10, h / 2 - 16, 'decorations + fireworks that day', note({ color: '#7a6a70' })).setOrigin(1, 0.5));

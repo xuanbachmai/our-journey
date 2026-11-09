@@ -40,8 +40,7 @@ export class Customer {
     }
     if (this.idx >= this.waypoints.length) {
       this.done = true;
-      this.ch.sprite.destroy();
-      this.ch.label.destroy();
+      this.ch.destroy();
       return;
     }
     const wp = this.waypoints[this.idx];

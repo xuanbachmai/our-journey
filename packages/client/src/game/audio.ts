@@ -30,7 +30,13 @@ type SfxName =
   | 'firework'
   | 'place'
   | 'pop'
-  | 'whistle';
+  | 'whistle'
+  | 'bump'
+  | 'text'
+  | 'obtain'
+  | 'alert'
+  | 'select'
+  | 'cancel';
 
 /** Overall level of the background music (sound effects are separate). */
 const MUSIC_VOLUME = 0.5;
@@ -43,6 +49,7 @@ class Audio {
   private musicTimer: number | null = null;
   sfxOn = true;
   musicOn = true;
+  nightOverride: boolean | null = null;
 
   /** Must be called from a user gesture on mobile. */
   unlock() {
@@ -69,6 +76,13 @@ class Audio {
     }
   }
 
+  setSfx(on: boolean) {
+    this.sfxOn = on;
+    if (this.rainGain && this.ctx) {
+      this.rainGain.gain.setTargetAtTime(on ? 0.12 : 0, this.ctx.currentTime, 0.3);
+    }
+  }
+
   setMusic(on: boolean) {
     this.musicOn = on;
     if (this.musicGain && this.ctx) this.musicGain.gain.setTargetAtTime(on ? MUSIC_VOLUME : 0, this.ctx.currentTime, 0.4);
@@ -85,6 +99,10 @@ class Audio {
     g.gain.setValueAtTime(vol, t0);
     g.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
     o.connect(g).connect(this.master);
+    o.onended = () => {
+      o.disconnect();
+      g.disconnect();
+    };
     o.start(t0);
     o.stop(t0 + dur + 0.02);
   }
@@ -101,6 +119,11 @@ class Audio {
     g.gain.setValueAtTime(vol, t0);
     g.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
     s.connect(f).connect(g).connect(this.master);
+    s.onended = () => {
+      s.disconnect();
+      f.disconnect();
+      g.disconnect();
+    };
     s.start(t0);
     s.stop(t0 + dur + 0.02);
   }
@@ -211,6 +234,31 @@ class Audio {
         this.tone(1200, 0.15, 'sine', 0.15, 600);
         this.tone(1800, 0.15, 'sine', 0.15, -600, 0.15);
         break;
+      case 'bump':
+        // Classic Pokemon wall bump: low square wave thud with short noise click
+        this.noise(0.04, 0.25, 400);
+        this.tone(110, 0.06, 'square', 0.2, -40);
+        break;
+      case 'text':
+        // Retro dialogue typewriter tick
+        this.tone(1480, 0.025, 'square', 0.06);
+        break;
+      case 'obtain':
+        // Classic 5-note fanfare
+        [523, 659, 784, 1046, 1318].forEach((f, i) => this.tone(f, 0.16, 'square', 0.15, 0, i * 0.09));
+        break;
+      case 'alert':
+        // Classic Pokemon "!" exclamation sound
+        this.tone(1760, 0.07, 'square', 0.18);
+        this.tone(2637, 0.12, 'square', 0.18, 0, 0.05);
+        break;
+      case 'select':
+        this.tone(1320, 0.05, 'square', 0.12);
+        break;
+      case 'cancel':
+        this.tone(880, 0.06, 'square', 0.1);
+        this.tone(587, 0.09, 'square', 0.1, 0, 0.05);
+        break;
     }
   }
 
@@ -231,13 +279,26 @@ class Audio {
       g.gain.value = 0;
       g.gain.setTargetAtTime(this.sfxOn ? 0.12 : 0, this.ctx.currentTime, 1.5);
       s.connect(f).connect(g).connect(this.master);
+      s.onended = () => {
+        s.disconnect();
+        f.disconnect();
+        g.disconnect();
+      };
       s.start();
       this.rainSrc = s;
       this.rainGain = g;
+    } else if (on && this.rainGain) {
+      this.rainGain.gain.setTargetAtTime(this.sfxOn ? 0.12 : 0, this.ctx.currentTime, 0.4);
     } else if (!on && this.rainSrc) {
       const src = this.rainSrc;
       this.rainGain?.gain.setTargetAtTime(0, this.ctx.currentTime, 0.8);
-      setTimeout(() => src.stop(), 2500);
+      setTimeout(() => {
+        try {
+          src.stop();
+        } catch {
+          /* ignore */
+        }
+      }, 2500);
       this.rainSrc = null;
       this.rainGain = null;
     }
@@ -319,6 +380,10 @@ class Audio {
     g.gain.linearRampToValueAtTime(vol, t + attack);
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
     o.connect(g).connect(dest);
+    o.onended = () => {
+      o.disconnect();
+      g.disconnect();
+    };
     o.start(t);
     o.stop(t + dur + 0.05);
   }
@@ -358,7 +423,7 @@ class Audio {
         this.nextMusicTime += missed * Audio.EIGHTH;
       }
       while (this.nextMusicTime < now + 0.6) {
-        this.playEighth(this.musicStep, this.nextMusicTime);
+        if (this.musicOn) this.playEighth(this.musicStep, this.nextMusicTime);
         this.nextMusicTime += Audio.EIGHTH;
         this.musicStep++;
       }
@@ -378,9 +443,9 @@ class Audio {
     // a tiny swing on the off-beats makes it feel relaxed rather than mechanical
     const at = t + (inBar % 2 === 1 ? E * 0.12 : 0);
 
-    // late at night the band plays softer: darker tone, no kick or brush
+    // late at night (or in Twilight mode) the band plays softer: darker tone, no kick or brush
     const hour = new Date().getHours();
-    const night = hour >= 21 || hour < 6;
+    const night = this.nightOverride ?? (hour >= 21 || hour < 6);
     if (inBar === 0 && this.musicFilter && this.ctx) this.musicFilter.frequency.setTargetAtTime(night ? 1700 : 2600, at, 2);
 
     if (inBar === 0) {
@@ -425,6 +490,10 @@ class Audio {
     g.gain.setValueAtTime(vol, t);
     g.gain.exponentialRampToValueAtTime(0.0001, t + 0.25);
     o.connect(g).connect(this.musicIn);
+    o.onended = () => {
+      o.disconnect();
+      g.disconnect();
+    };
     o.start(t);
     o.stop(t + 0.3);
   }
@@ -441,6 +510,11 @@ class Audio {
     g.gain.setValueAtTime(0.012, t);
     g.gain.exponentialRampToValueAtTime(0.0001, t + 0.07);
     s.connect(hp).connect(g).connect(this.musicIn);
+    s.onended = () => {
+      s.disconnect();
+      hp.disconnect();
+      g.disconnect();
+    };
     s.start(t, Math.random() * 0.4);
     s.stop(t + 0.08);
   }

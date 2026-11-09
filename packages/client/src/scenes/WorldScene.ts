@@ -5,6 +5,7 @@ import {
   type MachineId,
   ANIMALS,
   AREAS,
+  CROPS,
   cropTotalSeconds,
   CHAPTERS,
   FISH,
@@ -25,6 +26,7 @@ import {
   isSpecialDay,
   isWatered,
   ITEMS,
+  MACHINES,
   otherPlayer,
   pickDinerOrder,
   RECIPES,
@@ -63,7 +65,7 @@ import { GameState, plotKey } from '../game/state';
 import { style } from '../ui/text';
 import type { MiniGameData } from './MiniGameScene';
 
-export type ActionType = 'till' | 'plant' | 'water' | 'harvest' | 'fish' | 'talk' | 'serve' | 'pet' | 'forage' | 'place' | 'pickup' | 'hugpartner' | InteractId | 'none';
+export type ActionType = 'till' | 'plant' | 'water' | 'harvest' | 'fish' | 'talk' | 'serve' | 'pet' | 'forage' | 'place' | 'pickup' | 'hugpartner' | 'sleep' | 'playmusic' | 'sit' | InteractId | 'none';
 
 export interface Action {
   type: ActionType;
@@ -175,6 +177,7 @@ export class WorldScene extends Phaser.Scene {
   private critters: Critter[] = [];
   private horse?: Phaser.GameObjects.Sprite;
   private vehicle?: Phaser.GameObjects.Container;
+  private eggBang?: Phaser.GameObjects.Text;
   private togetherMs = 0;
 
   /** Snap! Together when your partner is close by and online. */
@@ -187,6 +190,23 @@ export class WorldScene extends Phaser.Scene {
     if (near) this.heartBurst((this.player.x + (this.remote?.x ?? this.player.x)) / 2, this.player.y - 24);
     this.time.delayedCall(300, () => this.events.emit('photo', photo));
     this.afterChange();
+  }
+
+  /** Use the handheld camera anywhere in the world. */
+  snapAnywhere() {
+    const areaSpot: Partial<Record<AreaId, PhotoSpot>> = {
+      town: 'fountain',
+      store: 'fountain',
+      tailor: 'fountain',
+      petshop: 'fountain',
+      furnshop: 'fountain',
+      forest: 'pond',
+      lane: 'lane',
+      xbhome: 'lane',
+      qdhome: 'lane',
+      ranch: 'ranch',
+    };
+    this.takePhoto(areaSpot[this.areaId] ?? 'lovetree');
   }
 
   /** Wrapped gifts from your partner pop up when you arrive. */
@@ -223,7 +243,7 @@ export class WorldScene extends Phaser.Scene {
     const on = this.riding && AREAS[this.areaId].outdoor;
     this.player.speed = on ? SPEED * RIDE_MULT : SPEED;
     this.player.sprite.setOrigin(0.5, on ? 1 + 10 / 28 : 1);
-    if (on && !this.horse) this.horse = this.add.sprite(this.player.x, this.player.y, 'critters', 'horse0').setOrigin(0.5, 1).setScale(2);
+    if (on && !this.horse) this.horse = this.add.sprite(this.player.x, this.player.y, 'critters', 'horse0').setOrigin(0.5, 1).setScale(2).setDepth(this.player.sprite.depth - 0.1);
     if (!on && this.horse) {
       this.horse.destroy();
       this.horse = undefined;
@@ -266,6 +286,9 @@ export class WorldScene extends Phaser.Scene {
   private hopOff(why = 'Back on your feet.') {
     if (!this.pillion) return;
     this.pillion = false;
+    if (this.remote && this.isBlocked(this.player.tileX, this.player.tileY)) {
+      this.player.setPosition(this.remote.x, this.remote.y);
+    }
     audio.play('pop');
     this.events.emit('toast', why);
     this.pushHud(true);
@@ -313,7 +336,7 @@ export class WorldScene extends Phaser.Scene {
     }
     if (active && !this.vehicle) {
       const sprite = this.add.sprite(0, 0, 'vehicles', active === 'car' ? 'car' : 'bike').setOrigin(0.5, 1).setScale(active === 'car' ? 1.6 : 1.4);
-      this.vehicle = this.add.container(this.player.x, this.player.y + 5, [sprite]).setDepth(this.player.sprite.depth + 1);
+      this.vehicle = this.add.container(this.player.x, this.player.y + 5, [sprite]).setDepth(this.player.sprite.depth - 0.1);
     }
     if (!active && this.vehicle) {
       this.vehicle.destroy();
@@ -351,7 +374,7 @@ export class WorldScene extends Phaser.Scene {
   private netHandlers: [string, (p: unknown) => void][] = [];
   private presenceHandler: ((online: Set<PlayerId>) => void) | null = null;
   private fresh = false;
-  private eggBang?: Phaser.GameObjects.Text;
+  private readyBangs = new Map<string, Phaser.GameObjects.Text>();
 
   constructor() {
     super('World');
@@ -399,11 +422,13 @@ export class WorldScene extends Phaser.Scene {
     this.heartTimer = 0;
     this.specialLabel = null;
     this.lastSprinkle = 0;
-    this.eggBang = undefined;
+    this.readyBangs = new Map();
     this.presenceHandler = null;
     this.companionTarget = null;
     this.companionNext = 0;
     this.lastMoving = false;
+    this.pillion = false;
+    this.partnerSeat = false;
     this.fireworkTimer = 0;
     this.guideMarker = undefined;
     this.guideWorld = null;
@@ -439,7 +464,8 @@ export class WorldScene extends Phaser.Scene {
     const a = this.area;
     this.blocked = a.blocked.map((r) => r.slice());
     this.state.data.lastPlayer = this.playerId;
-    audio.sfxOn = this.state.data.soundOn;
+    audio.setSfx(this.state.data.soundOn);
+    audio.nightOverride = this.state.data.twilightOn ? true : null;
     audio.setMusic(this.state.data.musicOn);
     this.cameras.main.setBackgroundColor(AREAS[this.areaId].outdoor ? P.grassDark : '#2a1a2f');
     this.cameras.main.fadeIn(250, 255, 244, 220);
@@ -467,6 +493,7 @@ export class WorldScene extends Phaser.Scene {
     const tex = buildCharacterTexture(this, look, this.state.outfit);
     const collision = { isBlocked: (tx: number, ty: number) => this.isBlocked(tx, ty) };
     this.player = new Character(this, tex, look.name, this.spawnAt.x, this.spawnAt.y, collision);
+    this.player.isPlayer = true;
     this.player.face(this.spawnFacing);
     this.inPortal = this.portalAt(this.player.tileX, this.player.tileY) !== null;
     if (this.state.pet) {
@@ -499,7 +526,7 @@ export class WorldScene extends Phaser.Scene {
     const kb = this.input.keyboard;
     if (kb) {
       this.cursors = kb.createCursorKeys();
-      this.keys = kb.addKeys('W,A,S,D') as Record<string, Phaser.Input.Keyboard.Key>;
+      this.keys = kb.addKeys('W,A,S,D,SHIFT') as Record<string, Phaser.Input.Keyboard.Key>;
       kb.on('keydown-SPACE', () => this.doAction());
       kb.on('keydown-E', () => this.doAction());
       kb.on('keydown-V', () => this.cycleMount());
@@ -701,6 +728,7 @@ export class WorldScene extends Phaser.Scene {
       if (m.player === this.playerId) return;
       this.remoteArea = m.area;
       if (m.area !== this.areaId) {
+        if (this.pillion) this.hopOff('Your partner changed areas.');
         if (this.remote) this.removeRemote();
         return;
       }
@@ -727,6 +755,7 @@ export class WorldScene extends Phaser.Scene {
       const myPlace = this.state.meData.place;
       const myDays = this.state.meData.daysPlayed;
       this.state.replaceWorld(m.world);
+      net.cancelScheduledSave();
       // never let the partner's copy move me
       this.state.meData.place = myPlace;
       for (const d of myDays) if (!this.state.meData.daysPlayed.includes(d)) this.state.meData.daysPlayed.push(d);
@@ -954,13 +983,13 @@ export class WorldScene extends Phaser.Scene {
         const dish: Dish = { recipe: c.recipe, grade };
         if (initiator) {
           this.state.addDish(dish);
-          this.state.stat('cook');
-          this.state.stat('coop');
-          this.state.stat(`cook:${GRADE_NAMES[grade]}`);
-          this.state.stat(`cook:r:${c.recipe}`);
-          this.state.recordDishGrade(c.recipe, grade);
-          this.state.bond('coop');
         }
+        this.state.stat('cook');
+        this.state.stat('coop');
+        this.state.stat(`cook:${GRADE_NAMES[grade]}`);
+        this.state.stat(`cook:r:${c.recipe}`);
+        this.state.recordDishGrade(c.recipe, grade);
+        this.state.bond('coop');
         audio.play(grade >= 2 ? 'great' : 'good');
         this.heartBurst(this.player.x, this.player.y - 20);
         this.events.emit('cookResult', { recipe: c.recipe, grade, price: this.state.priceOf(dish), scores, coop: true } as CookResult);
@@ -1061,6 +1090,27 @@ export class WorldScene extends Phaser.Scene {
     if (this.decorate.mode === 'pickup') {
       const idx = this.furnitureIndexAt(this.decorate.tx, this.decorate.ty);
       return { type: 'pickup', label: idx >= 0 ? 'Pick up' : 'Nothing', enabled: idx >= 0, ref: idx };
+    }
+    // placed furniture in home (bed, piano, records, seating)
+    if (this.areaId === 'home' && !this.decorate.mode) {
+      const { tx, ty } = ch.facingTile;
+      for (const f of this.state.world.furniturePlaced) {
+        const d = FURNITURE[f.id];
+        if (tx >= f.tx && tx < f.tx + d.w && ty >= f.ty && ty < f.ty + d.h) {
+          if (f.id === 'bed') {
+            return { type: 'sleep', label: this.state.data.twilightOn ? 'Wake Up ☀️' : 'Sleep / Twilight 🌙', enabled: true };
+          }
+          if (f.id === 'piano') {
+            return { type: 'playmusic', label: 'Play Piano 🎵', enabled: true };
+          }
+          if (f.id === 'records') {
+            return { type: 'playmusic', label: 'Play Record 🎶', enabled: true };
+          }
+          if (f.id === 'loveseat' || f.id === 'lovebench' || f.id === 'picnic') {
+            return { type: 'sit', label: 'Sit ♥', enabled: true };
+          }
+        }
+      }
     }
     // diners to serve
     for (let i = 0; i < this.diners.length; i++) {
@@ -1216,11 +1266,20 @@ export class WorldScene extends Phaser.Scene {
       }
       case 'plant': {
         const id = this.state.selectedSeed;
-        this.state.add(`seed:${id}`, -1);
-        this.state.setPlot(tx, ty, { ...p, crop: id, stage: 0, progress: 0 });
-        this.state.stat('plant');
-        this.pop(cx, cy, `seed-${id}`);
-        audio.play('plant');
+        let planted = 0;
+        for (const t of this.toolReach('hoe', ch)) {
+          if (this.state.count(`seed:${id}`) <= 0) break;
+          const q = this.state.plot(t.tx, t.ty);
+          if (!q.tilled || q.crop) continue;
+          this.state.add(`seed:${id}`, -1);
+          this.state.setPlot(t.tx, t.ty, { ...q, crop: id, stage: 0, progress: 0 });
+          this.pop(t.tx * TILE + 8, t.ty * TILE + 8, `seed-${id}`);
+          planted++;
+        }
+        if (planted > 0) {
+          this.state.stat('plant', planted);
+          audio.play('plant');
+        }
         break;
       }
       case 'water': {
@@ -1242,7 +1301,7 @@ export class WorldScene extends Phaser.Scene {
           const q = this.state.plot(t.tx, t.ty);
           if (!q.crop || !isRipe(q)) continue;
           const id = q.crop as CropId;
-          const qty = ITEMS[`crop:${id}`] ? (id === 'wheat' || id === 'potato' || id === 'blueberry' ? 2 : 1) : 1;
+          const qty = CROPS[id]?.yieldCount ?? (ITEMS[`crop:${id}`] ? (id === 'wheat' || id === 'potato' || id === 'blueberry' ? 2 : 1) : 1);
           this.state.add(`crop:${id}`, qty);
           this.state.setPlot(t.tx, t.ty, { ...emptyPlot(), tilled: true });
           this.state.stat('harvest', qty);
@@ -1333,8 +1392,18 @@ export class WorldScene extends Phaser.Scene {
       case 'serve': {
         const d = this.diners[a.ref ?? -1];
         if (!d) return;
-        let idx = this.state.world.dishes.findIndex((x) => x.recipe === d.recipe);
-        if (idx < 0) idx = 0;
+        const matchIdx = this.state.world.dishes.reduce((best, dish, i) => {
+          if (dish.recipe !== d.recipe) return best;
+          if (best === -1) return i;
+          return dish.grade > this.state.world.dishes[best].grade ? i : best;
+        }, -1);
+        let idx = matchIdx;
+        if (idx < 0) {
+          idx = this.state.world.dishes.reduce((lowest, dish, i) => {
+            if (lowest === -1) return i;
+            return this.state.priceOf(dish) < this.state.priceOf(this.state.world.dishes[lowest]) ? i : lowest;
+          }, -1);
+        }
         const dish = this.state.removeDish(idx);
         if (!dish) return;
         const v = serveValue(dish, this.state.reputation, this.state.cozyBonus + this.state.upgradeLevel('decor') * 0.08, d.patience, d.recipe);
@@ -1408,6 +1477,30 @@ export class WorldScene extends Phaser.Scene {
         audio.play('open');
         this.events.emit('openLoveTree');
         return;
+      case 'sleep': {
+        const on = this.state.toggleTwilight();
+        audio.nightOverride = on ? true : null;
+        this.updateNight();
+        audio.play('pop');
+        this.heartBurst(ch.x, ch.y - 20);
+        this.events.emit('toast', on ? 'Twilight Mode: Evening & Fireflies ✨' : 'Daylight Mode: Daytime ☀️');
+        this.pushHud(true);
+        break;
+      }
+      case 'playmusic': {
+        audio.play('great');
+        this.state.bond('coop');
+        this.events.emit('toast', 'A cozy melody fills the room 🎶');
+        this.heartBurst(ch.x, ch.y - 20);
+        break;
+      }
+      case 'sit': {
+        this.heartBurst(ch.x, ch.y - 20);
+        audio.play('good');
+        this.state.bond('heart');
+        this.events.emit('toast', 'Taking a peaceful moment to rest ♥');
+        break;
+      }
       default:
         return;
     }
@@ -1447,7 +1540,11 @@ export class WorldScene extends Phaser.Scene {
       steps: r.steps,
       leniency: this.cookLeniency(),
       ingredientIcons: this.ingredientIcons(id),
+      onCancel: () => {
+        this.setUiOpen(false);
+      },
       onDone: (scores) => {
+        this.setUiOpen(false);
         const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
         const grade = gradeFor(avg);
         const dish: Dish = { recipe: id, grade };
@@ -1468,14 +1565,17 @@ export class WorldScene extends Phaser.Scene {
   private startFishing() {
     this.setUiOpen(true);
     // which fish bites depends on the pond, the hour and the weather
-    const { fish, size } = pickFish(this.areaId === 'forest' ? 'forest' : 'farm', new Date().getHours(), this.weather === 'rain', Math.random);
+    const { fish, size } = pickFish(this.areaId === 'forest' ? 'forest' : 'farm', this.state.effectiveHour(), this.weather === 'rain', Math.random);
     const data: MiniGameData = {
       title: fish.rarity === 'legendary' ? 'Something huge bites!' : fish.rarity === 'rare' ? 'A strong pull!' : 'Fishing',
       steps: ['reel'],
-      leniency: 1 + this.state.upgradeLevel('stove') * 0.1,
+      leniency: 1 + Math.min(0.25, (this.state.world.stats.fish ?? 0) * 0.01),
       difficulty: fish.difficulty,
       fishColor: fish.color,
       ingredientIcons: [],
+      onCancel: () => {
+        this.setUiOpen(false);
+      },
       onDone: (scores) => {
         this.setUiOpen(false);
         if (scores[0] > 0) {
@@ -1738,7 +1838,7 @@ export class WorldScene extends Phaser.Scene {
   private fireworkTimer = 0;
   private updateFireworks(time: number, dt: number) {
     if (!this.specialLabel || !AREAS[this.areaId].outdoor) return;
-    const hour = new Date().getHours();
+    const hour = this.state.effectiveHour();
     if (hour < 19 && hour > 5) return;
     this.fireworkTimer -= dt;
     if (this.fireworkTimer > 0) return;
@@ -1815,7 +1915,7 @@ export class WorldScene extends Phaser.Scene {
       this.night.setFillStyle(0x1a2a6a, 0);
       return;
     }
-    const hour = new Date().getHours() + new Date().getMinutes() / 60;
+    const hour = this.state.effectiveHour() + (this.state.data.twilightOn ? 0 : new Date().getMinutes() / 60);
     const MAX = 0.28;
     let a = 0;
     if (hour >= 21 || hour < 5) a = MAX;
@@ -1953,6 +2053,10 @@ export class WorldScene extends Phaser.Scene {
         this.updateWeather(true);
       } else if (e.type === 'orders') {
         this.events.emit('toast', 'New orders on the town board!');
+      } else if (e.type === 'crafted') {
+        const mName = MACHINES[e.machine]?.name ?? 'Machine';
+        this.events.emit('toast', `${mName} finished ${e.count} batch${e.count > 1 ? 'es' : ''}!`);
+        audio.play('pop');
       }
     }
     if (changed) {
@@ -2026,6 +2130,9 @@ export class WorldScene extends Phaser.Scene {
         if (Phaser.Input.Keyboard.JustDown(this.cursors.down)) this.decorateNudge(0, 1);
       }
     }
+    const isShiftDown = Boolean(this.cursors?.shift?.isDown || this.keys?.SHIFT?.isDown);
+    const joySprint = Math.hypot(this.joy.x, this.joy.y) > 0.92;
+    this.player.running = (isShiftDown || joySprint) && !this.uiOpen && !this.driving && !this.riding;
     if (this.uiOpen) dx = dy = 0;
     if (this.pillion) {
       // our own client does the moving, so both screens agree on where we are
@@ -2126,7 +2233,7 @@ export class WorldScene extends Phaser.Scene {
     } else if (a && ['till', 'plant', 'water', 'harvest', 'none', 'fish'].includes(a.type)) {
       const { tx, ty } = this.player.facingTile;
       // upgraded tools show their full reach, faintly
-      const tool: ToolId | null = a.type === 'till' ? 'hoe' : a.type === 'water' ? 'can' : a.type === 'harvest' ? 'sickle' : null;
+      const tool: ToolId | null = (a.type === 'till' || a.type === 'plant') ? 'hoe' : a.type === 'water' ? 'can' : a.type === 'harvest' ? 'sickle' : null;
       if (tool) {
         this.cursor.lineStyle(1, 0xffffff, 0.45);
         for (const t of this.toolReach(tool, this.player)) if (t.tx !== tx || t.ty !== ty) this.cursor.strokeRect(t.tx * TILE + 0.5, t.ty * TILE + 0.5, TILE - 1, TILE - 1);

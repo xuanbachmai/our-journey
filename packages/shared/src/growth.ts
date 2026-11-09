@@ -59,17 +59,6 @@ export function simulatePlot(p: PlotState, from: number, to: number): PlotState 
   return { ...p, stage, progress };
 }
 
-export function simulatePlots<K extends string>(
-  plots: Record<K, PlotState>,
-  from: number,
-  to: number,
-): Record<K, PlotState> {
-  const start = Math.max(from, to - MAX_CATCHUP_MS);
-  const out = {} as Record<K, PlotState>;
-  for (const k in plots) out[k] = simulatePlot(plots[k], start, to);
-  return out;
-}
-
 /** Fraction 0..1 of total growth completed, for progress bars. */
 export function growthFraction(p: PlotState): number {
   if (!p.crop) return 0;

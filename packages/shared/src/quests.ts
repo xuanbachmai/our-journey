@@ -238,10 +238,6 @@ export const CHAPTERS: Chapter[] = [
   },
 ];
 
-/** Every task in story order (kept under the old name for the quest ticker). */
-export const QUESTS: Task[] = CHAPTERS.flatMap((c) => c.tasks);
-export type Quest = Task;
-
 export function chapterClaimed(w: WorldState, c: Chapter) {
   return w.questsClaimed.includes(`ch:${c.id}`);
 }
@@ -250,19 +246,11 @@ export function currentChapter(w: WorldState): Chapter | null {
   return CHAPTERS.find((c) => !chapterClaimed(w, c)) ?? null;
 }
 
-export function taskDone(t: Task, w: WorldState) {
-  return w.questsClaimed.includes(t.id) || t.progress(w) >= t.target;
-}
-
 /** The next unfinished task of the current chapter. */
 export function currentQuest(w: WorldState): Task | null {
   const c = currentChapter(w);
   if (!c) return null;
   return c.tasks.find((t) => !w.questsClaimed.includes(t.id) && t.progress(w) < t.target) ?? null;
-}
-
-export function questDone(q: Task, w: WorldState): boolean {
-  return q.progress(w) >= q.target;
 }
 
 export function guideFor(t: Task | null, w: WorldState): GuideTarget | null {
@@ -283,7 +271,14 @@ export interface DailyDef {
 
 export const DAILY_POOL: DailyDef[] = [
   { id: 'd_harvest', title: 'Harvest 8 crops', stat: 'harvest', target: 8, reward: 60 },
-  { id: 'd_water', title: 'Water 6 plots', stat: 'water', target: 6, reward: 40, needs: (w) => !(w.upgrades.sprinkler ?? 0) },
+  {
+    id: 'd_water',
+    title: 'Water 6 plots',
+    stat: 'water',
+    target: 6,
+    reward: 40,
+    needs: (w) => !(w.upgrades.sprinkler ?? 0) && (w.hands?.water ?? -1) < dayIndex(w.lastSimulatedAt),
+  },
   { id: 'd_cook', title: 'Cook 2 dishes', stat: 'cook', target: 2, reward: 60 },
   { id: 'd_serve', title: 'Serve 3 diners', stat: 'served', target: 3, reward: 80, needs: (w) => w.discovered.includes('restaurant') },
   { id: 'd_sale', title: 'Sell 2 counter dishes', stat: 'sale', target: 2, reward: 60 },

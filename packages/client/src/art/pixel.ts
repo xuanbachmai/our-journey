@@ -458,41 +458,7 @@ export class PixelCanvas {
   }
 
   done() {
-    const activeFrames: FrameRect[] =
-      this.frames.length > 0 ? this.frames : [{ x: 0, y: 0, w: this.w, h: this.h }];
-
-    const imgData = this.ctx.getImageData(0, 0, this.w, this.h);
-    if (this.key !== 'glow' && this.key !== 'tiles') {
-      shadePixelArt(imgData.data, this.w, this.h, activeFrames);
-      this.ctx.putImageData(imgData, 0, 0);
-    }
-
     this.tex.refresh();
-
-    // Upload 4x HD Super-Resolution EPX/Scale4x texture directly to WebGL while keeping 1x logical frame metrics
-    const renderer = this.scene.game?.renderer as Phaser.Renderer.WebGL.WebGLRenderer | undefined;
-    const gl = renderer?.gl;
-    const glWrapper = this.tex.source[0]?.glTexture;
-    if (gl && glWrapper?.webGLTexture && this.key !== 'glow') {
-      const wrapSeamless = this.key === 'tiles';
-      const pass1 = upscaleEPX2x(imgData.data, this.w, this.h, activeFrames, wrapSeamless);
-      const frames2x = activeFrames.map((f) => ({ x: f.x * 2, y: f.y * 2, w: f.w * 2, h: f.h * 2 }));
-      const pass2 = upscaleEPX2x(pass1, this.w * 2, this.h * 2, frames2x, wrapSeamless);
-
-      const hdW = this.w * 4;
-      const hdH = this.h * 4;
-      gl.bindTexture(gl.TEXTURE_2D, glWrapper.webGLTexture);
-      gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, hdW, hdH, 0, gl.RGBA, gl.UNSIGNED_BYTE, pass2);
-      if (!wrapSeamless) {
-        // On 4x pre-upscaled sprites/icons, LINEAR filtering prevents fractional-DPI pixel stepping while keeping 4x EPX crispness
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-      }
-      glWrapper.width = this.w;
-      glWrapper.height = this.h;
-    }
-
     return this.tex;
   }
 }

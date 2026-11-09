@@ -5,10 +5,10 @@ import { HudScene } from './scenes/HudScene';
 import { MiniGameScene } from './scenes/MiniGameScene';
 import { TitleScene } from './scenes/TitleScene';
 
-const BASE_W = 420;
-const BASE_H = 240;
+const BASE_W = 320;
+const BASE_H = 180;
 /** The narrowest view we will scale up to: menus are drawn about this wide. */
-const MIN_W = 360;
+const MIN_W = 280;
 
 let game: Phaser.Game | null = null;
 let fellBack = false;
@@ -45,85 +45,6 @@ function createGame(type: number) {
   return g;
 }
 
-/**
- * Keep the logical game grid spacious (~420x240) while upscaling the physical canvas
- * backing buffer to native screen pixels. Sprites and tiles keep gl.NEAREST
- * pixel-art edges, while 4x supersampled Text renders at full native resolution.
- */
-function applyHiRes(g: Phaser.Game, gw: number, gh: number, zoom: number) {
-  const dpr = Math.min(2, window.devicePixelRatio || 1);
-  const hiRes = Math.max(2, Math.min(6, Math.ceil(zoom * dpr)));
-  const pw = gw * hiRes;
-  const ph = gh * hiRes;
-  const renderer = g.renderer as Phaser.Renderer.WebGL.WebGLRenderer | Phaser.Renderer.Canvas.CanvasRenderer | undefined;
-  if (!renderer || !g.canvas) return;
-
-  if (renderer.type === Phaser.WEBGL) {
-    const r = renderer as Omit<Phaser.Renderer.WebGL.WebGLRenderer, 'drawingBufferHeight'> & {
-      __hiRes?: number;
-      __hiResPatched?: boolean;
-      drawingBufferHeight: number;
-      defaultScissor: number[];
-    };
-    r.__hiRes = hiRes;
-    if (g.canvas.width !== pw || g.canvas.height !== ph) {
-      g.canvas.width = pw;
-      g.canvas.height = ph;
-    }
-    if (!r.__hiResPatched) {
-      r.__hiResPatched = true;
-      r.resetViewport = function (this: typeof r) {
-        const gl = this.gl;
-        if (!gl) return;
-        gl.viewport(0, 0, this.canvas.width, this.canvas.height);
-        this.drawingBufferHeight = gl.drawingBufferHeight;
-      };
-      r.setScissor = function (
-        this: typeof r,
-        x: number,
-        y: number,
-        width: number,
-        height: number,
-      ) {
-        const gl = this.gl;
-        if (!gl) return;
-        const s = this.__hiRes || 1;
-        const current = this.currentScissor;
-        let shouldSet = width > 0 && height > 0;
-        if (current && shouldSet) {
-          shouldSet = current[0] !== x || current[1] !== y || current[2] !== width || current[3] !== height;
-        }
-        if (shouldSet) {
-          this.flush();
-          const dbh = gl.drawingBufferHeight;
-          gl.scissor(
-            Math.round(x * s),
-            Math.round(dbh - (y + height) * s),
-            Math.round(width * s),
-            Math.round(height * s),
-          );
-        }
-      };
-      r.on(Phaser.Renderer.Events.PRE_RENDER_CLEAR, () => {
-        const gl = r.gl;
-        if (!gl) return;
-        gl.viewport(0, 0, r.canvas.width, r.canvas.height);
-        gl.scissor(0, 0, r.canvas.width, r.canvas.height);
-        r.drawingBufferHeight = gl.drawingBufferHeight;
-      });
-    }
-    r.width = gw;
-    r.height = gh;
-    r.setProjectionMatrix(gw, gh);
-    r.resetViewport();
-    r.defaultScissor[0] = 0;
-    r.defaultScissor[1] = 0;
-    r.defaultScissor[2] = gw;
-    r.defaultScissor[3] = gh;
-    r.gl?.scissor(0, 0, pw, ph);
-  }
-}
-
 /** Integer zoom, and the internal resolution grows to fill the screen so there is no letterbox. */
 function fit() {
   if (!game) return;
@@ -145,13 +66,13 @@ function fit() {
   }
   refitTries = 0;
   // Pick the zoom from the height, so the world is always about a screenful
-  // tall and menus always have generous vertical & horizontal breathing room.
-  const zoom = Math.max(1, Math.min(Math.floor(h / BASE_H), Math.floor(w / MIN_W)));
+  // tall and the art never ends up tiny on a small phone, then hold it back if
+  // that would leave the view too narrow for a menu to sit in.
+  const zoom = Math.max(1, Math.min(Math.round(h / BASE_H), Math.floor(w / MIN_W)));
   const gw = Math.ceil(w / zoom);
   const gh = Math.ceil(h / zoom);
   game.scale.setZoom(zoom);
   game.scale.resize(gw, gh);
-  applyHiRes(game, gw, gh, zoom);
 }
 
 /**

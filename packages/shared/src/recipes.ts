@@ -4,11 +4,11 @@ export type StepId = 'chop' | 'stir' | 'flip' | 'season' | 'heat' | 'plate';
 
 export const STEP_INFO: Record<StepId, { name: string; hint: string; hintTouch: string }> = {
   chop: { name: 'Chop', hint: 'Press SPACE when the knife is in the green zone', hintTouch: 'Tap when the knife is in the green zone' },
-  stir: { name: 'Stir', hint: 'Hold the mouse and stir in circles at a steady pace', hintTouch: 'Drag in circles at a steady pace' },
+  stir: { name: 'Stir', hint: 'Stir in circles with the mouse or tap SPACE steadily', hintTouch: 'Drag in circles at a steady pace' },
   flip: { name: 'Flip', hint: 'Press SPACE when the sizzle meter hits green', hintTouch: 'Tap when the sizzle meter hits green' },
   season: { name: 'Season', hint: 'SPACE to shake, ENTER when the meter is in the zone', hintTouch: 'Tap to shake, then tap Done in the zone' },
   heat: { name: 'Heat', hint: 'Hold SPACE to raise the flame, keep the needle in the band', hintTouch: 'Hold to raise the flame, keep the needle in the band' },
-  plate: { name: 'Plate', hint: 'Drag every ingredient onto the plate', hintTouch: 'Drag every ingredient onto the plate' },
+  plate: { name: 'Plate', hint: 'Drag ingredients onto the plate or press SPACE', hintTouch: 'Drag every ingredient onto the plate' },
 };
 
 export type RecipeId =
@@ -31,7 +31,11 @@ export type RecipeId =
   | 'fish_tacos'
   | 'goat_cheese_salad'
   | 'egg_tart'
-  | 'truffle_pasta';
+  | 'truffle_pasta'
+  | 'artisan_pasta'
+  | 'berry_tart'
+  | 'cheese_souffle'
+  | 'sweet_crepe';
 
 export type BookId = 'bakery_book' | 'seafood_book';
 
@@ -70,12 +74,16 @@ export const RECIPES: Record<RecipeId, Recipe> = {
   egg_tart: { id: 'egg_tart', name: 'Duck Egg Tart', ingredients: { duck_egg: 1, 'crop:wheat': 1, milk: 1 }, steps: ['stir', 'heat', 'plate'], basePrice: 210, unlockRep: 12, color: '#ffcf4f', colorLight: '#fff0b0' },
   truffle_pasta: { id: 'truffle_pasta', name: 'Truffle Pasta', ingredients: { 'crop:wheat': 2, truffle: 1, milk: 1 }, steps: ['stir', 'heat', 'season', 'plate'], basePrice: 420, unlockRep: 25, color: '#f2dca0', colorLight: '#6b4a3a' },
   fish_tacos: { id: 'fish_tacos', name: 'Fish Tacos', ingredients: { fish: 2, 'crop:corn': 1, 'crop:tomato': 1 }, steps: ['chop', 'flip', 'season', 'plate'], basePrice: 300, unlockRep: 30, book: 'seafood_book', color: '#7fb8e6', colorLight: '#d8f0ff' },
+  artisan_pasta: { id: 'artisan_pasta', name: 'Harvest Pasta', ingredients: { flour: 1, cheese: 1, 'crop:tomato': 2 }, steps: ['chop', 'stir', 'heat', 'season'], basePrice: 290, unlockRep: 16, color: '#ff8552', colorLight: '#ffe6a3' },
+  berry_tart: { id: 'berry_tart', name: 'Berry Jam Tart', ingredients: { flour: 1, jam: 1, egg: 1 }, steps: ['stir', 'heat', 'plate'], basePrice: 310, unlockRep: 18, color: '#ff6b9d', colorLight: '#ffd6e6' },
+  cheese_souffle: { id: 'cheese_souffle', name: 'Cheese Souffle', ingredients: { cheese: 1, egg: 2, milk: 1 }, steps: ['stir', 'heat', 'season', 'plate'], basePrice: 330, unlockRep: 22, color: '#ffd966', colorLight: '#fff7cc' },
+  sweet_crepe: { id: 'sweet_crepe', name: 'Orchard Crepe', ingredients: { flour: 1, juice: 1, honey: 1 }, steps: ['stir', 'flip', 'plate'], basePrice: 350, unlockRep: 28, book: 'bakery_book', color: '#f7c56e', colorLight: '#fff3d1' },
 };
 
 export const RECIPE_IDS = Object.keys(RECIPES) as RecipeId[];
 
 export const BOOKS: Record<BookId, { id: BookId; name: string; price: number; desc: string }> = {
-  bakery_book: { id: 'bakery_book', name: 'Bakery Book', price: 450, desc: 'Honey Toast, Cream Pudding' },
+  bakery_book: { id: 'bakery_book', name: 'Bakery Book', price: 450, desc: 'Honey Toast, Cream Pudding, Orchard Crepe' },
   seafood_book: { id: 'seafood_book', name: 'Seafood Book', price: 600, desc: 'Fish Tacos' },
 };
 

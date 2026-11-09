@@ -1,7 +1,6 @@
 import {
   ACCESSORIES,
   ANIMAL_IDS,
-  CONTRACT_SLOTS,
   costumeFor,
   costumeFullPrice,
   costumeOwned,
@@ -14,6 +13,7 @@ import {
   CROP_IDS,
   cropTotalSeconds,
   isRipe,
+   isSpecialDay,
   HANDS,
   HAND_IDS,
   hireCost,
@@ -133,21 +133,75 @@ export interface SaveData {
   musicOn: boolean;
   /** Show the bouncing arrow toward the next task. */
   guideOn: boolean;
+  /** Whether the player toggled Twilight/Evening dream mode at the home bed. */
+  twilightOn?: boolean;
+}
+
+export interface LocalNoteRow {
+  id: number;
+  from_player: PlayerId;
+  to_player: PlayerId;
+  body: string;
+  created_at: string;
+  read?: boolean;
 }
 
 const KEY = 'our-journey-save-v3';
+const OLD_KEY = 'hearth-harvest-save-v1';
 
-/** Wipes everything this game stored on this device (save, notes, answers). */
+/** Wipes everything this game stored on this device (save, notes, answers, local worlds). */
 export function eraseLocalData() {
-  for (const k of [KEY, OLD_KEY, 'hearth-harvest-save-v1', 'oj-notes-local', 'oj-answers-local']) {
+  for (const k of [KEY, OLD_KEY, 'oj-notes-local', 'oj-answers-local', 'oj-worlds-local']) {
     try {
       localStorage.removeItem(k);
     } catch {
       /* private mode */
     }
   }
+  try {
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith('oj-special-')) localStorage.removeItem(k);
+    }
+  } catch {
+    /* ignore */
+  }
 }
-const OLD_KEY = 'hearth-harvest-save-v1';
+
+export function loadLocalNotes(): LocalNoteRow[] {
+  try {
+    return JSON.parse(localStorage.getItem('oj-notes-local') ?? '[]') as LocalNoteRow[];
+  } catch {
+    return [];
+  }
+}
+
+export function saveLocalNotes(notes: LocalNoteRow[]) {
+  try {
+    localStorage.setItem('oj-notes-local', JSON.stringify(notes.slice(0, 30)));
+  } catch {
+    /* ignore */
+  }
+}
+
+export function loadLocalAnswers(day: string): Partial<Record<PlayerId, string>> {
+  try {
+    const all = JSON.parse(localStorage.getItem('oj-answers-local') ?? '{}') as Record<string, Partial<Record<PlayerId, string>>>;
+    return all[day] ?? {};
+  } catch {
+    return {};
+  }
+}
+
+export function saveLocalAnswer(day: string, player: PlayerId, a: string) {
+  try {
+    const all = JSON.parse(localStorage.getItem('oj-answers-local') ?? '{}') as Record<string, Partial<Record<PlayerId, string>>>;
+    all[day] = { ...(all[day] ?? {}), [player]: a };
+    localStorage.setItem('oj-answers-local', JSON.stringify(all));
+  } catch {
+    /* ignore */
+  }
+}
 
 export function plotKey(tx: number, ty: number) {
   return `${tx},${ty}`;
@@ -204,8 +258,19 @@ export class GameState {
     return this.data.world;
   }
 
+  /** Effective hour of the day (returns 21 for Evening/Twilight dream mode when toggled). */
+  effectiveHour(now = Date.now()): number {
+    return this.data.twilightOn ? 21 : new Date(now).getHours();
+  }
+
+  toggleTwilight(): boolean {
+    this.data.twilightOn = !this.data.twilightOn;
+    this.save();
+    return !!this.data.twilightOn;
+  }
+
   private load(now: number): SaveData {
-    const fresh = (): SaveData => ({ version: 3, world: newWorld(now), lastPlayer: null, selectedSeed: 'wheat', seenLetter: false, soundOn: true, musicOn: true, guideOn: true });
+    const fresh = (): SaveData => ({ version: 3, world: newWorld(now), lastPlayer: null, selectedSeed: 'wheat', seenLetter: false, soundOn: true, musicOn: true, guideOn: true, twilightOn: false });
     try {
       const raw = localStorage.getItem(KEY) ?? localStorage.getItem(OLD_KEY);
       if (!raw) return fresh();
@@ -225,6 +290,7 @@ export class GameState {
       d.soundOn = parsed.soundOn !== false;
       d.musicOn = parsed.musicOn !== false;
       d.guideOn = parsed.guideOn !== false;
+      d.twilightOn = !!parsed.twilightOn;
       return d;
     } catch {
       return fresh();
@@ -252,9 +318,21 @@ export class GameState {
     this.onChange?.(this.world);
   }
 
-  /** Adopt a copy received from the partner. Keeps nothing local; the caller refreshes the scene. */
+  /**
+   * Adopt a copy received from the partner while preserving the local player's
+   * personal state (position, daysPlayed, outfit, pet) so a remote snapshot
+   * never reverts local movement, outfit changes, or pet interactions.
+   */
   replaceWorld(w: WorldState) {
+    const myPrev = this.data.world.players[this.me];
     this.data.world = w;
+    if (myPrev && this.data.world.players[this.me]) {
+      const cur = this.data.world.players[this.me];
+      if (myPrev.place) cur.place = myPrev.place;
+      if (myPrev.outfit) cur.outfit = { ...myPrev.outfit };
+      if (myPrev.pet) cur.pet = { ...myPrev.pet };
+      cur.daysPlayed = Array.from(new Set([...(cur.daysPlayed ?? []), ...(myPrev.daysPlayed ?? [])]));
+    }
     this.dirty = true;
   }
 
@@ -338,9 +416,13 @@ export class GameState {
     this.touch();
   }
 
-  stat(key: string, n = 1) {
+  private bumpStat(key: string, n = 1) {
     bump(this.world, key, n);
     if (TRACKED_STATS.includes(key)) bump(this.world, `by:${this.me}:${key}`, n);
+  }
+
+  stat(key: string, n = 1) {
+    this.bumpStat(key, n);
     this.touch();
   }
 
@@ -601,8 +683,7 @@ export class GameState {
     const n = 1 + (Math.random() < 0.3 ? 1 : 0);
     this.world.forageTaken[key] = Date.now();
     this.world.inventory[item] = this.count(item) + n;
-    bump(this.world, 'forage', n);
-    bump(this.world, `by:${this.me}:forage`, n);
+    this.bumpStat('forage', n);
     this.touch();
     return n;
   }
@@ -770,11 +851,6 @@ export class GameState {
     return { sent, finished };
   }
 
-  /** How full the board is, for the badge on the journal tab. */
-  get contractSlotsFree() {
-    return Math.max(0, CONTRACT_SLOTS - this.contractBoard.length);
-  }
-
   // ----- the farm at a glance -----
 
   /**
@@ -787,7 +863,7 @@ export class GameState {
       const hours = cropTotalSeconds(crop) / 3600;
       const each = this.sellPrice(`crop:${crop}`);
       const perHour = ((each * def.yieldCount) - def.seedPrice) / hours;
-      return { crop, perHour, each, grown: this.world.stats[`grew:${crop}`] ?? 0 };
+      return { crop, perHour, each, grown: this.world.stats[`harvest:${crop}`] ?? 0 };
     }).sort((a, b) => b.perHour - a.perHour);
   }
 
@@ -1025,17 +1101,18 @@ export class GameState {
   /** Returns newly earned postcards. */
   checkPostcards(): Postcard[] {
     const got: Postcard[] = [];
+    const now = Date.now();
     const ctx = {
       stats: this.world.stats,
       daysTogether: this.daysTogether,
       coins: this.world.coins,
       pets: (this.world.players.xb.pet ? 1 : 0) + (this.world.players.qd.pet ? 1 : 0),
-      specialToday: false,
+      specialToday: isSpecialDay(this.world.specialDays, now) !== null,
     };
     for (const m of POSTCARD_MILESTONES) {
       if (this.world.postcards.some((p) => p.id === m.id)) continue;
       if (m.check(ctx)) {
-        const card: Postcard = { id: m.id, title: m.title, day: dayKey(Date.now()), scene: m.scene };
+        const card: Postcard = { id: m.id, title: m.title, day: dayKey(now), scene: m.scene };
         this.world.postcards.push(card);
         got.push(card);
       }
@@ -1045,6 +1122,23 @@ export class GameState {
   }
 
   // ----- journey (chapters & tasks) and daily tasks -----
+
+  private grantRewardBundle(r: {
+    coins?: number;
+    rep?: number;
+    items?: Partial<Record<ItemId, number>>;
+    furniture?: Partial<Record<FurnitureId, number>>;
+    clothing?: string[];
+    book?: BookId;
+  }) {
+    const w = this.world;
+    if (r.coins) w.coins += r.coins;
+    if (r.rep) w.reputation = Math.min(100, w.reputation + r.rep);
+    for (const [id, n] of Object.entries(r.items ?? {})) w.inventory[id as ItemId] = this.count(id as ItemId) + (n ?? 0);
+    for (const [id, n] of Object.entries(r.furniture ?? {})) w.furnitureOwned[id as FurnitureId] = this.furnitureOwned(id as FurnitureId) + (n ?? 0);
+    for (const key of r.clothing ?? []) if (!w.clothingOwned.includes(key)) w.clothingOwned.push(key);
+    if (r.book && !w.books.includes(r.book)) w.books.push(r.book);
+  }
 
   /**
    * Claims every finished task of the current chapter, then the chapter itself,
@@ -1065,11 +1159,7 @@ export class GameState {
       if (!ch.tasks.every((t) => w.questsClaimed.includes(t.id))) break;
       w.questsClaimed.push(`ch:${ch.id}`);
       const r = ch.reward;
-      w.coins += r.coins;
-      if (r.rep) w.reputation = Math.min(100, w.reputation + r.rep);
-      for (const [id, n] of Object.entries(r.items ?? {})) w.inventory[id as ItemId] = this.count(id as ItemId) + (n ?? 0);
-      for (const [id, n] of Object.entries(r.furniture ?? {})) w.furnitureOwned[id as FurnitureId] = this.furnitureOwned(id as FurnitureId) + (n ?? 0);
-      for (const key of r.clothing ?? []) if (!w.clothingOwned.includes(key)) w.clothingOwned.push(key);
+      this.grantRewardBundle(r);
       const next = currentChapter(w);
       out.push({ kind: 'chapter', number: CHAPTERS.indexOf(ch) + 1, title: ch.title, rewardText: r.text, next: next?.title ?? null });
     }
@@ -1139,9 +1229,7 @@ export class GameState {
       const key = `bond:${r.level}`;
       if (r.level > lvl || w.questsClaimed.includes(key)) continue;
       w.questsClaimed.push(key);
-      if (r.coins) w.coins += r.coins;
-      for (const [id, n] of Object.entries(r.furniture ?? {})) w.furnitureOwned[id as FurnitureId] = this.furnitureOwned(id as FurnitureId) + (n ?? 0);
-      for (const c of r.clothing ?? []) if (!w.clothingOwned.includes(c)) w.clothingOwned.push(c);
+      this.grantRewardBundle(r);
       out.push({ kind: 'bond', level: r.level, text: r.text });
     }
   }
@@ -1185,6 +1273,7 @@ export class GameState {
     const w = this.world;
     const g = (w.giftBox ?? []).find((x) => x.id === id && x.to === this.me);
     if (!g) return null;
+    if (g.key.startsWith('dish:') && w.dishes.length >= this.dishCap) return null;
     w.giftBox = (w.giftBox ?? []).filter((x) => x.id !== id);
     if (g.key.startsWith('dish:')) {
       const [, recipe, grade] = g.key.split(':');
@@ -1212,8 +1301,12 @@ export class GameState {
       outfits: together ? { [this.me]: { ...this.outfit }, [other]: { ...this.partnerOutfit } } : { [this.me]: { ...this.outfit } },
     };
     w.photos = [...(w.photos ?? []), p].slice(-MAX_PHOTOS);
-    bump(w, together ? 'photos_together' : 'photos');
-    bump(w, `by:${this.me}:photos`);
+    if (together) {
+      bump(w, 'photos_together');
+      bump(w, `by:${this.me}:photos`);
+    } else {
+      this.bumpStat('photos');
+    }
     addBond(w, together ? 'photo' : 'selfie', Date.now());
     this.touch();
     return p;
@@ -1233,8 +1326,7 @@ export class GameState {
     const isNew = !w.stats[`fish:${fish.id}`];
     const best = w.stats[`fishbest:${fish.id}`] ?? 0;
     bump(w, `fish:${fish.id}`);
-    bump(w, 'fish');
-    bump(w, `by:${this.me}:fish`);
+    this.bumpStat('fish');
     if (size > best) w.stats[`fishbest:${fish.id}`] = size;
     w.inventory.fish = this.count('fish') + fish.units;
     const bonus = isNew ? fish.firstBonus : 0;
@@ -1274,11 +1366,7 @@ export class GameState {
       const key = `fr:${v.id}:${r.hearts}`;
       if (hearts < r.hearts || w.questsClaimed.includes(key)) continue;
       w.questsClaimed.push(key);
-      if (r.coins) w.coins += r.coins;
-      for (const [id, n] of Object.entries(r.items ?? {})) w.inventory[id as ItemId] = this.count(id as ItemId) + (n ?? 0);
-      for (const [id, n] of Object.entries(r.furniture ?? {})) w.furnitureOwned[id as FurnitureId] = this.furnitureOwned(id as FurnitureId) + (n ?? 0);
-      for (const c of r.clothing ?? []) if (!w.clothingOwned.includes(c)) w.clothingOwned.push(c);
-      if (r.book && !w.books.includes(r.book)) w.books.push(r.book);
+      this.grantRewardBundle(r);
       got.push(r);
     }
     return got;
@@ -1323,8 +1411,7 @@ export class GameState {
     const reaction = giftReaction(v, key);
     this.addFriendPoints(id, GIFT_POINTS[reaction]);
     w.stats[`giftday:${id}`] = dayIndex(Date.now());
-    bump(w, 'gifts');
-    bump(w, `by:${this.me}:gifts`);
+    this.bumpStat('gifts');
     if (reaction === 'love') w.stats[`loveknown:${id}:${key}`] = 1;
     const hearts = this.friendHearts(id);
     const rewards = this.claimFriendRewards(v);

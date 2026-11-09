@@ -67,6 +67,9 @@ describe('costumes', () => {
     expect(costumeOwned(cat, [])).toBe(false);
     const all = costumePieces(cat).map((p) => p.key);
     expect(costumeOwned(cat, all)).toBe(true);
+    const chef = costume('headchef') as NonNullable<ReturnType<typeof costume>>;
+    const chefPaid = costumePieces(chef).filter((p) => !isFreeClothing(p.id)).map((p) => p.key);
+    expect(costumeOwned(chef, chefPaid)).toBe(true);
     for (const c of free) expect(costumeOwned(c, []), `${c.id} is free, so it is always owned`).toBe(true);
   });
 

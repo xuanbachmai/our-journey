@@ -4,7 +4,7 @@ import { DEFAULT_OUTFIT, type Outfit } from './clothing';
 import { type PlayerId, type Postcard, type SpecialDay } from './couple';
 import { bondPriceBonus, type BondState, type PartnerGift, type Photo } from './bond';
 import { cozyBonus, type FurnitureId, type PlacedFurniture } from './furniture';
-import { emptyPlot, isRipe, MAX_CATCHUP_MS, simulatePlot, type PlotState } from './growth';
+import { isRipe, MAX_CATCHUP_MS, simulatePlot, type PlotState } from './growth';
 import { ITEMS, type ItemId } from './items';
 import { makeOrder, ORDER_SLOTS, type Order } from './orders';
 import { CONTRACT_SLOTS, contractExpired, makeContract, type Contract } from './contracts';
@@ -223,6 +223,24 @@ function collectAnimals(w: WorldState, upTo: number, tally: Partial<Record<Anima
   }
 }
 
+/** Move finished machine batches up to `upTo` onto the ready shelf. */
+function finishMachineBatches(w: WorldState, upTo: number, events: WorldEvent[]) {
+  for (const id of MACHINE_IDS) {
+    const m = w.machines?.[id];
+    if (!m || !m.jobs.length) continue;
+    const done = m.jobs.filter((j) => j.doneAt <= upTo).sort((a, b) => a.doneAt - b.doneAt);
+    if (!done.length) continue;
+    // Only bank what there is room for. A batch that will not fit stays on the
+    // machine until the goods are collected, rather than quietly vanishing.
+    const made = Math.min(done.length, MAX_READY - m.ready);
+    if (made <= 0) continue;
+    const banked = new Set(done.slice(0, made));
+    m.jobs = m.jobs.filter((j) => !banked.has(j));
+    m.ready += made;
+    events.push({ type: 'crafted', at: upTo, machine: id, count: made });
+  }
+}
+
 /**
  * Fill every free machine slot from the bag, best margin first. The tinker
  * does this each morning; the player can call it from the farm screen too.
@@ -310,6 +328,10 @@ export function simulateWorld(input: WorldState, now: number): { world: WorldSta
       w.lastRainDay = day;
       if (raining) events.push({ type: 'rain', at: t });
     }
+    // Finish any machine batches that completed before `t` so Rue can reload free slots.
+    finishMachineBatches(w, t, events);
+    collectAnimals(w, t, produced);
+
     // ---- the hired help's morning round, once per day they are paid for ----
     if (day > (w.handDay ?? day - 1)) {
       w.handDay = day;
@@ -321,7 +343,10 @@ export function simulateWorld(input: WorldState, now: number): { world: WorldSta
           if (p.wateredUntil < dayEnd) rows++;
           w.plots[k] = { ...p, wateredUntil: Math.max(p.wateredUntil, dayEnd) };
         }
-        if (rows) events.push({ type: 'hand', at: t, hand: 'water', did: `watered ${rows} row${rows === 1 ? '' : 's'}` });
+        if (rows) {
+          bump(w, 'water', rows);
+          events.push({ type: 'hand', at: t, hand: 'water', did: `watered ${rows} row${rows === 1 ? '' : 's'}` });
+        }
       }
       if (handWorking(w.hands, 'barn', day)) {
         let got = 0;
@@ -331,6 +356,7 @@ export function simulateWorld(input: WorldState, now: number): { world: WorldSta
           if (!p || !product || p.waiting <= 0) continue;
           give(w, product, p.waiting);
           bump(w, 'collect', p.waiting);
+          bump(w, `collect:${product}`, p.waiting);
           got += p.waiting;
           p.waiting = 0;
         }
@@ -338,17 +364,19 @@ export function simulateWorld(input: WorldState, now: number): { world: WorldSta
       }
       if (handWorking(w.hands, 'tend', day)) {
         const loaded = loadMachines(w, t);
-        if (loaded) events.push({ type: 'hand', at: t, hand: 'tend', did: `loaded ${loaded} batch${loaded === 1 ? '' : 'es'}` });
+        if (loaded) {
+          bump(w, 'batch', loaded);
+          events.push({ type: 'hand', at: t, hand: 'tend', did: `loaded ${loaded} batch${loaded === 1 ? '' : 'es'}` });
+        }
       }
     }
 
-    // Reapply this for every tick so crops planted after the day's first rain
-    // simulation are watered too.
-    if (raining) {
+    // Reapply rain and hired watering for every tick so crops planted after the
+    // morning's first simulation pass are watered too.
+    if (raining || handWorking(w.hands, 'water', day)) {
       for (const k in w.plots) {
         const p = w.plots[k];
         if (!p.crop) continue;
-        // rain counts as watering, so watering tasks still finish on rainy days
         if (p.wateredUntil <= t && !isRipe(p)) bump(w, 'water');
         w.plots[k] = { ...p, wateredUntil: Math.max(p.wateredUntil, dayEnd) };
       }
@@ -362,6 +390,7 @@ export function simulateWorld(input: WorldState, now: number): { world: WorldSta
       w.plots[k] = sprinkler ? { ...after, wateredUntil: p.wateredUntil } : after;
     }
     collectAnimals(w, next, produced);
+    finishMachineBatches(w, next, events);
     t = next;
   }
   for (const k in w.plots) if (isRipe(w.plots[k]) && !ripeBefore.has(k)) events.push({ type: 'ripe', at: now, plotKey: k });
@@ -396,21 +425,8 @@ export function simulateWorld(input: WorldState, now: number): { world: WorldSta
     if (produced[id]) events.push({ type: 'produce', at: now, animal: id, count: produced[id] as number });
   }
 
-  // ---- machines finish their batches ----
-  for (const id of MACHINE_IDS) {
-    const m = w.machines?.[id];
-    if (!m || !m.jobs.length) continue;
-    const done = m.jobs.filter((j) => j.doneAt <= now).sort((a, b) => a.doneAt - b.doneAt);
-    if (!done.length) continue;
-    // Only bank what there is room for. A batch that will not fit stays on the
-    // machine until the goods are collected, rather than quietly vanishing.
-    const made = Math.min(done.length, MAX_READY - m.ready);
-    if (made <= 0) continue;
-    const banked = new Set(done.slice(0, made));
-    m.jobs = m.jobs.filter((j) => !banked.has(j));
-    m.ready += made;
-    events.push({ type: 'crafted', at: now, machine: id, count: made });
-  }
+  // ---- machines finish any remaining batches up to `now` ----
+  finishMachineBatches(w, now, events);
 
   // ---- daily orders and the contract board ----
   if (refreshOrders(w, now)) events.push({ type: 'orders', at: now });
@@ -434,10 +450,6 @@ function pickSlot(w: WorldState, r: number, bonus: number): number {
     return best;
   }
   return filled[Math.floor(r * filled.length) % filled.length];
-}
-
-export function plotAt(w: WorldState, key: string): PlotState {
-  return w.plots[key] ?? emptyPlot();
 }
 
 /** Bring any older save shape up to version 3. Unknown shapes get a fresh world. */
