@@ -169,3 +169,21 @@ export async function copyToClipboard(text: string): Promise<boolean> {
     return false;
   }
 }
+
+/**
+ * Is this machine being played with a finger, rather than merely capable of it?
+ *
+ * A touchscreen Windows laptop reports touch support and is still played with
+ * a keyboard and a mouse, so "does touch exist" is the wrong question: it put
+ * phone hints and a thumbstick in front of desktop players. A device whose
+ * primary pointer is coarse and that cannot hover is a phone or a tablet.
+ * Falls back to the plain touch check where the media queries are missing.
+ */
+export function isTouchFirst(): boolean {
+  if (typeof window === 'undefined' || !window.matchMedia) {
+    return typeof navigator !== 'undefined' && (navigator.maxTouchPoints ?? 0) > 0;
+  }
+  const coarse = window.matchMedia('(pointer: coarse)').matches;
+  const canHover = window.matchMedia('(hover: hover)').matches;
+  return coarse && !canHover;
+}

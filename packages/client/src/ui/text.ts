@@ -14,18 +14,34 @@ export interface FontOption {
    * everything assuming two pixels smaller is safe.
    */
   noteSize: number;
+  /**
+   * How wide this face runs compared with the one the panels were drawn for
+   * (Bitmap Gothic at 10px = 1). Measured from the same sentence in each face:
+   * a true arcade font is 60% wider per line than a smooth one, so a panel
+   * with a fixed width holds nowhere near the same text. Layouts multiply
+   * their width by this instead of hard-coding one font's measurements.
+   */
+  width: number;
   weight?: string;
 }
 
 export const FONT_OPTIONS: Record<FontKey, FontOption> = {
-  fredoka: { key: 'fredoka', label: 'Cozy Rounded', family: '"Fredoka", sans-serif', defaultSize: 10, noteSize: 8, weight: '600' },
-  pixelify: { key: 'pixelify', label: 'Pixel Clean', family: '"Pixelify Sans", sans-serif', defaultSize: 11, noteSize: 9, weight: '600' },
-  gothic: { key: 'gothic', label: 'Bitmap Gothic', family: '"DotGothic16", sans-serif', defaultSize: 10, noteSize: 9 },
-  silkscreen: { key: 'silkscreen', label: 'Compact Pixel', family: '"Silkscreen", monospace', defaultSize: 8, noteSize: 8 },
-  pressstart: { key: 'pressstart', label: 'Retro Classic', family: '"Press Start 2P", monospace', defaultSize: 8, noteSize: 8 },
+  fredoka: { key: 'fredoka', label: 'Cozy Rounded', family: '"Fredoka", sans-serif', defaultSize: 10, noteSize: 8, width: 0.89, weight: '600' },
+  pixelify: { key: 'pixelify', label: 'Pixel Clean', family: '"Pixelify Sans", sans-serif', defaultSize: 11, noteSize: 9, width: 1.08, weight: '600' },
+  gothic: { key: 'gothic', label: 'Bitmap Gothic', family: '"DotGothic16", sans-serif', defaultSize: 10, noteSize: 9, width: 1 },
+  silkscreen: { key: 'silkscreen', label: 'Compact Pixel', family: '"Silkscreen", monospace', defaultSize: 8, noteSize: 8, width: 1.06 },
+  pressstart: { key: 'pressstart', label: 'Retro Classic', family: '"Press Start 2P", monospace', defaultSize: 8, noteSize: 8, width: 1.6 },
 };
 
-const FONT_STORAGE_KEY = 'oj-font-key-v3';
+const FONT_STORAGE_KEY = 'oj-font-key-v4';
+/**
+ * Retro Classic. A true pixel face is drawn from whole pixels, so it stays
+ * crisp at any zoom; the smooth faces are outlines the browser has to
+ * anti-alias, which is what read as fuzzy at small sizes. The storage key is
+ * bumped with this so a device that already chose a font gets the new default
+ * rather than keeping the old one for ever.
+ */
+const DEFAULT_FONT: FontKey = 'pressstart';
 /**
  * How many real device pixels one game pixel covers. Text is rasterised at
  * this multiple, so a glyph lands on the display's own pixels instead of being
@@ -45,7 +61,7 @@ export function getSavedFontKey(): FontKey {
   } catch {
     /* ignore */
   }
-  return 'gothic';
+  return DEFAULT_FONT;
 }
 
 export function saveFontKey(key: FontKey) {
@@ -62,6 +78,15 @@ export function getFontFamily(): string {
 
 export function getFontDefaultSize(): number {
   return FONT_OPTIONS[getSavedFontKey()].defaultSize;
+}
+
+/**
+ * Widen a panel that was measured against Bitmap Gothic so the chosen face
+ * still fits inside it, without letting it run off a narrow screen.
+ */
+export function fitWidth(designWidth: number, available: number, margin = 16): number {
+  const want = Math.round(designWidth * FONT_OPTIONS[getSavedFontKey()].width);
+  return Math.max(Math.min(designWidth, available - margin), Math.min(want, available - margin));
 }
 
 export let FONT = getFontFamily();
@@ -238,6 +263,17 @@ export function button(
     t.setPosition(w / 2, h / 2 + (down ? 1 : 0));
   };
   const t = scene.add.text(w / 2, h / 2, label, plain()).setOrigin(0.5);
+  // A pixel face is far wider per character than a smooth one, so a label that
+  // fitted its button in one font spills out of both ends in another. Shrink
+  // the label to the button rather than letting it overhang: buttons are the
+  // most common place a long word meets a fixed width, and this keeps every
+  // one of them honest without each caller having to measure.
+  const fitLabel = () => {
+    t.setScale(1);
+    const room = w - 6;
+    if (t.width > room && t.width > 0) t.setScale(Math.max(0.6, room / t.width));
+  };
+  fitLabel();
   draw(false);
   // A thumb is wider than the button looks. The tap area is grown to at least
   // 22x20 game pixels (44pt on a phone) without changing what is drawn.
@@ -254,7 +290,10 @@ export function button(
   });
   return {
     container: c,
-    setLabel: (s) => t.setText(s),
+    setLabel: (s) => {
+      t.setText(s);
+      fitLabel();
+    },
     setEnabled: (v) => {
       enabled = v;
       c.setAlpha(v ? 1 : 0.5);

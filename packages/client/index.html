@@ -19,7 +19,16 @@
       html, body { margin: 0; padding: 0; height: 100%; background: #7ecbff; overflow: hidden; overscroll-behavior: none; }
       body { display: flex; align-items: center; justify-content: center; touch-action: none; -webkit-user-select: none; user-select: none; }
       #game { display: flex; align-items: center; justify-content: center; width: 100vw; height: 100vh; box-sizing: border-box; padding: var(--sat) var(--sar) var(--sab) var(--sal); }
-      canvas { display: block; }
+      /* Without this the browser smooths the canvas as it scales up to the
+         display's real pixels. On a Retina MacBook, or a Windows laptop at
+         150%/200% scaling, that blurs every pixel of the game on the way to
+         the screen - art and text alike. Pixel art wants nearest neighbour. */
+      canvas {
+        display: block;
+        image-rendering: pixelated;
+        image-rendering: crisp-edges;
+        -ms-interpolation-mode: nearest-neighbor;
+      }
       #rotate {
         display: none; position: fixed; inset: 0; background: #7ecbff; color: #3b2a3a; z-index: 100;
         font-family: 'Press Start 2P', monospace; font-size: 14px; text-align: center; line-height: 2;

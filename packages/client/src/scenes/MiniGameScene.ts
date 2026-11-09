@@ -3,6 +3,7 @@ import { STEP_INFO } from '@hh/shared';
 import { audio } from '../game/audio';
 import { makeMiniGame, type MiniGame, type MiniGameId } from '../cook/minigames';
 import { button, panel, plain, style } from '../ui/text';
+import { isTouchFirst } from '../ui/dom';
 
 export interface MiniGameData {
   title: string;
@@ -63,7 +64,7 @@ export class MiniGameScene extends Phaser.Scene {
 
   create() {
     const { width: W, height: H } = this.scale;
-    this.isTouch = this.sys.game.device.input.touch && window.innerWidth <= 900;
+    this.isTouch = isTouchFirst();
     this.add.rectangle(W / 2, H / 2, W * 3, H * 3, 0x2a1a2f, 0.55).setInteractive();
     const pw = Math.min(280, W - 8);
     const ph = Math.min(170, H - 6);

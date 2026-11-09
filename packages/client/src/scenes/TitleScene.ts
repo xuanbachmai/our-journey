@@ -10,6 +10,7 @@ import { eraseLocalData, GameState } from '../game/state';
 import { confirmBox, copyToClipboard, promptText } from '../ui/dom';
 import {
   button,
+  fitWidth,
   FONT_OPTIONS,
   type FontKey,
   getSavedFontKey,
@@ -89,11 +90,13 @@ export class TitleScene extends Phaser.Scene {
     });
     g.fillStyle(0xffffff, 1);
     for (const [cx, cy, s] of [
-      [40, 30, 1],
-      // clear of the font button in the top-right corner: tucked under it, the
-      // top half of this cloud is hidden and the rest reads as a stray white box
-      [W - 130, 46, 1.3],
-      [W / 2 + 30, 26, 0.8],
+      // Kept out of two places: the band the title sits in, which is far wider
+      // in a pixel face than a smooth one, and the top-right corner, where a
+      // cloud behind the font button showed only its bottom half and read as a
+      // stray white box. Behind the card is fine - nothing there is visible.
+      [34, 26, 1],
+      [W * 0.18, 72, 0.8],
+      [W - 44, 70, 1.1],
     ]) {
       g.fillRect(cx - 12 * s, cy, 24 * s, 6 * s);
       g.fillRect(cx - 6 * s, cy - 5 * s, 14 * s, 6 * s);
@@ -256,7 +259,7 @@ export class TitleScene extends Phaser.Scene {
     this.clearUi();
     const { width: W, height: H } = this.scale;
 
-    const cardW = 250;
+    const cardW = fitWidth(250, W);
     const cardH = retry ? 132 : 112;
     const cy = H / 2 + 22;
     const top = cy - cardH / 2;
@@ -305,7 +308,7 @@ export class TitleScene extends Phaser.Scene {
     this.clearUi();
     const { width: W, height: H } = this.scale;
 
-    const cardW = 286;
+    const cardW = fitWidth(286, W);
     const cardH = 128;
     const cy = H / 2 + 20;
     const left = W / 2 - cardW / 2;
@@ -423,7 +426,7 @@ export class TitleScene extends Phaser.Scene {
     this.clearUi();
     const { width: W, height: H } = this.scale;
 
-    const cardW = 264;
+    const cardW = fitWidth(264, W);
     const cardH = 122;
     const cy = H / 2 + 22;
     const left = W / 2 - cardW / 2;

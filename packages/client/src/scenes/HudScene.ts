@@ -98,7 +98,7 @@ import { LETTER } from '../config/letter';
 import { audio } from '../game/audio';
 import { net, type NoteRow } from '../game/net';
 import { eraseLocalData, MAX_PENDING_GIFTS, type AwaySummary, type ProgressEvent, loadLocalNotes, saveLocalNotes, loadLocalAnswers, saveLocalAnswer } from '../game/state';
-import { confirmBox, copyToClipboard, promptText, isDomModalOpen } from '../ui/dom';
+import { confirmBox, copyToClipboard, promptText, isDomModalOpen, isTouchFirst } from '../ui/dom';
 import { button, count, FONT_OPTIONS, inset, meter, note, pill, titleBar, type FontKey, getSavedFontKey, panel, plain, refreshFontConfig, saveFontKey, style, tiny } from '../ui/text';
 import { TitleScene } from './TitleScene';
 import type { CookResult, HudData, WorldScene } from './WorldScene';
@@ -126,7 +126,7 @@ const HELP: HelpPage[] = [
   { title: 'Animals', icon: 'cow', lines: ['Hens and ducks lay eggs at the coop.', 'Cows, sheep, goats and pigs live at', 'the ranch: collect at the barn. Build', 'pens at the pet shop. Buy a horse and', 'ride it from the stable: much faster!'] },
   { title: 'Together', icon: 'heart', lines: ['The Love Tree grows on days you both', 'play. Leave notes in the mailbox.', 'Answer the daily question. Cook a', 'dish together when both online.', 'Special days bring fireworks.'] },
   { title: 'Us two', icon: 'heart', lines: ['Your bond grows when you both play,', 'leave notes, answer the question,', 'cook together, take photos at the', 'camera spots and wrap gifts in the', 'mailbox. Bond levels give rewards!'] },
-  { title: 'Controls', icon: 'menu', lines: ['Phone: drag left half to move, big', 'button to act, bag button top left.', 'PC: WASD, SPACE. 1-8 seeds, B bag,', 'J journal, M map. In Decorate:', 'arrows move, ENTER places, ESC stops.'] },
+  { title: 'Controls', icon: 'menu', lines: ['Phone: drag left half to move, big', 'button to act, bag button top left.', 'PC/Mac: WASD or arrow keys, SPACE or', 'E to act. 1-8 seeds, B bag, J journal,', 'M map, F fullscreen, ESC closes.', 'Decorating: arrows move, ENTER places.'] },
 ];
 
 export class HudScene extends Phaser.Scene {
@@ -186,7 +186,13 @@ export class HudScene extends Phaser.Scene {
 
   create() {
     this.world = this.scene.get('World') as WorldScene;
-    this.isTouch = this.sys.game.device.input.touch;
+    // Whether touch *exists* is the wrong question on a laptop: plenty of
+    // Windows machines have a touchscreen and are still played with a keyboard
+    // and a mouse, and answering yes gave them the phone hints and a thumbstick
+    // that sprang up under the mouse. Ask what the main pointer actually is -
+    // a device you can hover with, and whose pointer is fine rather than
+    // coarse, is being driven by a mouse or a trackpad.
+    this.isTouch = isTouchFirst();
     this.input.addPointer(2);
 
     // Coins and the bond ride on their own pills, so they read against grass,
@@ -264,7 +270,12 @@ export class HudScene extends Phaser.Scene {
     // action button
     this.actionGfx = this.add.graphics();
     this.actionLabel = this.add.text(0, 0, '', plain({ align: 'center', wordWrap: { width: 44 } })).setOrigin(0.5);
-    this.actionHint = this.add.text(0, 27, this.isTouch ? '' : '[SPACE]', style({ color: '#fff' })).setOrigin(0.5, 0);
+    // Above the button, not below it. The action button lives in the
+    // bottom-right corner, so a caption hung underneath it runs off the bottom
+    // of the screen, and in a wide pixel face off the right-hand side too.
+    this.actionHint = this.add
+      .text(0, -26, this.isTouch ? '' : '[SPACE]', note({ color: '#fff', stroke: P.outline, strokeThickness: 2 }))
+      .setOrigin(0.5, 1);
     const zone = this.add.zone(0, 0, 60, 60).setInteractive({ useHandCursor: true });
     zone.on('pointerdown', () => {
       this.world.doAction();
@@ -282,7 +293,9 @@ export class HudScene extends Phaser.Scene {
       .text(
         0,
         0,
-        this.isTouch ? 'left side: move\nright button: act' : 'WASD move  SPACE act  1-8 seeds\nJ journal  M map',
+        this.isTouch
+          ? 'left side: move\nright button: act'
+          : 'WASD or arrows move  SPACE act\n1-8 seeds  J journal  M map  F fullscreen',
         // a plate behind it: these lines land wherever the player happens to be
         // standing, and over the paddock fence the rails cut straight through
         // the letters. It is part of the text object, so it fades out with it.
@@ -290,12 +303,20 @@ export class HudScene extends Phaser.Scene {
       )
       .setOrigin(0.5, 1)
       .setLineSpacing(2)
-      .setAlpha(0.9);
+      .setAlpha(0.9)
+      // Above the next-step card. On a short screen the two land on each other,
+      // and for the nine seconds this is up, how to move is the more useful of
+      // the two - the card is still there afterwards, these lines are not.
+      .setDepth(30);
     this.time.delayedCall(9000, () => this.tweens.add({ targets: this.hint, alpha: 0, duration: 800 }));
 
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
       audio.unlock();
-      if (this.overlay || this.world.isUiOpen() || !this.isTouch) return;
+      if (this.overlay || this.world.isUiOpen()) return;
+      // Go by the pointer in hand, not by what the machine can do. A tablet
+      // with a keyboard should still get a thumbstick under its finger, and a
+      // touchscreen laptop should never get one under its mouse.
+      if (!p.wasTouch) return;
       // taps on HUD buttons (bag, hotbar, decorate) must not start the joystick
       if (this.input.hitTestPointer(p).length > 0) return;
       if (p.x < this.scale.width * 0.5 && p.y > 30 && this.joyPointer === null) {
@@ -332,6 +353,13 @@ export class HudScene extends Phaser.Scene {
     this.input.keyboard?.on('keydown-ESC', () => {
       if (!canHudKey()) return;
       this.dialog ? this.closeDialog() : this.closeOverlay();
+    });
+    // Played in a browser tab on a laptop, the farm sits in a window with the
+    // tab strip and the bookmarks bar above it. F gives it the whole screen.
+    this.input.keyboard?.on('keydown-F', () => {
+      if (!canHudKey() || this.isTouch) return;
+      if (this.scale.isFullscreen) this.scale.stopFullscreen();
+      else this.scale.startFullscreen();
     });
     this.input.keyboard?.on('keydown-J', () => {
       if (!canHudKey()) return;
