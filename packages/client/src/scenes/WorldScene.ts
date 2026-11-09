@@ -12,6 +12,7 @@ import {
   pickFish,
   villager,
   type FishId,
+  receiveWorld,
   currentChapter,
   currentQuest,
   guideFor,
@@ -751,10 +752,18 @@ export class WorldScene extends Phaser.Scene {
     on('state', (p) => {
       const m = p as { world: WorldState; from: PlayerId };
       if (m.from === this.playerId) return;
-      if (m.world.changeCounter <= this.state.world.changeCounter) return;
+      // Pick a winner and fold both sides' mission progress into it. Taking
+      // only a strictly-newer copy left the two of you split for good the
+      // first time you both did something at once: equal counters, each
+      // refusing the other, her watering and his cooking on separate farms.
+      const merged = receiveWorld(this.state.world, m.world, this.playerId, m.from);
+      if (merged === this.state.world) {
+        this.refreshFromState();
+        return;
+      }
       const myPlace = this.state.meData.place;
       const myDays = this.state.meData.daysPlayed;
-      this.state.replaceWorld(m.world);
+      this.state.replaceWorld(merged);
       net.cancelScheduledSave();
       // never let the partner's copy move me
       this.state.meData.place = myPlace;

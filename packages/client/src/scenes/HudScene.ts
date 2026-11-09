@@ -99,7 +99,7 @@ import { audio } from '../game/audio';
 import { net, type NoteRow } from '../game/net';
 import { eraseLocalData, MAX_PENDING_GIFTS, type AwaySummary, type ProgressEvent, loadLocalNotes, saveLocalNotes, loadLocalAnswers, saveLocalAnswer } from '../game/state';
 import { confirmBox, copyToClipboard, promptText, isDomModalOpen, isTouchFirst } from '../ui/dom';
-import { button, count, FONT_OPTIONS, inset, meter, note, pill, titleBar, type FontKey, getSavedFontKey, panel, plain, refreshFontConfig, saveFontKey, style, tiny } from '../ui/text';
+import { button, count, FONT_OPTIONS, fontWidth, inset, meter, note, pill, titleBar, type FontKey, getSavedFontKey, panel, plain, refreshFontConfig, saveFontKey, style, tiny } from '../ui/text';
 import { TitleScene } from './TitleScene';
 import type { CookResult, HudData, WorldScene } from './WorldScene';
 
@@ -559,12 +559,24 @@ export class HudScene extends Phaser.Scene {
     panel(g, -cw, 0, cw, ch, 0xfff9ee, 0x4a2a3f);
     g.fillStyle(0xffe066, 1).fillRoundedRect(-cw + 2, 2, cw - 4, barH, 3);
 
-    const showWay = button(this, -cw + 6, btnY, 82, 13, 'Show Way', () => {
+    // Give each button the room its label needs in the chosen face, then let
+    // Show Way take what is left. Fixed widths meant the two short buttons had
+    // to squash their labels in a wide font, which is how "Hide" stopped being
+    // a word. They are laid out right to left so they stay flush to the edge.
+    const fw = fontWidth();
+    const hideW = Math.round(26 * fw);
+    const storyW = Math.round(44 * fw);
+    const gap = 4;
+    const wayW = Math.max(52, cw - 12 - storyW - hideW - gap * 2);
+    const hideX = -6 - hideW;
+    const storyX = hideX - gap - storyW;
+
+    const showWay = button(this, -cw + 6, btnY, wayW, 13, 'Show Way', () => {
       this.world.pulseGuide();
       this.showToast(tut.whereText);
     }, 0x7de8c8);
-    const storyBtn = button(this, -80, btnY, 44, 13, 'Story', () => this.openJournal('journey'), 0xffe8f4);
-    const hideBtn = button(this, -32, btnY, 26, 13, 'Hide', () => {
+    const storyBtn = button(this, storyX, btnY, storyW, 13, 'Story', () => this.openJournal('journey'), 0xffe8f4);
+    const hideBtn = button(this, hideX, btnY, hideW, 13, 'Hide', () => {
       this.tutorialOpen = false;
       this.lastTutorialSig = '';
       if (this.last) this.refresh(this.last);

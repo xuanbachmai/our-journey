@@ -15,6 +15,7 @@ export * from './weather';
 export * from './areas';
 export * from './world';
 export * from './quests';
+export * from './sync';
 export * from './fish';
 export * from './friends';
 export * from './tools';

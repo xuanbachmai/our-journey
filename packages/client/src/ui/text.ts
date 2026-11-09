@@ -80,6 +80,14 @@ export function getFontDefaultSize(): number {
   return FONT_OPTIONS[getSavedFontKey()].defaultSize;
 }
 
+/** Below this a label stops being worth reading, so the button must grow instead. */
+const MIN_LABEL_PX = 7;
+
+/** How much wider the chosen face runs than the one the panels were drawn for. */
+export function fontWidth(): number {
+  return FONT_OPTIONS[getSavedFontKey()].width;
+}
+
 /**
  * Widen a panel that was measured against Bitmap Gothic so the chosen face
  * still fits inside it, without letting it run off a narrow screen.
@@ -263,15 +271,20 @@ export function button(
     t.setPosition(w / 2, h / 2 + (down ? 1 : 0));
   };
   const t = scene.add.text(w / 2, h / 2, label, plain()).setOrigin(0.5);
-  // A pixel face is far wider per character than a smooth one, so a label that
-  // fitted its button in one font spills out of both ends in another. Shrink
-  // the label to the button rather than letting it overhang: buttons are the
-  // most common place a long word meets a fixed width, and this keeps every
-  // one of them honest without each caller having to measure.
+  // A label too wide for its button steps down a whole pixel at a time. It
+  // must never be scaled by a fraction: a pixel face squeezed to 0.6 lands its
+  // stems between pixels and comes out as mush - "Story" rendered as "Slury".
+  // Whole sizes keep every glyph on the pixel grid and legible.
+  const baseSize = getFontDefaultSize();
   const fitLabel = () => {
     t.setScale(1);
     const room = w - 6;
-    if (t.width > room && t.width > 0) t.setScale(Math.max(0.6, room / t.width));
+    let size = baseSize;
+    t.setFontSize(size);
+    while (t.width > room && size > MIN_LABEL_PX) {
+      size -= 1;
+      t.setFontSize(size);
+    }
   };
   fitLabel();
   draw(false);
