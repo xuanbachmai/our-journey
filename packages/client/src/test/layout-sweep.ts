@@ -66,6 +66,48 @@ export function check(root: Phaser.GameObjects.GameObject[]): string[] {
 
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * Every state of the title screen, drawn directly from local data - nothing is
+ * created on the server. Run while the title screen is showing:
+ *   const m = await import('/src/test/layout-sweep.ts'); await m.sweepTitle();
+ */
+export async function sweepTitle(): Promise<string> {
+  const game = (window as unknown as { __game: Phaser.Game }).__game;
+  const shared = (window as unknown as { __shared: { newWorld: (n: number) => unknown } }).__shared;
+  const t = game.scene.getScene('Title') as unknown as Record<string, (...a: unknown[]) => void> & Phaser.Scene;
+  const w = shared.newWorld(Date.now());
+  const W = game.scale.width;
+  const H = game.scale.height;
+  const states: [string, () => void][] = [
+    ['menu', () => t.showMenu(false)],
+    ['menu, retry', () => t.showMenu(true)],
+    ['pick, new world', () => t.showPick('ABC123', { xb: null, qd: null }, w)],
+    ['pick, xb taken', () => t.showPick('ABC123', { xb: { device: 'other' }, qd: null }, w)],
+    ['paired world', () => t.showBoundWorld('ABC123', 'qd', { xb: null, qd: { device: 'me' } }, w)],
+    ['paired world, both in', () => t.showBoundWorld('ABC123', 'qd', { xb: { device: 'a' }, qd: { device: 'b' } }, w, true)],
+  ];
+  const out: string[] = [];
+  for (const [name, show] of states) {
+    show();
+    await wait(150);
+    const hits = check(t.children.list);
+    // and nothing may leave the screen
+    const walk = (list: Phaser.GameObjects.GameObject[]) => {
+      for (const o of list) {
+        if (o.type === 'Container') walk((o as Phaser.GameObjects.Container).list);
+        else if (o.type === 'Text') {
+          const b = (o as Phaser.GameObjects.Text).getBounds();
+          if ((o as Phaser.GameObjects.Text).visible && (b.left < -1 || b.right > W + 1 || b.top < -1 || b.bottom > H + 1))
+            hits.push(`OFFSCREEN "${(o as Phaser.GameObjects.Text).text.slice(0, 24)}"`);
+        }
+      }
+    };
+    walk(t.children.list);
+    if (hits.length) out.push(`${name}: ${hits.join(' ; ')}`);
+  }
+  return out.length ? `${W}x${H}:\n${out.join('\n')}` : `${W}x${H}: title clean - ${states.length} states`;
+}
+
 export async function sweep(): Promise<string> {
   const game = (window as unknown as { __game: Phaser.Game }).__game;
   const shared = (window as unknown as { __shared: { newWorld: (n: number) => unknown } }).__shared;

@@ -26,6 +26,7 @@ textarea.hh-input{height:110px;resize:none;font-size:13px;line-height:1.6}
 .hh-row{display:flex;gap:10px;margin-top:14px;justify-content:flex-end}
 .hh-btn{font-family:inherit;font-size:13px;font-weight:600;padding:8px 16px;border:2px solid #4a2a3f;box-shadow:0 3px 0 #4a2a3f;cursor:pointer;background:#e8dcc8;color:#4a2a3f;border-radius:3px}
 .hh-btn.ok{background:#7de8c8}
+.hh-btn.danger{background:#ff8f8f}
 .hh-btn:active{transform:translateY(2px);box-shadow:0 1px 0 #4a2a3f}
 `;
 
@@ -42,14 +43,31 @@ export function isDomModalOpen(): boolean {
   return domModalOpen;
 }
 
+/**
+ * A dialog's backdrop, sealed so the game underneath never sees its taps.
+ *
+ * Phaser listens for presses on the whole window, not just its canvas, so a
+ * tap on a dialog's button also pressed whatever game button sat under that
+ * spot. Confirming "Delete for both" on the title screen walked you straight
+ * into the world you had just deleted, and an OK over a shop could have
+ * bought something. Stopping these at the backdrop keeps them in the dialog.
+ */
+function sealedBackdrop(): HTMLDivElement {
+  const dim = document.createElement('div');
+  dim.className = 'hh-dim';
+  dim.style.fontFamily = getFontFamily();
+  for (const type of ['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'touchstart', 'touchend', 'click']) {
+    dim.addEventListener(type, (e) => e.stopPropagation());
+  }
+  return dim;
+}
+
 export function promptText(opts: PromptOptions): Promise<string | null> {
   if (domModalOpen) return Promise.resolve(null);
   domModalOpen = true;
   ensureStyle();
   return new Promise((resolve) => {
-    const dim = document.createElement('div');
-    dim.className = 'hh-dim';
-    dim.style.fontFamily = getFontFamily();
+    const dim = sealedBackdrop();
     const box = document.createElement('div');
     box.className = 'hh-box';
     const title = document.createElement('p');
@@ -108,14 +126,16 @@ export function promptText(opts: PromptOptions): Promise<string | null> {
   });
 }
 
-export function confirmBox(title: string, okLabel = 'Yes', cancelLabel = 'No'): Promise<boolean> {
+/**
+ * @param danger the confirm button wipes something for good: draw it red, not
+ *   the friendly mint every other confirm uses.
+ */
+export function confirmBox(title: string, okLabel = 'Yes', cancelLabel = 'No', danger = false): Promise<boolean> {
   if (domModalOpen) return Promise.resolve(false);
   domModalOpen = true;
   ensureStyle();
   return new Promise((resolve) => {
-    const dim = document.createElement('div');
-    dim.className = 'hh-dim';
-    dim.style.fontFamily = getFontFamily();
+    const dim = sealedBackdrop();
     const box = document.createElement('div');
     box.className = 'hh-box';
     const t = document.createElement('p');
@@ -127,7 +147,7 @@ export function confirmBox(title: string, okLabel = 'Yes', cancelLabel = 'No'): 
     cancel.className = 'hh-btn';
     cancel.textContent = cancelLabel;
     const ok = document.createElement('button');
-    ok.className = 'hh-btn ok';
+    ok.className = danger ? 'hh-btn danger' : 'hh-btn ok';
     ok.textContent = okLabel;
     row.append(cancel, ok);
     box.append(t, row);

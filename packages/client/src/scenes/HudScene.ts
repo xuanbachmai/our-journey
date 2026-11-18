@@ -162,6 +162,8 @@ export class HudScene extends Phaser.Scene {
   private tutorialBtn!: Phaser.GameObjects.Container;
   private tutorialBox!: Phaser.GameObjects.Container;
   private tutorialOpen = true;
+  /** The opening controls hint is up; the next-step card waits its turn. */
+  private hintShowing = true;
   private lastTutorialSig = '';
   private questGfx!: Phaser.GameObjects.Graphics;
   private questText!: Phaser.GameObjects.Text;
@@ -305,11 +307,25 @@ export class HudScene extends Phaser.Scene {
       .setOrigin(0.5, 1)
       .setLineSpacing(2)
       .setAlpha(0.9)
-      // Above the next-step card. On a short screen the two land on each other,
-      // and for the nine seconds this is up, how to move is the more useful of
-      // the two - the card is still there afterwards, these lines are not.
       .setDepth(30);
-    this.time.delayedCall(9000, () => this.tweens.add({ targets: this.hint, alpha: 0, duration: 800 }));
+    // One thing at a time. On a phone the controls plate and the next-step
+    // card landed on top of each other - on the very first screen anyone sees.
+    // How to move comes first, with the small ticker up top naming the task;
+    // the card takes over once this has faded.
+    this.time.delayedCall(9000, () =>
+      this.tweens.add({
+        targets: this.hint,
+        alpha: 0,
+        duration: 800,
+        onComplete: () => {
+          this.hintShowing = false;
+          this.actionHint.setVisible(this.scale.width >= 380);
+          this.lastTutorialSig = '';
+          this.lastQuestKey = '';
+          if (this.last) this.refresh(this.last);
+        },
+      }),
+    );
 
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
       audio.unlock();
@@ -484,8 +500,9 @@ export class HudScene extends Phaser.Scene {
     this.hotbar.setPosition(Math.round(W / 2 - 80), H - 24);
     this.actionBtn.setPosition(W - 30, H - 32);
     // a keyboard window squeezed down to phone size has no room for the
-    // caption beside the card; the opening hints have already said SPACE
-    this.actionHint.setVisible(W >= 380);
+    // caption beside the card; and while the opening plate is up it already
+    // says "SPACE act" right where this caption would sit on top of it
+    this.actionHint.setVisible(W >= 380 && !this.hintShowing);
     this.hint.setPosition(W / 2, H - 30);
     this.menuBtn.setPosition(W - 14, 12);
     this.tutorialBtn.setPosition(W - 80, 12);
@@ -523,7 +540,7 @@ export class HudScene extends Phaser.Scene {
    */
   private refreshTutorialCard(tut: TaskTutorial | null, decorate: boolean) {
     this.tutorialBtn.setVisible(!!tut && !decorate);
-    const show = !!tut && this.tutorialOpen && !decorate;
+    const show = !!tut && this.tutorialOpen && !decorate && !this.hintShowing;
     this.tutorialBox.setVisible(show);
     const sig = show && tut ? `${tut.taskId}|${tut.whereText}|${tut.howText}|${tut.unlockTeaser}|${this.scale.width}` : 'hidden';
     if (sig === this.lastTutorialSig) return;
@@ -652,7 +669,7 @@ export class HudScene extends Phaser.Scene {
     }
     // quest ticker
     // the card below names the same task in full, so the ticker stands down
-    const cardOpen = this.tutorialOpen && !!d.tutorial && !d.decorate;
+    const cardOpen = this.tutorialOpen && !!d.tutorial && !d.decorate && !this.hintShowing;
     this.questBox.setVisible(!cardOpen);
     const questKey = d.quest && !cardOpen ? `${this.scale.width}|${d.quest.title}|${d.quest.progress}/${d.quest.target}` : '';
     if (questKey !== this.lastQuestKey) {

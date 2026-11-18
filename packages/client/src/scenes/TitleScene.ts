@@ -500,7 +500,10 @@ export class TitleScene extends Phaser.Scene {
     });
 
     if (code) {
-      const copyBtn = button(this, left + 10, top + cardH - 22, 114, 16, `Copy Code: ${code}`, async () => {
+      // Half the card each, not a fixed 114: "Copy Code: 7HGVUW" did not fit
+      // 114 at any size in the arcade face and hung out of the button's left.
+      const halfW = Math.floor((cardW - 26) / 2);
+      const copyBtn = button(this, left + 10, top + cardH - 22, halfW, 16, `Copy Code: ${code}`, async () => {
         const link = `${window.location.origin}${window.location.pathname}?join=${code}`;
         const ok = await copyToClipboard(link);
         this.setStatus(ok ? `Copied code ${code}!` : `World Code: ${code}`);
@@ -510,9 +513,9 @@ export class TitleScene extends Phaser.Scene {
       const isBoundCreator = net.boundWorldCode === code;
       const backBtn = button(
         this,
-        left + cardW - 124,
+        left + cardW - 10 - halfW,
         top + cardH - 22,
-        114,
+        halfW,
         16,
         isBoundCreator ? 'Delete World' : 'Cancel',
         async () => {
@@ -593,6 +596,7 @@ export class TitleScene extends Phaser.Scene {
       `Delete World ${code ?? ''} for BOTH of you? The farm, everything in it and all your progress are gone for good, on your partner's phone as well as this one. This cannot be undone.`,
       'Delete for both',
       'Keep our world',
+      true,
     );
     if (!ok) return false;
     await net.deleteWorld();
