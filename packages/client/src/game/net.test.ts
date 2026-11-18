@@ -11,6 +11,13 @@ beforeEach(() => {
   });
 });
 
+describe('test isolation', () => {
+  it('never talks to the real server', () => {
+    // If this fails, the tests below are creating real worlds in production.
+    expect(new Net().cloudEnabled).toBe(false);
+  });
+});
+
 describe('realtime note delivery', () => {
   it('only notifies the addressed player', () => {
     const note = { to_player: 'qd' as const };
@@ -72,5 +79,53 @@ describe('world creation, max 2 players, and 1-world-per-device lock', () => {
     const dev3 = new Net();
     expect(await dev3.claimSeat(code, 'xb')).toBe('full');
     expect(await dev3.claimSeat(code, 'qd')).toBe('full');
+  });
+});
+
+/** A stand-in Supabase client that answers every query the same way. */
+function fakeServer(answer: { data: unknown; error: { message: string } | null }) {
+  const q: Record<string, unknown> = {};
+  for (const m of ['select', 'eq', 'update', 'delete']) q[m] = () => q;
+  q.maybeSingle = async () => answer;
+  q.insert = async () => ({ error: answer.error });
+  return { from: () => q };
+}
+
+describe('a world that is gone from the server', () => {
+  it('lets go of it instead of reopening the cached copy', async () => {
+    const net = new Net();
+    const code = (await net.createWorld(newWorld(1000, 1)))!;
+    expect(await net.claimSeat(code, 'qd')).toBe('ok');
+    expect(net.boundWorldCode).toBe(code);
+
+    // the server is reachable and says: no such world (deleted, or reset)
+    (net as unknown as { client: unknown }).client = fakeServer({ data: null, error: null });
+    expect(await net.fetchWorld(code)).toBeNull();
+    expect(net.lastFetchMissing).toBe(true);
+
+    net.forgetWorld(code);
+    expect(net.boundWorldCode).toBeNull();
+    // and it is not lurking in the cache to come back next time
+    (net as unknown as { client: unknown }).client = null;
+    expect(await net.fetchWorld(code)).toBeNull();
+  });
+
+  it('still plays the cached copy when the server cannot be reached', async () => {
+    const net = new Net();
+    const code = (await net.createWorld(newWorld(1000, 1)))!;
+    expect(await net.claimSeat(code, 'xb')).toBe('ok');
+
+    (net as unknown as { client: unknown }).client = fakeServer({ data: null, error: { message: 'Failed to fetch' } });
+    const w = await net.fetchWorld(code);
+    expect(w).not.toBeNull();
+    expect(net.lastFetchMissing).toBe(false);
+  });
+
+  it('reports a failed create rather than handing out a code nobody can join', async () => {
+    const net = new Net();
+    (net as unknown as { client: unknown }).client = fakeServer({ data: null, error: { message: 'Failed to fetch' } });
+    expect(await net.createWorld(newWorld(1000, 1))).toBeNull();
+    expect(net.lastError).toMatch(/fetch|server/i);
+    expect(net.boundWorldCode).toBeNull();
   });
 });

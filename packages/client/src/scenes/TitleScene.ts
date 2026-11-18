@@ -209,8 +209,17 @@ export class TitleScene extends Phaser.Scene {
       this.setStatus(`Loading World ${code}...`);
       const w = await net.fetchWorld(code);
       if (!this.isAlive(gen)) return;
+      if (!w && net.lastFetchMissing) {
+        // The server is up and the world is gone: the partner deleted it, or
+        // the server was reset. Let go of it and offer a fresh start, rather
+        // than reopening a ghost copy that nobody else can reach.
+        net.forgetWorld(code);
+        this.setStatus(`World ${code} no longer exists. Start a new one together!`);
+        this.showMenu(false);
+        return;
+      }
       if (!w) {
-        // World was unreachable or missing on server; preserve local saved state so progress is never wiped
+        // Offline: play the copy on this device, it syncs when the server is back
         const fallbackWorld = new GameState().world;
         const seats: Seats = { xb: null, qd: null, [player]: { device: net.deviceId } };
         this.setStatus('');
@@ -243,6 +252,9 @@ export class TitleScene extends Phaser.Scene {
         this.showPick(code, w.seats, w.state);
         return;
       }
+      // Left holding a code the server does not have, Create would refuse
+      // with "this device already has a world" for ever.
+      if (net.lastFetchMissing) net.forgetWorld(code);
     }
 
     // 3. No world bound to this device yet -> show Create World / Join World menu

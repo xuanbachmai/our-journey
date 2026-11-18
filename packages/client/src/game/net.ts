@@ -113,6 +113,12 @@ export class Net {
   private saveTimer: number | null = null;
   private pendingSave: WorldState | null = null;
   lastError = '';
+  /**
+   * True when the last fetchWorld reached the server and the server said there
+   * is no such world - deleted by the partner, or by a reset. Distinct from
+   * being offline, where the cached copy is the right thing to play.
+   */
+  lastFetchMissing = false;
 
   constructor() {
     const url = String(import.meta.env.VITE_SUPABASE_URL ?? '').trim();
@@ -141,6 +147,24 @@ export class Net {
   /** Returns the single world code this device is currently bound to (if any). */
   get boundWorldCode(): string | null {
     return this.pairing?.code ?? this.pendingCode;
+  }
+
+  /**
+   * Let go of a world the server no longer has, without touching the server:
+   * clears this device's binding and its cached copy so it can start fresh.
+   */
+  forgetWorld(code: string) {
+    this.cancelScheduledSave();
+    if (this.pairing?.code === code) this.setPairing(null);
+    if (this.pendingCode === code) this.setPendingCode(null);
+    this.dropLocalWorld(code);
+  }
+
+  private dropLocalWorld(code: string) {
+    const all = this.loadLocalWorlds();
+    if (!all[code]) return;
+    delete all[code];
+    this.saveLocalWorlds(all);
   }
 
   /** Forgets the pairing and this device's id, for 'erase my data'. */
@@ -210,6 +234,7 @@ export class Net {
 
     const initialSeats: Seats = { xb: null, qd: null };
     if (this.client) {
+      this.lastError = '';
       for (let attempt = 0; attempt < 5; attempt++) {
         const code = makeCode();
         const { error } = await this.client.from('worlds').insert({ code, state, version: 1, seats: initialSeats });
@@ -223,9 +248,14 @@ export class Net {
           break;
         }
       }
+      // With a server configured, a world that only this phone knows about is
+      // worse than an error: the code it hands out can never be joined, and
+      // the partner is left typing it in over and over. Say it failed.
+      if (!this.lastError) this.lastError = 'Could not reach the world server. Please try again.';
+      return null;
     }
 
-    // Local / BroadcastChannel fallback so world codes always work even without a cloud backend
+    // Local / BroadcastChannel fallback when no cloud backend is configured at all
     const all = this.loadLocalWorlds();
     for (let attempt = 0; attempt < 10; attempt++) {
       const code = makeCode();
@@ -241,6 +271,7 @@ export class Net {
 
   async fetchWorld(rawCode: string): Promise<{ state: WorldState; version: number; seats: Seats } | null> {
     const code = rawCode.trim().toUpperCase();
+    this.lastFetchMissing = false;
     if (!code) return null;
     if (this.client) {
       const { data, error } = await this.client.from('worlds').select('state, version, seats').eq('code', code).maybeSingle();
@@ -249,7 +280,16 @@ export class Net {
         this.saveLocalWorld(code, w);
         return w;
       }
-      if (error) this.lastError = error.message;
+      if (!error) {
+        // The server answered, and the world is not there. Bringing it back
+        // from this device's cache would leave a farm nobody else can join,
+        // whose every save updates nothing - after the partner pressed
+        // Delete, or after a reset, each phone would sit in its own ghost.
+        this.lastFetchMissing = true;
+        this.dropLocalWorld(code);
+        return null;
+      }
+      this.lastError = error.message;
     }
     const local = this.loadLocalWorlds()[code];
     if (!local) return null;
