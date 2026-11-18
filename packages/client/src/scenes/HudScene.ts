@@ -99,7 +99,7 @@ import { audio } from '../game/audio';
 import { net, type NoteRow } from '../game/net';
 import { eraseLocalData, MAX_PENDING_GIFTS, type AwaySummary, type ProgressEvent, loadLocalNotes, saveLocalNotes, loadLocalAnswers, saveLocalAnswer } from '../game/state';
 import { confirmBox, copyToClipboard, promptText, isDomModalOpen, isTouchFirst } from '../ui/dom';
-import { button, count, FONT_OPTIONS, fontWidth, inset, meter, note, pill, titleBar, type FontKey, getSavedFontKey, panel, plain, refreshFontConfig, saveFontKey, style, tiny } from '../ui/text';
+import { button, clampBlock, clampLine, count, FONT_OPTIONS, fontWidth, inset, shrinkToFit, meter, note, pill, titleBar, type FontKey, getSavedFontKey, panel, plain, refreshFontConfig, saveFontKey, style, tiny } from '../ui/text';
 import { TitleScene } from './TitleScene';
 import type { CookResult, HudData, WorldScene } from './WorldScene';
 
@@ -270,12 +270,13 @@ export class HudScene extends Phaser.Scene {
     // action button
     this.actionGfx = this.add.graphics();
     this.actionLabel = this.add.text(0, 0, '', plain({ align: 'center', wordWrap: { width: 44 } })).setOrigin(0.5);
-    // Above the button, not below it. The action button lives in the
-    // bottom-right corner, so a caption hung underneath it runs off the bottom
-    // of the screen, and in a wide pixel face off the right-hand side too.
+    // Beside the button, on the side facing the field. Below it ran off the
+    // bottom of the screen; above it, on a short laptop window, it landed on
+    // the next-step card and stayed there, since unlike the opening hints this
+    // caption never fades.
     this.actionHint = this.add
-      .text(0, -26, this.isTouch ? '' : '[SPACE]', note({ color: '#fff', stroke: P.outline, strokeThickness: 2 }))
-      .setOrigin(0.5, 1);
+      .text(-27, 0, this.isTouch ? '' : '[SPACE]', note({ color: '#fff', stroke: P.outline, strokeThickness: 2 }))
+      .setOrigin(1, 0.5);
     const zone = this.add.zone(0, 0, 60, 60).setInteractive({ useHandCursor: true });
     zone.on('pointerdown', () => {
       this.world.doAction();
@@ -482,6 +483,9 @@ export class HudScene extends Phaser.Scene {
     this.lastQuestKey = '';
     this.hotbar.setPosition(Math.round(W / 2 - 80), H - 24);
     this.actionBtn.setPosition(W - 30, H - 32);
+    // a keyboard window squeezed down to phone size has no room for the
+    // caption beside the card; the opening hints have already said SPACE
+    this.actionHint.setVisible(W >= 380);
     this.hint.setPosition(W / 2, H - 30);
     this.menuBtn.setPosition(W - 14, 12);
     this.tutorialBtn.setPosition(W - 80, 12);
@@ -1273,16 +1277,33 @@ export class HudScene extends Phaser.Scene {
    * so which page you are on reads at a glance instead of by shade.
    */
   private tabs(c: Phaser.GameObjects.Container, w: number, h: number, items: [string, () => void][], active: number) {
-    const tw = Math.floor((w - 16) / items.length);
+    // Each tab is as wide as its label needs, sharing out whatever is left.
+    // Equal widths gave "Us" as much room as "Outfits", and in the arcade face
+    // the long ones lost their last letter while the short ones sat half empty.
+    const row = w - 16;
+    const gap = 3;
+    const pad = 8;
+    const labels = items.map(([label], i) =>
+      this.add.text(0, 0, label, plain({ color: i === active ? '#3b2133' : '#6a5a60' })).setOrigin(0.5),
+    );
+    const need = labels.map((t) => t.width + pad);
+    const spare = row - gap * items.length - need.reduce((a, b) => a + b, 0);
+    const widths =
+      spare >= 0
+        ? need.map((n) => n + spare / items.length)
+        : need.map((n) => (n * (row - gap * items.length)) / need.reduce((a, b) => a + b, 0));
     const g = this.add.graphics();
     c.add(g);
-    items.forEach(([label, fn], i) => {
+    let x = -w / 2 + 8;
+    items.forEach(([, fn], i) => {
       const live = i === active;
-      const x = -w / 2 + 8 + i * tw;
+      const tw = Math.floor(widths[i]);
       const y = -h / 2 + (live ? 21 : 22);
-      pill(g, x, y, tw - 3, live ? 17 : 15, live ? 0xffd23f : 0xf3e7d4, live ? 0x4a2a3f : 0xd8c4b4);
-      c.add(this.add.text(x + (tw - 3) / 2, y + (live ? 8.5 : 7.5), label, plain({ color: live ? '#3b2133' : '#6a5a60' })).setOrigin(0.5));
-      const z = this.add.zone(x + (tw - 3) / 2, y + 8, tw - 3, 20).setInteractive({ useHandCursor: true });
+      pill(g, x, y, tw, live ? 17 : 15, live ? 0xffd23f : 0xf3e7d4, live ? 0x4a2a3f : 0xd8c4b4);
+      // only when the row genuinely cannot hold every label at full size
+      c.add(shrinkToFit(labels[i].setPosition(x + tw / 2, y + (live ? 8.5 : 7.5)), tw - pad));
+      const z = this.add.zone(x + tw / 2, y + 8, tw, 20).setInteractive({ useHandCursor: true });
+      x += tw + gap;
       z.on('pointerdown', () => {
         audio.play('blip');
         fn();
@@ -1320,7 +1341,8 @@ export class HudScene extends Phaser.Scene {
   }
 
 /** A price in a coin chip, so it reads as money rather than as a number. */
-  private priceTag(c: Phaser.GameObjects.Container, x: number, y: number, price: number, canAfford: boolean) {
+  /** Draws a coin price ending at x and returns where its left edge landed. */
+  private priceTag(c: Phaser.GameObjects.Container, x: number, y: number, price: number, canAfford: boolean): number {
     const label = this.add.text(x - 2, y, String(price), plain({ color: canAfford ? '#8a5e00' : '#b4432a' })).setOrigin(1, 0.5);
     const g = this.add.graphics();
     pill(g, x - label.width - 16, y - 7, label.width + 18, 14, canAfford ? 0xfff2c2 : 0xffe0dc, canAfford ? 0xd8b45e : 0xd98a7a);
@@ -1328,6 +1350,17 @@ export class HudScene extends Phaser.Scene {
     g.fillStyle(0x4a2a3f, 1).fillCircle(x - label.width - 8, y, 3).fillStyle(0xffd23f, 1).fillCircle(x - label.width - 8, y, 2);
     c.add(g);
     c.add(label);
+    return x - label.width - 16;
+  }
+
+  /**
+   * A shop row's name and description, kept clear of whatever sits on the
+   * right (a price, "max"). They used to run straight into the price.
+   */
+  private rowText(c: Phaser.GameObjects.Container, x: number, y: number, name: string, desc: string, rightEdge: number) {
+    const room = rightEdge - 4 - x;
+    c.add(clampLine(this.add.text(x, y - 5, name, plain()).setOrigin(0, 0.5), room));
+    c.add(clampLine(this.add.text(x, y + 5, desc, note({ color: '#7a6a70' })).setOrigin(0, 0.5), room, FONT_OPTIONS[getSavedFontKey()].noteSize));
   }
 
   // ---------- stall (farm) ----------
@@ -1350,24 +1383,38 @@ export class HudScene extends Phaser.Scene {
 
   private seedList(c: Phaser.GameObjects.Container, w: number, h: number, reopen: () => void) {
     const st = this.world.state;
-    const top = -h / 2 + 44;
-    CROP_IDS.slice(this.page * 7, this.page * 7 + 7).forEach((id, i) => {
-      const y = top + i * ROW;
+    const top = -h / 2 + 50;
+    // Two lines a row: the name and how many you have, then price and growing
+    // time. These sat in fixed columns measured for a narrower face, and in the
+    // arcade one "Strawberry" ran into its price and the price into the
+    // buttons. Four to a page keeps the last row clear of the page arrows even
+    // after every crop is unlocked; eight crops are still exactly two pages.
+    const per = 4;
+    const room = w / 2 - 66 - 4 - (-w / 2 + 24);
+    const noteSize = FONT_OPTIONS[getSavedFontKey()].noteSize;
+    CROP_IDS.slice(this.page * per, this.page * per + per).forEach((id, i) => {
+      const y = top + i * ROW2;
       const def = CROPS[id];
       const open = st.seedUnlocked(id);
       c.add(this.add.image(-w / 2 + 14, y, 'icons', `seed-${id}`).setAlpha(open ? 1 : 0.4));
-      c.add(this.add.text(-w / 2 + 24, y, open ? def.name : `${def.name} (rep ${def.unlockRep})`, plain({ color: open ? P.outline : '#9a8a90' })).setOrigin(0, 0.5));
-      if (!open) return;
       const owned = st.count(`seed:${id}`);
-      c.add(this.add.text(-w / 2 + 104, y, `${def.seedPrice}c`, plain({ color: '#b07a00' })).setOrigin(0, 0.5));
-      c.add(this.add.text(-w / 2 + 136, y, `grows ${this.growText(id)}${owned > 0 ? ` (${owned})` : ''}`, note({ color: '#7a6a70' })).setOrigin(0, 0.5));
+      const name = !open ? `${def.name} (rep ${def.unlockRep})` : owned > 0 ? `${def.name} (${owned})` : def.name;
+      c.add(clampLine(this.add.text(-w / 2 + 24, open ? y - 5 : y, name, plain({ color: open ? P.outline : '#9a8a90' })).setOrigin(0, 0.5), room));
+      if (!open) return;
+      c.add(
+        clampLine(
+          this.add.text(-w / 2 + 24, y + 5, `${def.seedPrice}c  ·  grows ${this.growText(id)}`, note({ color: '#8a5e00' })).setOrigin(0, 0.5),
+          room,
+          noteSize,
+        ),
+      );
       const buy = button(this, w / 2 - 66, y - 7, 28, 14, 'x1', () => this.buySeed(id, 1, reopen));
       const buy5 = button(this, w / 2 - 36, y - 7, 28, 14, 'x5', () => this.buySeed(id, 5, reopen));
       buy.setEnabled(st.coins >= def.seedPrice);
       buy5.setEnabled(st.coins >= def.seedPrice * 5);
       c.add([buy.container, buy5.container]);
     });
-    this.pager(c, w, h, this.page, Math.ceil(CROP_IDS.length / 7), (p) => {
+    this.pager(c, w, h, this.page, Math.ceil(CROP_IDS.length / per), (p) => {
       this.page = p;
       reopen();
     });
@@ -1414,11 +1461,10 @@ export class HudScene extends Phaser.Scene {
       c.add(this.add.image(-w / 2 + 14, y, 'icons', def.icon));
       const isTool = (TOOL_IDS as string[]).includes(id);
       const lvlText = isTool ? ` (${TOOL_TIERS[lvl]})` : def.prices.length > 1 ? ` ${lvl}/${def.prices.length}` : lvl ? ' (owned)' : '';
-      c.add(this.add.text(-w / 2 + 24, y - 5, `${def.name}${lvlText}`, plain()).setOrigin(0, 0.5));
-      c.add(this.add.text(-w / 2 + 24, y + 5, def.desc, note({ color: '#7a6a70' })).setOrigin(0, 0.5));
       if (price !== null) {
         const locked = def.requires && st.upgradeLevel(def.requires) === 0;
-        this.priceTag(c, w / 2 - 62, y, price, !locked && st.coins >= price);
+        const tagLeft = this.priceTag(c, w / 2 - 62, y, price, !locked && st.coins >= price);
+        this.rowText(c, -w / 2 + 24, y, `${def.name}${lvlText}`, def.desc, tagLeft);
         const b = button(this, w / 2 - 58, y - 7, 44, 14, 'Buy', () => {
           if (this.world.purchaseUpgrade(id)) {
             this.showToast(`Bought ${def.name}!`);
@@ -1427,7 +1473,11 @@ export class HudScene extends Phaser.Scene {
         });
         b.setEnabled(st.canBuyUpgrade(id));
         c.add(b.container);
-      } else c.add(this.add.text(w / 2 - 20, y, 'max', plain({ color: '#3f9a5f' })).setOrigin(1, 0.5));
+      } else {
+        const max = this.add.text(w / 2 - 20, y, 'max', plain({ color: '#3f9a5f' })).setOrigin(1, 0.5);
+        c.add(max);
+        this.rowText(c, -w / 2 + 24, y, `${def.name}${lvlText}`, def.desc, w / 2 - 20 - max.width);
+      }
     });
     return pages;
   }
@@ -1526,10 +1576,10 @@ export class HudScene extends Phaser.Scene {
         const lvl = st.upgradeLevel(id);
         const price = st.upgradePrice(id);
         c.add(this.add.image(-w / 2 + 14, y, 'icons', def.icon));
-        c.add(this.add.text(-w / 2 + 24, y - 5, `${def.name}${def.prices.length > 1 ? ` ${lvl}/${def.prices.length}` : lvl ? ' (owned)' : ''}`, plain()).setOrigin(0, 0.5));
-        c.add(this.add.text(-w / 2 + 24, y + 5, def.desc, note({ color: '#7a6a70' })).setOrigin(0, 0.5));
+        const name = `${def.name}${def.prices.length > 1 ? ` ${lvl}/${def.prices.length}` : lvl ? ' (owned)' : ''}`;
         if (price !== null) {
-          this.priceTag(c, w / 2 - 62, y, price, st.coins >= price);
+          const tagLeft = this.priceTag(c, w / 2 - 62, y, price, st.coins >= price);
+          this.rowText(c, -w / 2 + 24, y, name, def.desc, tagLeft);
           const btn = button(this, w / 2 - 58, y - 7, 44, 14, 'Buy', () => {
             if (this.world.purchaseUpgrade(id)) {
               this.showToast(`Bought ${def.name}!`);
@@ -1538,7 +1588,11 @@ export class HudScene extends Phaser.Scene {
           });
           btn.setEnabled(st.canBuyUpgrade(id));
           c.add(btn.container);
-        } else c.add(this.add.text(w / 2 - 20, y, 'max', plain({ color: '#3f9a5f' })).setOrigin(1, 0.5));
+        } else {
+          const max = this.add.text(w / 2 - 20, y, 'max', plain({ color: '#3f9a5f' })).setOrigin(1, 0.5);
+          c.add(max);
+          this.rowText(c, -w / 2 + 24, y, name, def.desc, w / 2 - 20 - max.width);
+        }
       });
     }
   }
@@ -1584,7 +1638,8 @@ export class HudScene extends Phaser.Scene {
       reopen();
     });
     c.add(turn);
-    c.add(this.add.text(cx, top + 88, sel.name, plain()).setOrigin(0.5));
+    // clear of the character's feet, which the taller arcade glyphs reached
+    c.add(clampLine(this.add.text(cx, top + 91, sel.name, plain()).setOrigin(0.5), pw - 6));
 
     const owned = st.costumeOwned(sel);
     const wearing = st.wearingCostume(sel);
@@ -1609,14 +1664,30 @@ export class HudScene extends Phaser.Scene {
     b.setEnabled(can);
     c.add(b.container);
     // one line under the name: what the set saves while buying, the flavour once it is yours
-    const sub = !owned && price < full ? `${full}c if you buy the pieces` : sel.blurb;
-    c.add(this.add.text(cx, top + 99, sub, note({ color: '#6a5a60', align: 'center', wordWrap: { width: pw - 4 } })).setOrigin(0.5, 0));
+    // Kept to the gap between the name and the button: "800c if you buy the
+    // pieces" wrapped to four lines in this column and ran into the button.
+    const noteSize = FONT_OPTIONS[getSavedFontKey()].noteSize;
+    const sub = !owned && price < full ? `Pieces: ${full}c` : sel.blurb;
+    c.add(
+      clampBlock(
+        this.add.text(cx, top + 99, sub, note({ color: '#6a5a60', align: 'center' })).setOrigin(0.5, 0),
+        pw - 6,
+        h / 2 - 26 - 2 - (top + 99),
+        noteSize,
+      ),
+    );
 
     // ---- the rack ----
+    // Tiles wide enough for their tag ("yours", "5 rep", "120c") in the chosen
+    // face, and as many columns as that leaves room for. At a fixed 28px every
+    // tag ran into the tile beside it; the pager takes whatever no longer fits.
     const gx = pxl + pw + 8;
-    const cw = 28;
+    const rackW = w / 2 - 8 - gx;
+    const minCw = Math.max(28, Math.round(28 * fontWidth()));
     const chh = 52;
-    const cols = 6;
+    const cols = Math.max(1, Math.floor((rackW + 2) / (minCw + 2)));
+    // then share out the leftover so the rack is filled rather than ragged
+    const cw = Math.floor((rackW + 2) / cols) - 2;
     const per = cols * 2;
     const pages = Math.max(1, Math.ceil(list.length / per));
     const page = this.page % pages;
@@ -1634,7 +1705,7 @@ export class HudScene extends Phaser.Scene {
       c.add(img);
       const tag = cos.free ? 'free' : locked ? `${cos.unlockRep} rep` : has ? 'yours' : `${st.costumePrice(cos).price}c`;
       const tagColour = cos.free ? '#1f6a56' : has ? '#1f6a56' : locked ? '#6a5a60' : '#8a5e00';
-      c.add(this.add.text(x + cw / 2, y + chh - 7, tag, note({ color: tagColour })).setOrigin(0.5));
+      c.add(shrinkToFit(this.add.text(x + cw / 2, y + chh - 7, tag, note({ color: tagColour })).setOrigin(0.5), cw - 2, noteSize));
       const z = this.add.zone(x + cw / 2, y + chh / 2, cw, chh).setInteractive({ useHandCursor: true });
       z.on('pointerdown', () => {
         this.shopSel = cos.id;
@@ -1648,7 +1719,17 @@ export class HudScene extends Phaser.Scene {
         this.page = n;
         reopen();
       });
-    else c.add(this.add.text(gx + 93, h / 2 - 12, mode === 'buy' ? 'A set costs less than the pieces' : 'The first five are yours already', note({ color: '#6a5a60' })).setOrigin(0.5));
+    else
+      c.add(
+        clampLine(
+          this.add
+            // short enough to fit whole: trimmed to "A set costs less than..." it said nothing
+            .text(gx + rackW / 2, h / 2 - 12, mode === 'buy' ? 'Sets cost less' : 'First five are free', note({ color: '#6a5a60' }))
+            .setOrigin(0.5),
+          rackW,
+          noteSize,
+        ),
+      );
   }
 
   private openClothes(mode: 'buy' | 'equip', kind: ClothingKind | 'looks', inPlace = false) {
@@ -2214,7 +2295,9 @@ export class HudScene extends Phaser.Scene {
     const price = st.animalPrice(sel);
     const locked = def.requires && st.upgradeLevel(def.requires) === 0;
     let label = price === null ? 'Full' : `Buy ${price}c`;
-    if (locked) label = `Needs ${UPGRADES[def.requires as UpgradeId].name}`;
+    // "Needs Chicken coop" was 130px of label in a 96px button. The building's
+    // last word says enough - the button takes you to build it anyway.
+    if (locked) label = `Need ${UPGRADES[def.requires as UpgradeId].name.split(' ').pop()!.toLowerCase()}`;
     const b = button(this, pxl + 6, pt + 77, pw - 12, 16, label, () => {
       if (locked) {
         this.openPetshop('build');
@@ -2636,7 +2719,7 @@ export class HudScene extends Phaser.Scene {
 
     const secY = top + 68;
     c.add(this.add.text(-w / 2 + 12, secY, 'Best Crops to Plant Right Now', plain()).setOrigin(0, 0.5));
-    const load = button(this, w / 2 - 104, secY - 8, 94, 16, 'Load machines', () => {
+    const load = button(this, w / 2 - 104, secY - 8, 94, 16, 'Load all', () => {
       const n = st.loadAllMachines();
       if (!n) return audio.play('bad');
       audio.play('pop');
@@ -3167,8 +3250,11 @@ export class HudScene extends Phaser.Scene {
         const cy = top - 4 + Math.floor(i / 2) * 30;
         const spanW = i === cards.length - 1 ? w - 20 : colW;
         this.rowCard(c, cx, cy, spanW, 25, { key: 'icons', frame: icon }, 0xfffdf9, 0xf3e7d4);
-        c.add(this.add.text(cx + 26, cy + 12.5, k, plain()).setOrigin(0, 0.5));
-        c.add(this.add.text(cx + spanW - 10, cy + 12.5, v, plain({ color: '#9a5b00' })).setOrigin(1, 0.5));
+        // Label above, number below. Side by side, "Total coins earned" and
+        // its number need more than half a journal in a pixel face, and the
+        // two ran into each other on every screen size.
+        c.add(shrinkToFit(this.add.text(cx + 26, cy + 7.5, k, plain()).setOrigin(0, 0.5), spanW - 32));
+        c.add(this.add.text(cx + 26, cy + 17.5, v, plain({ color: '#9a5b00' })).setOrigin(0, 0.5));
       });
     } else this.settings(c, w, h, top);
   }
@@ -3226,26 +3312,34 @@ export class HudScene extends Phaser.Scene {
       if (isNext) {
         g.lineStyle(1, 0xff8fcf, 1).strokeRoundedRect(-w / 2 + 10, y - 12, w - 20, 25, 4);
       }
-      c.add(this.add.text(-w / 2 + 36, y - 5, t.title, plain({ color: locked ? '#8a7a80' : '#3b2133' })).setOrigin(0, 0.5));
-      c.add(
-        this.add
-          .text(-w / 2 + 36, y + 6, locked ? 'Complete earlier chapters first' : done ? 'Completed!' : t.hint, note({ color: done ? '#1e6f3d' : '#6a5560' }))
-          .setOrigin(0, 0.5),
-      );
+      // The right-hand column goes in first and is measured, so the title and
+      // the hint on the left get exactly the room that is left. Before, a long
+      // hint ran straight into the reward beside it.
+      let rightW = 0;
       if (!locked) {
         const short = (n: number) => (n >= 1000 ? `${Math.floor(n / 100) / 10}k` : String(n));
         const prog = done ? t.target : Math.min(t.target, t.progress(wd));
-        c.add(
-          this.add
-            .text(w / 2 - 16, y - 5, done ? 'Done' : `${short(prog)}/${short(t.target)}`, plain({ color: done ? '#1e6f3d' : '#3b2133' }))
-            .setOrigin(1, 0.5),
-        );
-        c.add(
-          this.add
-            .text(w / 2 - 16, y + 6, `+${t.reward}c`, note({ color: done ? '#1e6f3d' : '#9a5b00' }))
-            .setOrigin(1, 0.5),
-        );
+        const progText = this.add
+          .text(w / 2 - 16, y - 5, done ? 'Done' : `${short(prog)}/${short(t.target)}`, plain({ color: done ? '#1e6f3d' : '#3b2133' }))
+          .setOrigin(1, 0.5);
+        const rewardText = this.add
+          .text(w / 2 - 16, y + 6, `+${t.reward}c`, note({ color: done ? '#1e6f3d' : '#9a5b00' }))
+          .setOrigin(1, 0.5);
+        c.add([progText, rewardText]);
+        rightW = Math.max(progText.width, rewardText.width);
       }
+      const leftRoom = w / 2 - 16 - rightW - 6 - (-w / 2 + 36);
+      c.add(clampLine(this.add.text(-w / 2 + 36, y - 5, t.title, plain({ color: locked ? '#8a7a80' : '#3b2133' })).setOrigin(0, 0.5), leftRoom));
+      const noteSize = FONT_OPTIONS[getSavedFontKey()].noteSize;
+      c.add(
+        clampLine(
+          this.add
+            .text(-w / 2 + 36, y + 6, locked ? 'Complete earlier chapters first' : done ? 'Completed!' : t.hint, note({ color: done ? '#1e6f3d' : '#6a5560' }))
+            .setOrigin(0, 0.5),
+          leftRoom,
+          noteSize,
+        ),
+      );
     });
 
     const footY = h / 2 - 13;

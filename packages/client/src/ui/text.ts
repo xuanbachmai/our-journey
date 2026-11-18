@@ -83,6 +83,62 @@ export function getFontDefaultSize(): number {
 /** Below this a label stops being worth reading, so the button must grow instead. */
 const MIN_LABEL_PX = 7;
 
+/**
+ * Make a line fit a width by stepping its font size down a whole pixel at a
+ * time - never by scaling it, which in a pixel face puts stems between pixels
+ * and turns "Story" into "Slury". Stops at a readable floor; anything still
+ * too wide at that size needs more room, not a smaller font.
+ */
+export function shrinkToFit(t: Phaser.GameObjects.Text, maxWidth: number, fromPx = getFontDefaultSize()) {
+  let size = fromPx;
+  t.setFontSize(size);
+  while (t.width > maxWidth && size > MIN_LABEL_PX) {
+    size -= 1;
+    t.setFontSize(size);
+  }
+  return t;
+}
+
+/**
+ * One line that must stay on one line and out of its neighbour's way: shrink
+ * in whole sizes first, and only if that is not enough, drop whole words from
+ * the end and close with an ellipsis. Measured against the real glyphs, so it
+ * never cuts a word in half or leaves a gap it did not need to.
+ */
+/**
+ * A wrapped paragraph that has to stay inside a box: wraps to the width,
+ * steps down whole sizes until it is short enough, and as a last resort drops
+ * words from the end. For the line under a picture that sits above a button.
+ */
+export function clampBlock(t: Phaser.GameObjects.Text, maxWidth: number, maxHeight: number, fromPx = getFontDefaultSize()) {
+  t.setWordWrapWidth(maxWidth);
+  let size = fromPx;
+  t.setFontSize(size);
+  while (t.height > maxHeight && size > MIN_LABEL_PX) {
+    size -= 1;
+    t.setFontSize(size);
+  }
+  if (t.height <= maxHeight) return t;
+  const words = t.text.split(' ');
+  while (words.length > 1 && t.height > maxHeight) {
+    words.pop();
+    t.setText(`${words.join(' ').replace(/[,.;:]$/, '')}…`);
+  }
+  return t;
+}
+
+export function clampLine(t: Phaser.GameObjects.Text, maxWidth: number, fromPx = getFontDefaultSize()) {
+  shrinkToFit(t, maxWidth, fromPx);
+  if (t.width <= maxWidth) return t;
+  const words = t.text.split(' ');
+  while (words.length > 1) {
+    words.pop();
+    t.setText(`${words.join(' ').replace(/[,.;:]$/, '')}…`);
+    if (t.width <= maxWidth) return t;
+  }
+  return t;
+}
+
 /** How much wider the chosen face runs than the one the panels were drawn for. */
 export function fontWidth(): number {
   return FONT_OPTIONS[getSavedFontKey()].width;
@@ -275,16 +331,9 @@ export function button(
   // must never be scaled by a fraction: a pixel face squeezed to 0.6 lands its
   // stems between pixels and comes out as mush - "Story" rendered as "Slury".
   // Whole sizes keep every glyph on the pixel grid and legible.
-  const baseSize = getFontDefaultSize();
   const fitLabel = () => {
     t.setScale(1);
-    const room = w - 6;
-    let size = baseSize;
-    t.setFontSize(size);
-    while (t.width > room && size > MIN_LABEL_PX) {
-      size -= 1;
-      t.setFontSize(size);
-    }
+    shrinkToFit(t, w - 6);
   };
   fitLabel();
   draw(false);

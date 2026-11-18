@@ -284,7 +284,10 @@ export class TitleScene extends Phaser.Scene {
       .setOrigin(0.5);
     this.ui.push(header);
 
-    const bw = 180;
+    // Widen with the card. A fixed 180 held "+ Create World (New Code)" in the
+    // old face; in the arcade one it dropped to the smallest size and still ran
+    // into both edges of the first button either of you will ever press.
+    const bw = Math.min(fitWidth(180, W), cardW - 20);
     const mk = (yPos: number, label: string, fn: () => void, color?: number): Button => {
       const b = button(this, W / 2 - bw / 2, yPos, bw, 20, label, fn, color);
       this.ui.push(b.container);
@@ -302,11 +305,13 @@ export class TitleScene extends Phaser.Scene {
     const ruleText = this.add
       .text(
         W / 2,
-        top + cardH - 12,
+        top + cardH - 5,
         `Max ${MAX_WORLD_PLAYERS} players per world  ·  1 world per device`,
-        note({ color: '#6a5560', align: 'center' }),
+        // wraps on a narrow phone instead of running off both edges; anchored
+        // at the bottom so a second line grows up into the space under Join
+        note({ color: '#6a5560', align: 'center', wordWrap: { width: cardW - 16 } }),
       )
-      .setOrigin(0.5);
+      .setOrigin(0.5, 1);
     this.ui.push(ruleText);
   }
 
@@ -352,10 +357,17 @@ export class TitleScene extends Phaser.Scene {
         .text(left + 68, top + 44, `Playing as: ${look.name}`, plain({ color: '#3b2133' }))
         .setOrigin(0, 0.5),
       this.add
-        .text(left + 68, top + 58, 'Our shared world on this device', note({ color: '#6a5560' }))
+        .text(left + 68, top + 58, 'Our shared world on this device', note({ color: '#6a5560', wordWrap: { width: cardW - 76 } }))
         .setOrigin(0, 0.5),
       this.add
-        .text(left + 68, top + 70, 'Share the code so the other one can join!', note({ color: '#9a5b00' }))
+        .text(
+          left + 68,
+          top + 70,
+          // Once you have both joined, asking either of you to share the code is
+          // the wrong thing to say. And short enough to fit the narrowest phone.
+          joined >= MAX_WORLD_PLAYERS ? 'Both of you are here!' : 'Send your partner the code!',
+          note({ color: '#9a5b00', wordWrap: { width: cardW - 76 } }),
+        )
         .setOrigin(0, 0.5),
     );
 
